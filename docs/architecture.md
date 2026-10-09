@@ -4,7 +4,7 @@ Living document. Updated as the system changes; see the status table at the bott
 is verified on hardware versus only on synthetic data. The reasoning behind each choice
 lives in [`decisions.md`](decisions.md).
 
-Last updated: 2026-10-09 — rolling noise band for blood volume (D35) and sliding-window heart rate (D36), after the first live run of the monitor. Earlier the same day, after the first graded run — added coupling-slip detection (D31),
+Last updated: 2026-10-09 — first real cuff occlusion (O3, O5); earlier: rolling noise band for blood volume (D35) and sliding-window heart rate (D36), after the first live run of the monitor. Earlier the same day, after the first graded run — added coupling-slip detection (D31),
 demoted harmonics to informational (D30), and opened O4 (red is contact-sensitive).
 
 ---
@@ -392,6 +392,7 @@ flowchart LR
 | Slip detection | **working on hardware** | finds the one real slip; none on the clean capture |
 | Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
+| **Return of flow, real cuff** | **detected** | filling onset 198.0 s vs pulse return 198.6 s; no pressure sensor, so no mmHg |
 | Pressure calibration | never run | no HX710B |
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
 | Blood-volume tab | **works on real replay** | still capture STABLE throughout; graded-run slip flagged live; not yet run live |

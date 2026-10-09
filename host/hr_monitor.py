@@ -785,10 +785,18 @@ class MonitorCore:
         raw_fh.write("# source=hr_monitor\n")
         raw_fh.write(f"# recorded_at={datetime.now().isoformat(timespec='seconds')}\n")
         raw_fh.write(f"# site={self.site}\n# hr_channel={self.channel}\n")
-        for k, v in self.meta.get("raw", {}).items():
+        # Session time of raw row 0. Event lines and the _hr/_vol logs carry
+        # session time (seconds since the monitor started) while raw rows
+        # count from zero per recording; without this the 2026-10-09 cuff run
+        # had to be aligned by inferring an offset from the _vol log.
+        t_session = self.vol.t_now if self.vol is not None else 0.0
+        raw_fh.write(f"# session_t0={t_session:.3f}\n")
+        raw = self.meta.get("raw", {})
+        for k, v in raw.items():
             raw_fh.write(f"# {k}={v}\n")
         for k, v in self.meta.get("dark", {}).items():
-            raw_fh.write(f"# dark_{k}={v:.0f}\n")
+            if f"dark_{k}" not in raw:          # firmware header may already carry it
+                raw_fh.write(f"# dark_{k}={v:.0f}\n")
         raw_fh.write(f"# fs={self.meta['fs']:.2f}\n")
         raw_fh.write("idx," + ",".join(self._data_columns()) + "\n")
         hr_fh = Path(str(base) + "_hr.csv").open("w")

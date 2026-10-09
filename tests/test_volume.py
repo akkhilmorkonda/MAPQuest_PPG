@@ -380,3 +380,36 @@ def test_band_has_a_minimum_width():
     v, _ = track(ir, red)
     s = v.state()
     assert s.threshold - s.mu0 >= 0.5 - 1e-9
+
+
+def test_recording_header_aligns_rows_with_session_time(tmp_path, monkeypatch):
+    """Raw rows start at 0 per recording; events use session time.
+
+    session_t0 in the header ties them together, so event at session time T
+    falls on raw row (T - session_t0) * fs.
+    """
+    _t, ir, red, _ = synth_run(seconds=40)
+    path = tmp_path / "align.csv"
+    _write_capture(path, ir, red)
+    core = _core(path, tmp_path, monkeypatch)
+    state = {"rec": False, "marked": False, "mark_t": None}
+
+    def during(c):
+        if c.vol and c.vol.t_now > 15 and not state["rec"]:
+            c.toggle_record()
+            state["rec"] = True
+        if state["rec"] and c.vol.t_now > 25 and not state["marked"]:
+            c.mark()
+            state["marked"], state["mark_t"] = True, c.vol.t_now
+
+    _until_eof(core, during)
+    core.stop_recording()
+    raw = next(p for p in tmp_path.glob("hr_*.csv")
+               if not p.name.endswith(("_hr.csv", "_vol.csv")))
+    lines = raw.read_text().splitlines()
+    t0 = float(next(ln.split("=")[1] for ln in lines if ln.startswith("# session_t0=")))
+    assert 14.0 < t0 < 17.0
+    ev = next(ln for ln in lines if "label=mark_1" in ln)
+    t_ev = float(ev.split("t_s=")[1].split()[0])
+    assert abs(t_ev - state["mark_t"]) < 0.2
+    assert sum(ln.startswith("# dark_ir=") for ln in lines) == 1

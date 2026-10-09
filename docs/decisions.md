@@ -46,10 +46,12 @@ experiment settles something.
 | [D34](#d34) | Live blood-volume tab; one LED tuning for both tabs | accepted |
 | [D35](#d35) | Volume noise floor: rolling envelope band with hysteresis | accepted — fixes D34 |
 | [D36](#d36) | Heart rate averaged over a sliding time window | accepted |
+| [D37](#d37) | Recordings carry session_t0 so events align with raw rows | accepted — bug fix |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
-| [O2](#o2) | `synth.py` noise defaults vs hardware | **resolved** |
-| [O3](#o3) | Is the onset noise floor low enough to work? | **likely yes** |
+| [O2](#o2) | `synth.py` noise defaults vs hardware | **reopened** — real filling ~3× slower than simulated |
+| [O3](#o3) | Is the onset noise floor low enough to work? | **yes on first cuff run, but margin ~2×, not 22×** |
 | [O4](#o4) | Red is the contact-sensitive channel — two-wavelength vs IR-only | **open** |
+| [O5](#o5) | Blood volume is not flat under occlusion — onset baseline must be sloped | **open** |
 
 ---
 
@@ -928,6 +930,19 @@ changed.
 
 ---
 
+<a id="d37"></a>
+## D37 — Recordings carry `session_t0`
+
+**Status:** accepted · 2026-10-09 · bug fix
+
+Event lines and the `_hr` / `_vol` logs use session time (seconds since the monitor
+started); raw rows count from zero in each recording. The first cuff run had to be aligned
+by inferring the offset from the `_vol` log, to ±0.1 s. The raw header now records
+`session_t0`, so event time *T* falls on raw row (*T* − `session_t0`) × fs. Also stops
+`dark_*` being written twice when the firmware header already carries it.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 
@@ -1001,6 +1016,11 @@ understood. On a clean, settled 60 s capture the threshold is **0.627 µm/s**, s
 simulator's 3 µm/s ramp sits **4.8× above** it rather than below. The synthetic tests are
 conservative relative to real hardware, not optimistic. No re-anchoring needed.
 
+**Reopened 2026-10-09.** The first real cuff run filled at **1.09 µm/s**, not 3. The
+synthetic SPEC §6 tests therefore assume a signal ~3× stronger than reality — the same
+false-confidence problem, now from the signal side. Re-anchor `fill_rate` near 1 µm/s and
+re-check the ±1 mmHg criterion before trusting those tests.
+
 **Keep in view:** this holds only for *settled* captures. A run without `--settle` had a
 threshold of 7.65 µm/s, above the simulator's ramp. The settling discipline is what makes
 the tests representative.
@@ -1029,7 +1049,30 @@ filling is comparable it will work; if it is slower it will not.
 arm-raise is a proxy, not the measurement. But with 22× headroom against that proxy, the
 noise floor has stopped being the thing most likely to sink the project.
 
-**Resolves fully when** the HX710B arrives and a real deflation can be recorded.
+**First real cuff run (2026-10-09 19:41, `hr_wrist_20261009_194059`).** Upper-arm cuff
+inflated above systolic, then bled down by hand; no pressure sensor. Measured:
+
+| | |
+|---|---|
+| Cardiac pulse at the wrist | lost at 170.4 s, back at 198.6 s; 20 % of pre-occlusion while occluded |
+| Blood volume under occlusion | fell 9.9 µm over 28 s (see O5) |
+| Filling after return of flow | **+1.09 µm/s**, ~10 s, back above baseline by ~209 s |
+| Filling onset (line intersection) | **198.0 s — 0.6 s before the pulse returned** |
+| Live detector (replayed) | STABLE through the occlusion; FILLING at 202.1 s, 4.1 s after onset |
+| Heart-rate tab | SEARCHING throughout the occlusion; GOOD within ~3 s of release |
+
+Two independent markers of return of flow — pulse amplitude and volume filling — agree to
+0.6 s, ≈1.2 mmHg at a 2 mmHg/s deflation. As SPEC §1 predicts for a pulsatile subject,
+filling begins as the cuff passes **systolic**.
+
+**The sobering part.** The real filling rate, 1.09 µm/s, is ~3× slower than the simulator's
+3 µm/s and an order of magnitude below the ~14 µm/s arm-raise estimate made above. Against
+the settled floor (0.63 µm/s) the margin is ~1.7×; against a live band widened by
+breathing (±1.2 µm/s) it is roughly 1×. Onset was clean here because the subject was still
+and the rate stepped from −0.14 to +1.09 µm/s. With heavier breathing or a slower
+deflation it would not be. **Stillness and slow, even breathing are part of the protocol.**
+
+**Resolves further with** the HX710B (onset in mmHg, deflation rate known) and repeat runs.
 
 ---
 
@@ -1063,3 +1106,32 @@ absent and IR-only is legitimate there; during a real cuff occlusion it is not.
 
 **Resolves with** a clean graded run (no slips) analysed both ways, and eventually a cuff
 occlusion where desaturation actually occurs. Not decided here.
+
+---
+
+<a id="o5"></a>
+## O5 — Blood volume is not flat under occlusion; the onset baseline must be sloped
+
+**Status:** **open** · raised 2026-10-09
+
+**SPEC §1 assumes** "cuff inflates above arterial pressure → forearm blood volume frozen → PPG
+DC flat". **On the first real cuff run it was not**: with the pulse gone (cuff above
+systolic), blood volume under the sensor fell steadily, 9.9 µm over 28 s, slowing to
+−0.14 µm/s just before onset. Two-wavelength and IR-only agree within 0.2 µm, so
+desaturation of trapped blood is not what moved the estimate, though raw red flattening
+while IR kept rising hints that some is present. The likeliest explanation is the
+microvascular bed under the sensor emptying into veins and downstream as arterial pressure
+distal to the cuff collapses. Not settling drift: the fall starts within a second of the
+pulse vanishing and stops within a second of it returning, and runs ~3× faster than the
+session's resting drift.
+
+**Why it matters.** D10's ramp-intersection extrapolates the filling ramp back to a *flat*
+baseline — the mean of the reference window. With a falling baseline, the further that
+window sits before onset, the higher the assumed level and the earlier the computed onset.
+SPEC §8 holds the cuff for 10 s before a deflation that takes 20–30 s to reach systolic, so
+the bias could be several seconds — several mmHg. Here the onset was found by intersecting
+two *fitted lines* (the pre-onset trend and the ramp), which handles the slope.
+
+**Proposed** (not yet implemented): fit a line to the baseline immediately preceding the
+threshold crossing, not a level from a fixed early window, and intersect line with line.
+Validate on synthetic data with a declining occlusion baseline, then on this recording.

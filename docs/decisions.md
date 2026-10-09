@@ -32,6 +32,7 @@ experiment settles something.
 | [D20](#d20) | Explicit LED currents + die-temperature bracketing | accepted |
 | [D21](#d21) | A wrong-signed manoeuvre vetoes a 'responds' verdict | accepted — bug fix |
 | [D22](#d22) | Pulse detection needs >= 30 s and an adaptive Welch window | accepted — bug fix |
+| [D23](#d23) | Non-blocking serial reads + watchdog | accepted — bug fix |
 | [O1](#o1) | Red channel drift — cause and mitigation | **open** |
 | [O2](#o2) | `synth.py` noise defaults do not match hardware | **open** |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **open** |
@@ -485,6 +486,37 @@ agreeing across wavelengths, which is the signature of a real pulse rather than 
 
 **Consequence.** The 10 s auto-tune run no longer claims anything about pulse. Any capture
 meant to answer "is there a pulse" must be ≥30 s.
+
+---
+
+<a id="d23"></a>
+## D23 — Non-blocking serial reads, with a watchdog behind them
+
+**Status:** accepted · 2026-10-09 · bug fix
+
+**Problem.** A 60 s capture froze at 24 s with no error and no traceback — the program just
+stopped. D17 had already added a 3 s stall detector, and it never fired.
+
+**Cause.** The stall detector sits *after* `readline()` returns. pyserial's blocking
+`readline()` on Windows does not reliably honour its timeout once a USB CDC device vanishes
+mid-transfer; the call hangs indefinitely, so the detector never gets a turn. The timeout
+being respected was an assumption, not a guarantee.
+
+**Decision.**
+1. **Poll `in_waiting` and assemble lines ourselves** instead of calling `readline()`. The
+   read never blocks, so the stall timer always runs — and `in_waiting` raises promptly on a
+   dead handle, which is the signal we want anyway.
+2. **A watchdog thread** as the last line of defence: if nothing arrives for
+   `max(4 × stall_timeout, 10 s)` it calls `cancel_read()` and closes the handle from
+   outside, turning any remaining hang into an exception. It reports itself distinctly,
+   since firing means something wedged *below* our timeout layer.
+
+**Consequence.** `Device.readline()` no longer blocks; it returns `""` when nothing is ready
+and sleeps 2 ms to avoid spinning. Callers already loop against their own deadlines, so this
+is transparent to them.
+
+**Tested** with a mock whose reads wedge partway through: raises `LinkStalled` in well under
+10 s and keeps the samples received before the hang.
 
 ---
 

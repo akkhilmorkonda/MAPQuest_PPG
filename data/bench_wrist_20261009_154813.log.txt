@@ -1,0 +1,57 @@
+Port : COM6
+
+MAPQuest bench check (SPEC 3.5)
+================================================================
+  [  ok  ] MAX30101 found at 0x57
+           part_id=0x15 rev=0x06 firmware=mapquest-fw-0.2
+  LED   : ir set to 43 (8.6 mA)
+  LED   : red set to 102 (20.4 mA)
+
+  Config: ir/red @ 100 Hz, PPG only
+  Columns: idx,t_us,ir,red
+
+  Measuring DARK (LEDs off, ~2 s)...
+  [  ok  ] DARK offsets <= 128 counts
+           ir=8, red=11
+
+  Settling for 45 s — leave the sensor strapped and still.
+
+  Capturing 60 s — keep the sensor still on the wrist.
+
+
+  Captured 2,462 samples over 27.7 s
+  [ FAIL ] serial link stable
+           LINK STALLED after 27.7 s of 60 s requested (2,462 samples kept).
+           no data for 3.0 s after 2,462 samples
+  COM6 is still present, so the cable is probably fine — suspect a board reset or a stalled USB CDC. Press the board's reset button and retry.
+
+  Partial capture retained — the checks below describe the 28 s that did arrive.
+  Things to try, most likely first:
+    1b. The port stayed open, so the cable is probably fine; a board reset or a wedged sketch is more likely.
+    1. Swap the USB cable. Charge-only and thin cables are the most
+       common cause — the board enumerates but drops under sustained
+       traffic.
+    2. Use a port directly on the machine, not a hub, and not a
+       monitor/keyboard passthrough.
+    3. Close anything else holding the port — Arduino IDE Serial
+       Monitor and Serial Plotter both do.
+    4. Disable USB selective suspend for this device (Windows will
+       power down a CDC port it thinks is idle).
+  [  ok  ] IR DC in 105,000-157,000
+           mean=139,126  min=138,909  max=139,359  (53% of full scale)
+  [  ok  ] output rate within 1%
+           99.65 Hz measured vs 100 Hz configured (-0.35%)
+  [  ok  ] zero dropped samples
+           2,462 consecutive indices over 28 s
+  [ skip ] pressure stream at ~40 Hz
+           HX710B not fitted (PRESSURE_ENABLED=0)
+  [ skip ] cardiac pulse detected
+           capture holds 25 s of data; needs >= 30 s for the spectrum to average enough segments. Any rate from a shorter record swings with the analysis window.
+
+  Saved capture to C:\Users\akkhi\Documents\Projects\MAPQuest\data\bench_20261009_155213.csv
+
+================================================================
+RESULT: 1 check(s) FAILED
+  - serial link stable: LINK STALLED after 27.7 s of 60 s requested (2,462 samples kept).
+           no data for 3.0 s after 2,462 samples
+  COM6 is still present, so the cable is probably fine — suspect a board reset or a stalled USB CDC. Press the board's reset button and retry.

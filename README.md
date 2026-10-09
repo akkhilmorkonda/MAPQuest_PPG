@@ -205,6 +205,16 @@ refused when `sensor_ok=0` rather than streaming a plausible-looking flat line.
 Use `idx / fs` as the timebase, not `t_us` — `t_us` is the host read time of a FIFO burst, so
 several samples in one burst share it. It is there for jitter diagnostics only.
 
+## If a capture freezes or drops
+
+The ESP32-S3's native USB CDC can re-enumerate under load. Captures that die partway are
+kept and analysed, with the failure reported. If the board vanishes entirely, wait a few
+seconds before retrying — it is probably still re-enumerating, and `find_port` will say so.
+
+Most common cause by a wide margin is the cable: charge-only and thin cables enumerate fine
+and then drop under sustained traffic. Then USB hubs, then another program holding the port
+(Arduino IDE's Serial Monitor and Serial Plotter both do).
+
 ## Safety
 
 Bench experiment, **not a medical device**. Occlusion ≤ 2 min per trial, 2–3 min rest between.

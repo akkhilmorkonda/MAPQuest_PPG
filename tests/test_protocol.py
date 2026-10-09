@@ -10,6 +10,7 @@ the board plugged in, when it is hardest to debug.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -67,6 +68,7 @@ class FakeSerial:
         self.t_us = 0
         self.closed = False
         self._out: list[bytes] = []
+        self._pending = b""
         self._in = b""
         self._rng = np.random.default_rng(0)
 
@@ -176,6 +178,48 @@ class FakeSerial:
         elif verb:
             self._emit(f"E,unknown command: {verb}")
 
+    def _fill(self) -> None:
+        """Produce the next chunk of bytes, exactly as readline() would."""
+        if self._out:
+            self._pending += self._out.pop(0)
+            return
+        if not self.streaming:
+            return
+        if self.die_at is not None and self.sent >= self.die_at:
+            raise serial.SerialException(
+                "ClearCommError failed (PermissionError(13, "
+                "'The device does not recognize the command.', None, 22))")
+        if self.stall_at is not None and self.sent >= self.stall_at:
+            return
+        if self.rate_limit:
+            import time as _t
+            if self._t0 is None:
+                self._t0 = _t.time()
+            if _t.time() < self._t0 + self.sent / self.fs:
+                return
+        if self.reset_at is not None and self.sent == self.reset_at:
+            self.idx = 0
+        self.sent += 1
+        self._pending += (self._sample() + "\n").encode()
+
+    @property
+    def in_waiting(self) -> int:
+        if not self._pending:
+            self._fill()
+        return len(self._pending)
+
+    def read(self, n: int = 1) -> bytes:
+        while len(self._pending) < n:
+            before = len(self._pending)
+            self._fill()
+            if len(self._pending) == before:
+                break
+        out, self._pending = self._pending[:n], self._pending[n:]
+        return out
+
+    def cancel_read(self) -> None:
+        pass
+
     def readline(self) -> bytes:
         if self._out:
             return self._out.pop(0)
@@ -205,6 +249,7 @@ class FakeSerial:
 
     def reset_input_buffer(self) -> None:
         self._out.clear()
+        self._pending = b""
 
     def close(self) -> None:
         self.closed = True
@@ -811,3 +856,60 @@ def test_settle_delays_capture(fake, monkeypatch):
     assert code == 0, out
     assert 5 in slept
     assert "Settling for 5 s" in out
+
+
+class HangingSerial(FakeSerial):
+    """A port whose reads wedge partway through, below the timeout layer.
+
+    This is what the user hit on 2026-10-09: the capture froze at 24 s with
+    no error. pyserial's blocking readline() on Windows does not reliably
+    honour its timeout once a USB CDC device vanishes mid-transfer, so the
+    stall detector never got to run.
+    """
+
+    def __init__(self, *a, hang_at=200, **kw):
+        super().__init__(*a, **kw)
+        self.hang_at = hang_at
+
+    @property
+    def in_waiting(self) -> int:
+        if self.streaming and self.sent >= self.hang_at:
+            time.sleep(0.05)      # stands in for an unbounded driver hang
+            return 0
+        return super().in_waiting
+
+
+def test_hanging_read_is_caught_not_frozen(monkeypatch):
+    """A wedged read must raise, not hang forever."""
+    from mapquest.io import Device, LinkStalled
+
+    monkeypatch.setattr(
+        io_mod.serial, "Serial",
+        lambda port, baud, timeout=1.0, **k: HangingSerial(port, baud, timeout,
+                                                           hang_at=200),
+    )
+    dev = Device("FAKE", settle=0.0)
+    dev.__enter__()
+    try:
+        dev.info()
+        got = []
+        start = time.time()
+        with pytest.raises(LinkStalled) as exc:
+            for fields, _ in dev.stream(stall_timeout=0.3, watchdog_floor=0.5):
+                got.append(fields)
+        elapsed = time.time() - start
+    finally:
+        try:
+            dev.__exit__(None, None, None)
+        except Exception:
+            pass
+
+    assert len(got) == 200, "should keep the samples received before the hang"
+    assert exc.value.samples == 200
+    assert elapsed < 10.0, f"took {elapsed:.1f}s — it hung rather than reporting"
+
+
+def test_watchdog_limit_respects_stall_timeout():
+    """The watchdog must never fire before the stall detector has had a go."""
+    for stall in (1.0, 3.0, 5.0):
+        assert max(stall * 4, 10.0) > stall

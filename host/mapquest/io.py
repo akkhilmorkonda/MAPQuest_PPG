@@ -8,6 +8,7 @@ no host constant has to be kept in sync by hand.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +22,30 @@ _LIKELY_VIDS = {0x2341, 0x2A03, 0x303A, 0x10C4, 0x1A86}
 _LIKELY_HINTS = ("nano esp32", "esp32", "arduino", "usb serial", "cp210", "ch340")
 
 DEFAULT_COLUMNS = ["idx", "t_us", "ir", "red"]
+
+
+class _Repeating:
+    """A timer that re-arms until cancelled."""
+
+    def __init__(self, interval: float, fn) -> None:
+        self.interval, self.fn, self._t = interval, fn, None
+
+    def start(self) -> None:
+        self._t = threading.Timer(self.interval, self._run)
+        self._t.daemon = True
+        self._t.start()
+
+    def _run(self) -> None:
+        try:
+            self.fn()
+        finally:
+            if self._t is not None:
+                self.start()
+
+    def cancel(self) -> None:
+        t, self._t = self._t, None
+        if t is not None:
+            t.cancel()
 
 
 class LinkError(RuntimeError):
@@ -137,7 +162,14 @@ def find_port(explicit: str | None = None) -> str:
         return explicit
     ports = list(list_ports.comports())
     if not ports:
-        raise RuntimeError("No serial ports found. Is the board plugged in?")
+        raise RuntimeError(
+            "No serial ports found.\n"
+            "  If a capture just froze or dropped, the board is probably still\n"
+            "  re-enumerating — wait a few seconds and retry before touching it.\n"
+            "  Otherwise: unplug and replug, try a different cable (charge-only\n"
+            "  cables enumerate then drop under load), and avoid USB hubs.\n"
+            "  If it still does not appear, press the board's reset button."
+        )
 
     def score(p) -> int:
         s = 10 if p.vid in _LIKELY_VIDS else 0
@@ -166,6 +198,7 @@ class Device:
         self.errors: list[str] = []
         self.rx_count = 0
         self.max_gap_s = 0.0
+        self._rx_buf = b""
         self._ser: serial.Serial | None = None
 
     def __enter__(self) -> "Device":
@@ -198,9 +231,50 @@ class Device:
         self._ser.flush()
 
     def readline(self) -> str:
+        """Return one complete line, or "" if none is ready. Never blocks long.
+
+        This deliberately avoids pyserial's ``readline()``. On Windows a
+        blocking serial read does not reliably honour its timeout once a USB
+        CDC device has vanished mid-transfer: the call can hang indefinitely,
+        which starves the stall detector and presents as a frozen program
+        rather than a reported fault. Polling ``in_waiting`` and assembling
+        lines here keeps control in our hands — and ``in_waiting`` raises
+        promptly when the handle is dead, which is exactly the signal we want.
+        """
         if self._ser is None:
             raise LinkLost("serial port is closed", samples=self.rx_count)
-        return self._ser.readline().decode("utf-8", errors="replace").strip()
+
+        line = self._take_line()
+        if line is not None:
+            return line
+
+        try:
+            waiting = self._ser.in_waiting
+            if waiting:
+                self._rx_buf += self._ser.read(waiting)
+            else:
+                # Nothing ready. Yield briefly so the caller's deadline and
+                # stall timer advance instead of spinning a core.
+                time.sleep(0.002)
+        except (serial.SerialException, OSError) as exc:
+            raise LinkLost(
+                f"serial read failed after {self.rx_count:,} samples: {exc}",
+                samples=self.rx_count,
+            ) from exc
+
+        line = self._take_line()
+        return line if line is not None else ""
+
+    def _take_line(self) -> str | None:
+        """Pop one newline-terminated line out of the receive buffer."""
+        nl = self._rx_buf.find(b"\n")
+        if nl < 0:
+            # Guard against a peer that never sends a newline again.
+            if len(self._rx_buf) > 1 << 20:
+                self._rx_buf = b""
+            return None
+        raw, self._rx_buf = self._rx_buf[:nl], self._rx_buf[nl + 1:]
+        return raw.decode("utf-8", errors="replace").strip()
 
     def stop(self, settle: float = 0.3) -> None:
         """Stop streaming and discard anything still in flight.
@@ -286,7 +360,8 @@ class Device:
         self.drain(0.3)
 
     def stream(self, stall_timeout: float = 3.0,
-               start_timeout: float = 5.0) -> Iterator[tuple[list[int], str]]:
+               start_timeout: float = 5.0,
+               watchdog_floor: float = 10.0) -> Iterator[tuple[list[int], str]]:
         """Send START and yield ``(fields, raw_line)`` for each S line.
 
         Raises LinkLost if the port disappears and LinkStalled if it stays
@@ -296,13 +371,37 @@ class Device:
         """
         self.command("START")
         started = False
+        # Belt and braces. If a read wedges somewhere we cannot reach -- a
+        # driver-level hang -- force the handle shut from another thread so
+        # the blocked call fails instead of hanging the program forever.
+        watchdog_fired: list[bool] = []
+        watchdog_limit = max(stall_timeout * 4, watchdog_floor)
+
+        def _watchdog() -> None:
+            if time.time() - self._last_rx_mono > watchdog_limit:
+                watchdog_fired.append(True)
+                try:
+                    if self._ser is not None:
+                        self._ser.cancel_read()
+                except Exception:
+                    pass
+                try:
+                    if self._ser is not None:
+                        self._ser.close()
+                except Exception:
+                    pass
+
+        self._last_rx_mono = time.time()
+        watchdog = _Repeating(1.0, _watchdog)
+        watchdog.start()
         now = time.time()
         deadline = now + start_timeout
         last_rx = now
         self.rx_count = 0
         self.max_gap_s = 0.0
 
-        while True:
+        try:
+          while True:
             try:
                 line = self.readline()
             except (serial.SerialException, OSError) as exc:
@@ -349,6 +448,7 @@ class Device:
 
             gap = now - last_rx
             last_rx = now
+            self._last_rx_mono = now
             if line.startswith("S,"):
                 started = True
                 try:
@@ -363,6 +463,16 @@ class Device:
                 yield fields, line
             else:
                 self._absorb(line)
+        finally:
+            watchdog.cancel()
+            if watchdog_fired:
+                raise LinkStalled(
+                    f"watchdog closed the port after {watchdog_limit:.0f} s with "
+                    f"no data ({self.rx_count:,} samples received). The serial "
+                    "read had stopped responding below the timeout layer, which "
+                    "is a driver-level hang rather than a quiet board.",
+                    samples=self.rx_count,
+                )
 
 
 def load_csv(path: str | Path) -> tuple[Meta, np.ndarray, dict[str, np.ndarray], dict]:

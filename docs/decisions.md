@@ -44,6 +44,8 @@ experiment settles something.
 | [D32](#d32) | Run inputs in the CSV header; console log written through | accepted — bug fix |
 | [D33](#d33) | Standalone heart-rate monitor: only show a corroborated number | accepted |
 | [D34](#d34) | Live blood-volume tab; one LED tuning for both tabs | accepted |
+| [D35](#d35) | Volume noise floor: rolling envelope band with hysteresis | accepted — fixes D34 |
+| [D36](#d36) | Heart rate averaged over a sliding time window | accepted |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **resolved** |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **likely yes** |
@@ -850,6 +852,79 @@ in the 0.15–0.4 Hz respiratory band (peak at 9 breaths/min), against 15 % on t
 capture. Respiration modulates venous volume, so this is physiology rather than noise —
 and it is the floor any onset detection has to clear. Consistent with breathing, not yet
 proven: twenty seconds holds only a few breaths.
+
+---
+
+<a id="d35"></a>
+## D35 — Volume noise floor: rolling envelope band, with hysteresis and a guard window
+
+**Status:** accepted · 2026-10-09 · fixes D34
+
+**What went wrong live.** D34 measured μ0 and σ0 once, from the 10 s after each zero, then
+froze them. On the user's first live run those 10 s were calm, the band came out
+−0.33 … +0.05 µm/s, and ordinary fluctuations later read as FILLING. Reproduced
+synthetically with the same drift and a calm start followed by slow breathing: **30 % of
+seconds falsely FILLING or DRAINING**, band −0.31 … +0.04.
+
+**Three changes, each forced by the one before:**
+
+1. **Rolling and robust.** μ0 = median, spread from the median absolute deviation, over
+   the last 60 s of quiet samples, refreshed each second; never narrower than ±0.5 µm/s;
+   20 s of quiet data needed before it is trusted. Cut false alarms from 26 to 3 s — but
+   the band ballooned to ±3.5 µm/s, and a real 3 µm/s ramp under breathing was caught only
+   17 of 36 seconds.
+
+2. **Envelope, not 3σ.** 3σ assumes Gaussian noise. Breathing is a bounded oscillation
+   whose peak is only ~1.4σ, so 3σ sits far above anything it produces. The band is now
+   1.2 × the 95th percentile of |rate − μ0| — just above the real excursions whatever their
+   shape, and close to 3σ (1.2 × 1.96 ≈ 2.4σ) when the noise *is* Gaussian.
+
+3. **Hysteresis, plus a guard window.** Entering a trend needs the full band for 2 s;
+   staying in it needs only the 2 s mean beyond half the band. Without that, breathing
+   riding on a ramp flickered the state to STABLE, those ramp samples counted as quiet, and
+   the floor absorbed the ramp. Samples already in a trend are excluded from the floor, and
+   so are the few seconds either side of one — otherwise the climb into and out of a ramp
+   widened the band to ±3.4 µm/s for a minute afterwards.
+
+**Result on the reproduction:** 85 of 85 seconds STABLE under breathing alone; 36 of 36
+FILLING through a 3 µm/s ramp; band ±1.2–1.4 µm/s against breathing swings of ±1.2, and
+unchanged after the ramp. Real still capture: STABLE, band ±0.6.
+
+**Operational rule this creates:** zero, wait for STABLE (~30 s), then start. An event that
+begins while the floor is still settling contaminates it. During deliberate arm movements
+the band widens a lot (±14 µm/s on the graded run) — correctly, since that *is* the
+variability — and re-adapts within a minute of holding still.
+
+---
+
+<a id="d36"></a>
+## D36 — Heart rate averaged over a sliding time window
+
+**Status:** accepted · 2026-10-09 · user request
+
+**Before.** Displayed HR was 60 / median of the last 9 accepted intervals — windowed, but
+by beat count, so a different length of time at 50 bpm than at 120, and a median moves in
+steps.
+
+**Now.** 60 / mean of the accepted intervals whose beats fell in the last *N* seconds,
+trimmed 10 % each side once there are 10 or more. Default 10 s; selectable live
+(3–60 s) from the toolbar or `--hr-window`. If the window holds fewer than 4 intervals — a
+short window on a slow heart — the most recent 4 are used rather than going blank. The
+beat-to-beat rate is kept alongside, drawn as grey points under the averaged trend, and
+both go into the recorded log.
+
+**60 / mean interval, not mean of rates.** Averaging instantaneous rates over-weights fast
+beats and reads high: alternating 0.80 / 0.86 s intervals give 72.29 bpm correctly, 72.38
+by averaging rates.
+
+**Measured effect** (72 bpm, 6 % beat-to-beat variability): second-to-second jitter of the
+displayed value 1.28 bpm at 3 s, 0.54 at 10 s, 0.18 at 30 s. Response to an abrupt 60→100
+jump was 12 s at every window length — a jump that large resets the interval history, so
+only new beats are averaged, and the delay comes from the spectral cross-check. A gradual
+change lags by about half the window.
+
+The interval *gating* still uses a 9-interval running median; only the displayed average
+changed.
 
 ---
 

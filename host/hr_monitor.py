@@ -391,15 +391,17 @@ class HRView:
 
         ax = fig.add_subplot(gs[2, 0:2])
         self.ax_trend = ax
+        (self.l_trend_inst,) = ax.plot([], [], ".", ms=2.5, color="#9ca3af",
+                                       label="beat-to-beat")
         (self.l_trend,) = ax.plot([], [], lw=1.8, color="#0a7d2c",
-                                  label="heart rate (shown)")
+                                  label="heart rate (averaged)")
         (self.l_trend_spec,) = ax.plot([], [], ".", ms=3, color="#d08700",
                                        alpha=0.6, label="spectral estimate")
         ax.set_xlabel("elapsed (s)", fontsize=9)
         ax.set_ylabel("bpm", fontsize=9)
         ax.set_ylim(40, 140)
         ax.grid(alpha=0.25, lw=0.5)
-        ax.legend(loc="upper left", fontsize=8, ncol=2)
+        ax.legend(loc="upper left", fontsize=8, ncol=3)
         ax.tick_params(labelsize=8)
 
         ax = fig.add_subplot(gs[2, 2])
@@ -442,8 +444,10 @@ class HRView:
 
         meta = core.meta
         self.t_info.set_text("\n".join([
-            f"Beat timing {_fmt(st.hr_beats, unit=' bpm'):<12}  "
-            f"Spectrum  {_fmt(st.hr_spectral, unit=' bpm')}"
+            f"Average     {_fmt(st.hr_beats, unit=' bpm'):<12}  over "
+            f"{st.avg_beats} beats, last {st.avg_window_s:g} s   "
+            f"beat-to-beat {_fmt(st.hr_instant, '{:.0f}', ' bpm')}",
+            f"Spectrum    {_fmt(st.hr_spectral, unit=' bpm')}"
             f"  (concentration {_fmt(st.spectral_conc, '{:.2f}')})",
             f"Perfusion   {st.perfusion_pct:.3f} %{'':<6}  "
             f"Pulse SNR {st.pulse_snr:.1f}  (needs ≥ 3)",
@@ -483,8 +487,10 @@ class HRView:
             ts = np.array([h.t for h in hist])
             shown = np.array([h.hr_display if h.hr_display else np.nan for h in hist])
             spec = np.array([h.hr_spectral if h.hr_spectral else np.nan for h in hist])
+            inst = np.array([h.hr_instant if h.hr_instant else np.nan for h in hist])
             self.l_trend.set_data(ts, shown)
             self.l_trend_spec.set_data(ts, spec)
+            self.l_trend_inst.set_data(ts, inst)
             t_end = max(ts[-1], 60.0)
             self.ax_trend.set_xlim(max(0.0, t_end - 300.0), t_end)
             vis = shown[ts >= t_end - 300.0]
@@ -571,7 +577,7 @@ class VolumeView:
         self.ax_rate = ax
         (self.l_rate,) = ax.plot([], [], lw=1.1, color="#0b5d3b")
         self.h_hi = ax.axhline(np.nan, color="#1f6feb", lw=1.0, ls="--",
-                               label="μ0 ± 3σ0")
+                               label="noise band (rolling 60 s)")
         self.h_lo = ax.axhline(np.nan, color="#1f6feb", lw=1.0, ls="--")
         ax.axhline(0, color="k", lw=0.6, alpha=0.5)
         ax.set_ylabel("rate d(ΔV·L)/dt [µm/s]", fontsize=9)
@@ -611,7 +617,7 @@ class VolumeView:
         self.t_trend.set_color(color)
 
         thr = s.threshold
-        lo_thr = None if s.mu0 is None else s.mu0 - 3 * s.sigma0
+        lo_thr = s.lower
         meta = core.meta
         base = ("not set" if s.baseline_age_s is None else
                 f"zeroed {s.baseline_age_s:.0f} s ago "
@@ -687,7 +693,7 @@ class VolumeView:
 class MonitorCore:
     def __init__(self, source, channel: str = "ir", site: str = "finger",
                  window_s: float = 8.0, span_s: float = 300.0,
-                 hr_fig=None, vol_fig=None) -> None:
+                 hr_fig=None, vol_fig=None, hr_window_s: float = 10.0) -> None:
         from matplotlib.figure import Figure
 
         self.source = source
@@ -706,6 +712,7 @@ class MonitorCore:
         self.last_good: float | None = None
         self.paused = False
         self._rec: dict | None = None
+        self.hr_window_s = float(hr_window_s)
 
     # Convenience for tests and callers that only care about the readout.
     @property
@@ -737,6 +744,13 @@ class MonitorCore:
         self.source.command("tune")
         self.status = "auto-tuning IR and red…"
         return True
+
+    def set_hr_window(self, seconds: float) -> None:
+        """Change the heart-rate averaging window live (D36)."""
+        self.hr_window_s = float(seconds)
+        if self.est is not None:
+            self.est.avg_window_s = self.hr_window_s
+        self.status = f"heart rate now averaged over the last {seconds:g} s"
 
     def zero(self) -> None:
         if self.vol is None:
@@ -779,7 +793,8 @@ class MonitorCore:
         raw_fh.write("idx," + ",".join(self._data_columns()) + "\n")
         hr_fh = Path(str(base) + "_hr.csv").open("w")
         hr_fh.write("t_s,hr_shown,source,quality,hr_beats,hr_spectral,"
-                    "spectral_conc,perfusion_pct,pulse_snr,rmssd_ms,reason\n")
+                    "spectral_conc,perfusion_pct,pulse_snr,rmssd_ms,"
+                    "hr_instant,avg_beats,avg_window_s,reason\n")
         vol_fh = Path(str(base) + "_vol.csv").open("w")
         vol_fh.write("t_s,dv_um,dv_ir_um,pct_ir,pct_red,rate_um_s,motion\n")
         self._rec = {
@@ -824,6 +839,8 @@ class MonitorCore:
                     h.quality, f(h.hr_beats, "{:.1f}"), f(h.hr_spectral, "{:.1f}"),
                     f(h.spectral_conc), f"{h.perfusion_pct:.4f}",
                     f"{h.pulse_snr:.1f}", f(h.rmssd_ms, "{:.0f}"),
+                    f(h.hr_instant, "{:.1f}"), str(h.avg_beats),
+                    f"{h.avg_window_s:g}",
                     '"' + h.reason.replace('"', "'") + '"',
                 ]) + "\n")
             rec["hist"] = len(self.est.history)
@@ -858,7 +875,8 @@ class MonitorCore:
                 fs_changed = (not self.meta) or self.meta.get("fs") != payload["fs"]
                 self.meta = payload
                 if self.est is None or fs_changed:
-                    self.est = HeartRateEstimator(payload["fs"])
+                    self.est = HeartRateEstimator(payload["fs"],
+                                                  avg_window_s=self.hr_window_s)
                 if self.vol is None or fs_changed:
                     self.vol = VolumeTracker(payload["fs"], dark=payload.get("dark"))
                 else:
@@ -925,6 +943,13 @@ class TkShell:
         self.b_mark = ttk.Button(bar, text="Mark event (M)", command=core.mark)
         for b in (self.b_pause, self.b_tune, self.b_rec, self.b_zero, self.b_mark):
             b.pack(side="left", padx=3)
+        ttk.Label(bar, text="   HR average:").pack(side="left")
+        self.hr_window = tk.StringVar(value=f"{core.hr_window_s:g} s")
+        sel = ttk.Combobox(bar, textvariable=self.hr_window, width=6, state="readonly",
+                           values=["3 s", "5 s", "10 s", "15 s", "30 s", "60 s"])
+        sel.pack(side="left", padx=3)
+        sel.bind("<<ComboboxSelected>>",
+                 lambda _e: core.set_hr_window(float(self.hr_window.get().split()[0])))
 
         self.nb = ttk.Notebook(root)
         self.nb.pack(side="top", fill="both", expand=True)
@@ -1002,6 +1027,9 @@ def main() -> int:
                     help="tune IR and red LED current for this site on connect")
     ap.add_argument("--window", type=float, default=8.0,
                     help="seconds of heart-rate waveform shown")
+    ap.add_argument("--hr-window", type=float, default=10.0,
+                    help="seconds the displayed heart rate is averaged over "
+                         "(also adjustable in the window)")
     ap.add_argument("--span", type=float, default=300.0,
                     help="seconds of blood-volume history shown")
     ap.add_argument("--replay", type=Path, metavar="CSV",
@@ -1018,7 +1046,8 @@ def main() -> int:
                               ir_amp=args.ir_amp, red_amp=args.red_amp,
                               auto_tune=args.auto_tune)
     core = MonitorCore(source, channel=args.channel, site=args.site,
-                       window_s=args.window, span_s=args.span)
+                       window_s=args.window, span_s=args.span,
+                       hr_window_s=args.hr_window)
     source.start()
     TkShell(core).run()
     source.stop()

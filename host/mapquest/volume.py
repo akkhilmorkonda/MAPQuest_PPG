@@ -11,6 +11,10 @@ with the changes running live forces:
 * **Reference set by the operator.** Offline, the reference is the last 3 s of
   occlusion. Live, it is the last 3 s before "Zero" is pressed, or set
   automatically 10 s after connecting or re-tuning, once the filter settles.
+* **Rolling, robust noise floor (D35).** mu0 and sigma0 come from the median
+  and median absolute deviation of quiet rate samples over the last 60 s,
+  never narrower than +-0.5 um/s, excluding samples already classified as
+  filling or draining so a real ramp cannot be adapted away.
 * **Re-tuning interrupts, never silently continues.** Changing LED current
   changes counts with no change in blood, so delta-OD across a re-tune is
   meaningless. The history is kept, a gap and a marker are inserted, and the
@@ -28,20 +32,39 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from itertools import islice
 
 import numpy as np
 from scipy import signal
 
 from .pipeline import blood_volume
 
+
+def _tail(dq, n: int) -> np.ndarray:
+    """Last n items of a deque, without copying the whole thing."""
+    out = list(islice(reversed(dq), n))
+    out.reverse()
+    return np.array(out)
+
 LP_HZ = 0.3               # offline pipeline's corner (SPEC 5.1 step 7)
 DECIM_HZ = 10.0           # history resolution
 REF_S = 3.0               # reference window (SPEC 5.1 step 4)
 AUTO_ZERO_AFTER_S = 10.0  # let the low-pass settle before zeroing
 RATE_WINDOW_S = 2.0       # slope span, matching the offline 2 s derivative (D9)
-FLOOR_WINDOW_S = 10.0     # quiet period after zeroing used for the noise floor
 K_SIGMA = 3.0             # onset threshold, as SPEC 5.1 step 10
 HOLD_S = 2.0              # sustain time, as SPEC 5.1 step 10
+
+# Noise floor (D35). Rolling and robust, not a frozen 10 s window: the first
+# version measured mu0/sigma0 once, from the 10 s after each zero. If those
+# seconds happened to be calm, the band came out hair-trigger narrow
+# (-0.33 .. +0.05 um/s live) and ordinary breathing later read as FILLING or
+# DRAINING 30% of the time.
+FLOOR_WINDOW_S = 60.0     # rolling window of quiet rate samples
+FLOOR_MIN_S = 20.0        # quiet data needed before the floor is trusted
+MIN_HALF_BAND = 0.5       # um/s; the band is never narrower than +-this
+ENVELOPE_PCT = 95.0       # band = margin x this percentile of |rate - mu0|
+ENVELOPE_MARGIN = 1.2
+EXIT_FRACTION = 0.5       # hysteresis: stay in a trend above half the band
 MOTION_PCT_S = 2.0        # same floor as D27, on the low-passed channels
 DRIFT_WINDOW_S = 60.0
 
@@ -68,11 +91,20 @@ class VolumeState:
     red_ir_ratio: float | None
     """How much more red's level wanders than IR's (O4). ~1 is ideal."""
 
+    half_band: float | None = None
+    """Half-width of the noise band around mu0, um/s (D35)."""
+
     @property
     def threshold(self) -> float | None:
-        if self.mu0 is None or self.sigma0 is None:
+        if self.mu0 is None or self.half_band is None:
             return None
-        return self.mu0 + K_SIGMA * self.sigma0
+        return self.mu0 + self.half_band
+
+    @property
+    def lower(self) -> float | None:
+        if self.mu0 is None or self.half_band is None:
+            return None
+        return self.mu0 - self.half_band
 
 
 class VolumeTracker:
@@ -93,6 +125,8 @@ class VolumeTracker:
         self.pct_red: deque[float] = deque(maxlen=n_hist)
         self.rate: deque[float] = deque(maxlen=n_hist)
         self.motion: deque[bool] = deque(maxlen=n_hist)
+        self.trend: deque[str] = deque(maxlen=n_hist)
+        self.quiet: deque[bool] = deque(maxlen=n_hist)
         self.events: list[tuple[float, str]] = []
         self.n_total = 0
 
@@ -104,6 +138,8 @@ class VolumeTracker:
         self.ref_auto = False
         self._auto_zero_at = AUTO_ZERO_AFTER_S
         self.mu0: float | None = None
+        self.half_band: float | None = None
+        self._cooldown = 0
         self.sigma0: float | None = None
         self._n_marks = 0
 
@@ -127,7 +163,7 @@ class VolumeTracker:
         self._samples_since_interrupt = 0
         self.ref = None
         self.ref_t = None
-        self.mu0 = self.sigma0 = None
+        self.mu0 = self.sigma0 = self.half_band = None
         self._auto_zero_at = self.t_now + AUTO_ZERO_AFTER_S
         self.events.append((self.t_now, label))
         self._append_gap()
@@ -139,7 +175,7 @@ class VolumeTracker:
         self.ref = np.mean(np.asarray(self._lp_recent), axis=0)
         self.ref_t = self.t_now
         self.ref_auto = auto
-        self.mu0 = self.sigma0 = None
+        self.mu0 = self.sigma0 = self.half_band = None
         self.events.append((self.t_now, "zero (auto)" if auto else "zero"))
         return True
 
@@ -184,6 +220,8 @@ class VolumeTracker:
         for d in (self.dv, self.dv_ir, self.pct_ir, self.pct_red, self.rate):
             d.append(nan)
         self.motion.append(False)
+        self.trend.append("NO BASELINE")
+        self.quiet.append(False)
 
     def _append(self, t: float, lp: np.ndarray) -> None:
         nan = float("nan")
@@ -228,16 +266,91 @@ class VolumeTracker:
                     moving = True
         self.motion.append(moving)
 
-        # Noise floor: frozen once 10 s of quiet data after the zero exist.
-        if (self.mu0 is None and self.ref_t is not None
-                and t >= self.ref_t + FLOOR_WINDOW_S):
-            ts = np.array(self.t)
-            rs = np.array(self.rate)
-            mv = np.array(self.motion)
-            sel = (ts >= self.ref_t) & np.isfinite(rs) & ~mv
-            if sel.sum() >= int(FLOOR_WINDOW_S * DECIM_HZ * 0.5):
-                self.mu0 = float(np.mean(rs[sel]))
-                self.sigma0 = float(np.std(rs[sel]))
+        # Noise floor, refreshed once a second from the quiet samples of the
+        # last 60 s. "Quiet" excludes motion and -- critically -- samples
+        # already classified FILLING or DRAINING. Without that exclusion a
+        # sustained ramp would flow into the window, drag the median toward the
+        # filling rate, and the detector would adapt away the very event it
+        # should report. If too few quiet samples remain (a long ramp), the
+        # previous floor is kept rather than recomputed from the ramp.
+        if self.ref_t is not None and len(self.t) % int(DECIM_HZ) == 0:
+            # Previous samples only: the current one is already in t/rate but
+            # its quiet flag depends on the classification made just below.
+            k = min(int(FLOOR_WINDOW_S * DECIM_HZ), len(self.quiet))
+            ts = _tail(self.t, k + 1)[:-1]
+            rs = _tail(self.rate, k + 1)[:-1]
+            quiet = _tail(self.quiet, k).astype(bool)
+            sel = quiet & (ts >= self.ref_t)
+            if sel.sum() >= int(FLOOR_MIN_S * DECIM_HZ):
+                med = float(np.median(rs[sel]))
+                # Median absolute deviation, scaled to sigma: one bump cannot
+                # inflate it the way it inflates a standard deviation.
+                dev = np.abs(rs[sel] - med)
+                self.mu0 = med
+                # Robust sigma, reported for reference.
+                self.sigma0 = float(np.median(dev)) * 1.4826
+                # The band itself comes from the fluctuation *envelope*, not
+                # 3 sigma. 3 sigma assumes Gaussian noise; breathing is a
+                # bounded oscillation whose peak is only ~1.4 sigma, so 3 sigma
+                # put the band (+-3.5 um/s) far above anything breathing does
+                # (+-1.2) and a real 3 um/s ramp riding on it was caught only
+                # half the time. A margin over the 95th percentile tracks the
+                # real excursions whatever their shape, and for Gaussian noise
+                # lands close to 3 sigma anyway (1.2 x 1.96 = 2.4).
+                self.half_band = max(MIN_HALF_BAND,
+                                     ENVELOPE_MARGIN * float(np.percentile(dev, ENVELOPE_PCT)))
+
+        trend = self._classify(moving)
+        prev = self.trend[-1] if self.trend else None
+        active = trend in ("FILLING", "DRAINING")
+        # Guard window around every trend. The seconds where the rate climbs
+        # into a ramp (before the 2 s hold confirms it) and falls back out
+        # (as the 2 s slope window drains) are neither quiet nor confirmed;
+        # counted as quiet they widened the band to +-3.4 um/s for a full
+        # minute after a single ramp.
+        guard = int((HOLD_S + RATE_WINDOW_S) * DECIM_HZ)
+        if active and prev not in ("FILLING", "DRAINING"):
+            for j in range(1, min(guard, len(self.quiet)) + 1):
+                self.quiet[-j] = False
+        if prev in ("FILLING", "DRAINING") and not active:
+            self._cooldown = guard
+        cooling = self._cooldown > 0
+        if cooling:
+            self._cooldown -= 1
+        self.trend.append(trend)
+        self.quiet.append(bool(np.isfinite(rate) and not moving
+                               and not active and not cooling))
+
+    def _classify(self, moving: bool) -> str:
+        if self.ref is None:
+            return "NO BASELINE"
+        if moving:
+            return "MOTION"
+        if self.mu0 is None or self.half_band is None:
+            return "SETTLING"
+        n = int(HOLD_S * DECIM_HZ)
+        recent = _tail(self.rate, n)
+        if len(recent) < n or not np.isfinite(recent).all():
+            return "STABLE"
+        hi, lo = self.mu0 + self.half_band, self.mu0 - self.half_band
+        # Hysteresis. Entering a trend needs the full band, held for 2 s;
+        # staying in it needs only the 2 s mean beyond half the band. Without
+        # it, breathing superimposed on a real ramp dipped the rate below the
+        # threshold every few seconds, the state flickered to STABLE, those
+        # ramp samples were counted as quiet, and the floor absorbed the ramp.
+        prev = self.trend[-1] if self.trend else None
+        mean = float(np.mean(recent))
+        exit_hi = self.mu0 + EXIT_FRACTION * self.half_band
+        exit_lo = self.mu0 - EXIT_FRACTION * self.half_band
+        if prev == "FILLING" and mean > exit_hi:
+            return "FILLING"
+        if prev == "DRAINING" and mean < exit_lo:
+            return "DRAINING"
+        if np.all(recent > hi):
+            return "FILLING"
+        if np.all(recent < lo):
+            return "DRAINING"
+        return "STABLE"
 
     # -- state ----------------------------------------------------------------
 
@@ -271,23 +384,21 @@ class VolumeTracker:
         def make(trend, reason):
             return VolumeState(t, dv, dv_ir, p_ir, p_red, rate, self.mu0,
                                self.sigma0, trend, reason, age, self.ref_auto,
-                               drift, ratio)
+                               drift, ratio, self.half_band)
 
+        trend = self.trend[-1] if self.trend else "NO BASELINE"
         if self.ref is None:
             wait = max(0.0, self._auto_zero_at - t)
             return make("NO BASELINE", f"auto-zero in {wait:.0f} s — hold still")
-        if self.motion and self.motion[-1]:
+        if trend == "MOTION":
             return make("MOTION", "level moving fast — sensor or arm moving")
-        if self.mu0 is None:
-            return make("SETTLING", "measuring the noise floor (10 s after zero)")
-
-        n = int(HOLD_S * DECIM_HZ)
-        recent = np.array(list(self.rate)[-n:])
-        thr_hi = self.mu0 + K_SIGMA * self.sigma0
-        thr_lo = self.mu0 - K_SIGMA * self.sigma0
-        if len(recent) == n and np.isfinite(recent).all():
-            if np.all(recent > thr_hi):
-                return make("FILLING", f"rising faster than {thr_hi:+.2f} um/s for {HOLD_S:g} s")
-            if np.all(recent < thr_lo):
-                return make("DRAINING", f"falling faster than {thr_lo:+.2f} um/s for {HOLD_S:g} s")
+        if trend == "SETTLING" or self.half_band is None:
+            return make("SETTLING", f"measuring the noise floor "
+                                    f"({FLOOR_MIN_S:.0f} s of quiet data after zero)")
+        thr_hi = self.mu0 + self.half_band
+        thr_lo = self.mu0 - self.half_band
+        if trend == "FILLING":
+            return make("FILLING", f"rising faster than {thr_hi:+.2f} um/s for {HOLD_S:g} s")
+        if trend == "DRAINING":
+            return make("DRAINING", f"falling faster than {thr_lo:+.2f} um/s for {HOLD_S:g} s")
         return make("STABLE", "within the noise floor")

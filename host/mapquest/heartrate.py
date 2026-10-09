@@ -21,7 +21,9 @@ pipeline, with two safeguards that turned out to be necessary (D33):
    rhythm is established, so is any interval more than 30% from the running
    median, rejecting missed and doubled beats. A run of rejections means the
    rhythm really changed, so the history resets and re-acquires.
-6. **Heart rate = 60 / median of recent good intervals.**
+6. **Heart rate = 60 / mean interval over a sliding time window** (default
+   10 s, adjustable live; trimmed 10% each side once there are 10+ beats).
+   The beat-to-beat rate is kept alongside, unsmoothed.
 7. **Spectral heart rate** over the last 12 s, as an independent check. Its
    confidence is *spectral concentration* -- the fraction of in-band power
    within 0.15 Hz of the peak -- not peak prominence. On a 12 s window Welch
@@ -48,7 +50,10 @@ IBI_MIN_S, IBI_MAX_S = 60.0 / MAX_BPM, 60.0 / MIN_BPM
 
 CONFIRM_S = 0.6          # a peak must be this old before it is accepted
 IBI_TOLERANCE = 0.30     # max fractional deviation from the running median
-IBI_MEDIAN_N = 9         # intervals in the running median
+IBI_MEDIAN_N = 9         # intervals in the running median used to GATE beats
+HR_WINDOW_S = 10.0       # default sliding window for the displayed rate (D36)
+TRIM_FRACTION = 0.10     # trimmed mean, each side, once there are enough beats
+TRIM_MIN_N = 10
 REJECT_RESET = 4         # consecutive rejections that trigger re-acquisition
 MIN_GOOD_BEATS = 4       # intervals needed before a heart rate is reported
 
@@ -101,6 +106,13 @@ class HRState:
     rmssd_ms: float | None
     beats_10s: int
     ibi_cv: float | None
+    hr_instant: float | None = None
+    """60 / the latest accepted interval: beat-to-beat, unsmoothed."""
+
+    avg_beats: int = 0
+    """Intervals averaged into hr_beats."""
+
+    avg_window_s: float = 0.0
 
 
 def pulse_snr(raw: np.ndarray, fs: float) -> float:
@@ -126,8 +138,10 @@ class HeartRateEstimator:
     """Streaming heart-rate estimator. See the module docstring."""
 
     def __init__(self, fs: float, buffer_s: float = 12.0,
-                 full_scale: int = FULL_SCALE) -> None:
+                 full_scale: int = FULL_SCALE,
+                 avg_window_s: float = HR_WINDOW_S) -> None:
         self.fs = float(fs)
+        self.avg_window_s = float(avg_window_s)   # adjustable at runtime
         self.buffer_s = buffer_s
         self.full_scale = full_scale
         nyq = self.fs / 2.0
@@ -314,7 +328,8 @@ class HeartRateEstimator:
                        st.spectral_conc, "SEARCHING",
                        f"confirming ({self._run}/{CONFIRM_RUN_S} s)",
                        st.perfusion_pct, st.pulse_snr, st.dc_frac, st.rmssd_ms,
-                       st.beats_10s, st.ibi_cv)
+                       st.beats_10s, st.ibi_cv, st.hr_instant, st.avg_beats,
+                       st.avg_window_s)
 
     def _raw_state(self) -> HRState:
         t = self.t_now
@@ -334,11 +349,26 @@ class HeartRateEstimator:
         perfusion = (float(np.sqrt(np.mean(filt[-n5:] ** 2)) / dc5 * 100.0)
                      if dc5 > 0 else 0.0)
 
-        good = [v for _t, v, a in self.ibis if a][-IBI_MEDIAN_N:]
+        # Sliding-window rate (D36): accepted intervals whose beat fell in the
+        # last avg_window_s seconds. A time window rather than a beat count,
+        # so the smoothing is the same length at 50 bpm as at 120. If the
+        # window holds too few beats (short window, slow heart), fall back to
+        # the most recent MIN_GOOD_BEATS so a short window still reads.
+        accepted = [(bt, v) for bt, v, a in self.ibis if a]
+        window = [v for bt, v in accepted if bt >= t - self.avg_window_s]
+        if len(window) < MIN_GOOD_BEATS:
+            window = [v for _bt, v in accepted[-MIN_GOOD_BEATS:]]
         recent_beat = bool(self.beats) and (t - self.beats[-1][0]) <= 3.0
-        hr_beats = (60.0 / float(np.median(good))
-                    if len(good) >= MIN_GOOD_BEATS and recent_beat
-                    and self.snr >= SNR_MIN else None)
+        hr_beats = None
+        if len(window) >= MIN_GOOD_BEATS and recent_beat and self.snr >= SNR_MIN:
+            # 60 / mean interval, NOT the mean of instantaneous rates: that
+            # over-weights fast beats and reads high. A light trim once there
+            # are enough beats discards any stray interval the gating missed.
+            w = np.sort(np.asarray(window))
+            k = int(len(w) * TRIM_FRACTION) if len(w) >= TRIM_MIN_N else 0
+            hr_beats = 60.0 / float(np.mean(w[k:len(w) - k]))
+        hr_instant = 60.0 / accepted[-1][1] if accepted else None
+        good = window
         cv = (float(np.std(good) / np.mean(good))
               if len(good) >= MIN_GOOD_BEATS else None)
         beats_10s = sum(1 for bt, ok in self.beats if ok and bt >= t - 10.0)
@@ -347,7 +377,8 @@ class HeartRateEstimator:
 
         def make(q, why, shown=None, source=None):
             return HRState(t, shown, source, hr_beats, hr_spec, conc, q, why,
-                           perfusion, self.snr, dc_frac, rmssd, beats_10s, cv)
+                           perfusion, self.snr, dc_frac, rmssd, beats_10s, cv,
+                           hr_instant, len(window), self.avg_window_s)
 
         # A physical fault outranks anything the signal says.
         if dc_frac < NO_CONTACT_FRAC:

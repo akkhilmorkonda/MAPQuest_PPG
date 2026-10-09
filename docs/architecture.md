@@ -4,7 +4,7 @@ Living document. Updated as the system changes; see the status table at the bott
 is verified on hardware versus only on synthetic data. The reasoning behind each choice
 lives in [`decisions.md`](decisions.md).
 
-Last updated: 2026-10-09 — added the blood-volume tab to the monitor (D34), and the monitor itself (D33). Earlier the same day, after the first graded run — added coupling-slip detection (D31),
+Last updated: 2026-10-09 — rolling noise band for blood volume (D35) and sliding-window heart rate (D36), after the first live run of the monitor. Earlier the same day, after the first graded run — added coupling-slip detection (D31),
 demoted harmonics to informational (D30), and opened O4 (red is contact-sensitive).
 
 ---
@@ -256,8 +256,8 @@ flowchart TD
     DV --> RATE["Rate: slope over 2 s"]
     LP --> MOT{"Either channel moving<br/>> 2 %/s (low-passed)?"}
     MOT -->|yes| MS["MOTION — red strip"]
-    RATE --> FL["Noise floor μ0, σ0<br/>from 10 s after zero"]
-    FL --> TR{"Beyond μ0 ± 3σ0<br/>for 2 s?"}
+    RATE --> FL["<b>Noise band</b> (D35)<br/>rolling 60 s of quiet samples:<br/>μ0 = median, half-width =<br/>1.2 × P95 of |rate − μ0|, ≥ 0.5"]
+    FL --> TR{"Beyond the band for 2 s?<br/><i>hysteresis: stay while<br/>2 s mean beyond half</i>"}
     TR -->|above| FILL(["FILLING"])
     TR -->|below| DRAIN(["DRAINING"])
     TR -->|no| STAB(["STABLE"])
@@ -268,9 +268,9 @@ flowchart TD
     class MS,WAIT bad
 ```
 
-On the graded run the rest-period floor was ±2.5 µm/s, against ±0.3 on the still capture;
-the difference is consistent with breathing (46 % of power at 0.15–0.4 Hz). That floor is
-what any onset detection has to clear.
+The band tracks the real fluctuation envelope — breathing included (on the graded run 46 %
+of rest-period power sat at 0.15–0.4 Hz). Samples in or near a trend are excluded, so a
+real ramp cannot be adapted away. Zero, wait for STABLE (~30 s), then start the event.
 
 ### Heart rate tab
 
@@ -287,7 +287,7 @@ flowchart TD
     INV --> PK["<b>Peaks</b><br/>0.3 s refractory, adaptive prominence,<br/>confirmed after 0.6 s, sub-sample refined"]
     SNR -->|yes| PK
     PK --> IBI["<b>Interval gating</b><br/>0.3–2.0 s, within 30% of median;<br/>4 rejections reset history"]
-    IBI --> HRB["Beat HR<br/>60 / median of 9 intervals"]
+    IBI --> HRB["Beat HR (D36)<br/>60 / mean interval over<br/>a sliding window, default 10 s"]
     RAW --> SPEC["<b>Spectral HR</b>, last 12 s<br/>Welch on RAW detrended data<br/>confidence = concentration"]
     HRB --> AGREE{"Agree within 8 bpm<br/>and concentration >= 0.35?"}
     SPEC --> AGREE
@@ -357,7 +357,7 @@ flowchart LR
     subgraph HW["Real hardware captures"]
         CAP["data/*.csv in git<br/>anchor tests to real signals"]
     end
-    subgraph TESTS["160 tests"]
+    subgraph TESTS["172 tests"]
         T1["test_pipeline.py<br/>SPEC section 6 criteria"]
         T2["test_protocol.py<br/>link, bench_check, pulse"]
         T3["test_provocation.py<br/>verdicts, dose-response"]

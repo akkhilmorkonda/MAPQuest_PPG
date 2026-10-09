@@ -77,20 +77,26 @@ def test_filling_reported_promptly_and_not_before():
     onset = float(t[np.argmax(dv_true > 0)])
     first = next(tt for tt, s in log if s.trend == "FILLING")
     assert onset <= first <= onset + 5.0, (onset, first)
-    before = {s.trend for tt, s in log if 22 < tt < onset - 1}
+    # The floor needs 20 s of quiet data after the 10 s auto-zero (D35).
+    before = {s.trend for tt, s in log if 34 < tt < onset - 1}
     assert before == {"STABLE"}, before
 
 
 def test_draining_is_reported():
-    """Counts rising steadily = blood leaving."""
+    """Counts rising steadily = blood leaving.
+
+    The ramp starts at 45 s, after the floor has settled (~33 s). An event
+    that begins while the floor is still settling contaminates it -- the
+    operational rule is: zero, wait for STABLE, then start.
+    """
     rng = np.random.default_rng(1)
-    n = int(60 * FS)
+    n = int(75 * FS)
     t = np.arange(n) / FS
-    ir = 130_000 * (1 + 0.0008 * np.clip(t - 30, 0, None)) + rng.normal(0, 5, n)
-    red = 140_000 * (1 + 0.0008 * np.clip(t - 30, 0, None)) + rng.normal(0, 5, n)
+    ir = 130_000 * (1 + 0.0008 * np.clip(t - 45, 0, None)) + rng.normal(0, 5, n)
+    red = 140_000 * (1 + 0.0008 * np.clip(t - 45, 0, None)) + rng.normal(0, 5, n)
     _v, log = track(ir, red, dark={})
-    assert any(s.trend == "DRAINING" for tt, s in log if tt > 33)
-    assert all(s.dv_um < 0 for tt, s in log if tt > 40 and s.dv_um is not None)
+    assert any(s.trend == "DRAINING" for tt, s in log if tt > 48)
+    assert all(s.dv_um < 0 for tt, s in log if tt > 55 and s.dv_um is not None)
 
 
 def test_sign_more_blood_is_positive():
@@ -204,7 +210,7 @@ def test_real_still_capture_is_stable():
         pytest.skip("hardware capture not present")
     ir, red = _load_bench(path)
     _v, log = track(ir, red, dark={"ir": 8, "red": 12})
-    trends = Counter(s.trend for tt, s in log if tt > 21)
+    trends = Counter(s.trend for tt, s in log if tt > 34)
     assert trends.get("FILLING", 0) == 0 and trends.get("DRAINING", 0) == 0, trends
     assert trends["STABLE"] >= 0.9 * sum(trends.values())
 
@@ -311,3 +317,66 @@ def test_recording_carries_events_and_volume_log(tmp_path, monkeypatch):
     vol = next(tmp_path.glob("hr_*_vol.csv")).read_text().splitlines()
     assert vol[0] == "t_s,dv_um,dv_ir_um,pct_ir,pct_red,rate_um_s,motion"
     assert len(vol) > 100
+
+
+# ---------------------------------------------------------------------------
+# Noise floor (D35) -- the live 2026-10-09 false FILLING
+# ---------------------------------------------------------------------------
+
+def _breathing_run(ramp: bool, seconds: float = 120.0, seed: int = 0):
+    """Calm first 30 s, steady drift, then slow breathing -- as seen live.
+
+    Drift -7.35 um/min and a rate floor around +-1.2 um/s match the live run
+    that showed a hair-trigger band of -0.33 .. +0.05 um/s and read ordinary
+    breathing as FILLING.
+    """
+    t = np.arange(int(seconds * FS)) / FS
+    dv = -7.35 / 60 * t + np.where(t < 30, 0.1, 1.3) * np.sin(2 * np.pi * 0.15 * t)
+    if ramp:
+        dv = dv + np.clip(t - 60, 0, 40) * 3.0           # 3 um/s, 60-100 s
+    rng = np.random.default_rng(seed)
+    od_ir = dv / (1555 + 229 * 0.35)
+    ir = 130_000 * np.exp(-od_ir) + rng.normal(0, 5, len(t))
+    red = 140_000 * np.exp(-0.35 * od_ir) + rng.normal(0, 5, len(t))
+    return track(ir, red, dark={})
+
+
+def test_breathing_alone_is_not_filling():
+    """Regression: a frozen 10 s floor read breathing as a trend 30% of the time."""
+    v, log = _breathing_run(ramp=False)
+    trends = Counter(s.trend for tt, s in log if tt > 35)
+    assert set(trends) == {"STABLE"}, trends
+
+
+def test_band_tracks_the_breathing_envelope():
+    v, _ = _breathing_run(ramp=False)
+    s = v.state()
+    # Breathing swings the rate by about +-1.2 um/s; the band should sit just
+    # above that -- not hair-trigger, and not 3 sigma's +-3.5.
+    assert 1.0 < s.threshold - s.mu0 < 2.0, (s.lower, s.threshold)
+
+
+def test_ramp_under_breathing_is_caught_throughout():
+    """3 sigma caught this only half the time; flicker then let the floor absorb it."""
+    v, log = _breathing_run(ramp=True)
+    during = Counter(s.trend for tt, s in log if 64 <= tt <= 100)
+    assert during == Counter({"FILLING": sum(during.values())}), during
+    before = Counter(s.trend for tt, s in log if 35 < tt < 60)
+    assert set(before) == {"STABLE"}, before
+
+
+def test_a_ramp_does_not_widen_the_band_afterwards():
+    """The entry and exit seconds of a ramp must not leak into the floor."""
+    quiet, _ = _breathing_run(ramp=False)
+    after, _ = _breathing_run(ramp=True)
+    w0 = quiet.state().threshold - quiet.state().mu0
+    w1 = after.state().threshold - after.state().mu0
+    assert w1 < 1.25 * w0, (w0, w1)
+
+
+def test_band_has_a_minimum_width():
+    """A perfectly calm stretch must not produce a hair-trigger band."""
+    _t, ir, red, _ = synth_run(seconds=60, no_filling=True, cardiac=False)
+    v, _ = track(ir, red)
+    s = v.state()
+    assert s.threshold - s.mu0 >= 0.5 - 1e-9

@@ -258,3 +258,82 @@ def test_gui_survives_a_pulse_free_capture(tmp_path, monkeypatch):
     _write_capture(path, ppg(25, 72, pi=0.0, drift=300, seed=77))
     app = _run_app(path, tmp_path, monkeypatch)
     assert app.t_hr.get_text() == "--"
+
+
+# ---------------------------------------------------------------------------
+# Sliding-window averaging (D36)
+# ---------------------------------------------------------------------------
+
+def run_w(x, window_s, block=5):
+    e = HeartRateEstimator(FS, avg_window_s=window_s)
+    for i in range(0, len(x), block):
+        e.push(x[i:i + block])
+    return e
+
+
+def test_rate_is_60_over_the_mean_interval():
+    """Averaging instantaneous rates over-weights fast beats and reads high."""
+    e = run_w(ppg(70, 72, ibis=[0.80, 0.86], jitter=0.0), 10.0)
+    assert abs(e.state().hr_beats - 60 / 0.83) < 0.1
+    assert e.state().hr_beats < np.mean([60 / 0.80, 60 / 0.86])
+
+
+def test_longer_window_is_smoother():
+    x = ppg(90, 72, jitter=0.06, seed=11)
+
+    def jitter(w):
+        shown = [h.hr_display for h in run_w(x, w).history if h.t > 40 and h.hr_display]
+        return float(np.std(np.diff(shown)))
+
+    j3, j10, j30 = jitter(3), jitter(10), jitter(30)
+    assert j30 < j10 < j3, (j3, j10, j30)
+
+
+def test_window_reports_what_it_averaged():
+    e = run_w(ppg(40, 72), 10.0)
+    s = e.state()
+    assert s.avg_window_s == 10.0
+    assert 10 <= s.avg_beats <= 14          # ~12 beats in 10 s at 72 bpm
+
+
+def test_window_is_adjustable_live():
+    x = ppg(60, 72)
+    e = HeartRateEstimator(FS, avg_window_s=10.0)
+    for i in range(0, 3000, 5):
+        e.push(x[i:i + 5])
+    e.avg_window_s = 30.0
+    for i in range(3000, len(x), 5):
+        e.push(x[i:i + 5])
+    s = e.state()
+    assert s.avg_window_s == 30.0 and s.avg_beats >= 30
+
+
+def test_short_window_still_reads_a_slow_heart():
+    """A 2 s window holds too few beats at 45 bpm; fall back, don't go blank."""
+    e = run_w(ppg(40, 45, seed=3), 2.0)
+    s = e.state()
+    assert s.hr_display is not None and abs(s.hr_display - 45) <= 3
+
+
+def test_beat_to_beat_rate_is_reported():
+    e = run_w(ppg(30, 72), 10.0)
+    assert e.state().hr_instant is not None
+    assert abs(e.state().hr_instant - 72) < 12
+
+
+def test_core_window_setting_reaches_the_estimator(tmp_path, monkeypatch):
+    import hr_monitor as hm
+    monkeypatch.setattr(hm, "DATA_DIR", tmp_path)
+    path = tmp_path / "finger.csv"
+    _write_capture(path, ppg(20, 72))
+    src = hm.ReplaySource(queue.Queue(), path, speed=50.0)
+    core = hm.MonitorCore(src, site="finger", hr_window_s=15.0)
+    src.start()
+    t0 = time.time()
+    while core.est is None and time.time() - t0 < 10:
+        core.tick()
+        time.sleep(0.01)
+    assert core.est.avg_window_s == 15.0
+    core.set_hr_window(5)
+    assert core.est.avg_window_s == 5.0 and "5 s" in core.status
+    src.stop()

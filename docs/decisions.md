@@ -30,6 +30,7 @@ experiment settles something.
 | [D18](#d18) | **Measurement site: wrist, not ventral forearm** | accepted — **deviates from SPEC §2.1/§8** |
 | [D19](#d19) | Pressure path compiled out behind a flag | accepted |
 | [D20](#d20) | Explicit LED currents + die-temperature bracketing | accepted |
+| [D21](#d21) | A wrong-signed manoeuvre vetoes a 'responds' verdict | accepted — bug fix |
 | [O1](#o1) | Red channel drift — cause and mitigation | **open** |
 | [O2](#o2) | `synth.py` noise defaults do not match hardware | **open** |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **open** |
@@ -437,6 +438,29 @@ fact or shared.
 
 ---
 
+<a id="d21"></a>
+## D21 — A strongly wrong-signed manoeuvre vetoes "responds"
+
+**Status:** accepted · 2026-10-09 · bug fix
+
+**Problem.** The verdict returned `responds` if *any* manoeuvre had the right sign and
+z ≥ 3, without checking whether another had the wrong sign. On a run from 2026-10-06 both
+manoeuvres drove counts **down** — arm-up by −6.5 %, arm-down by −10.4 % — because the strap
+was settling monotonically through the capture. Arm-down happened to agree with that drift,
+so the run was reported as a working sensor.
+
+**Decision.** A new `contradictory` verdict. `responds` now requires at least one strong
+correct effect **and no strong wrong-signed one**.
+
+**Why it matters.** This is the exact failure the provocation test exists to catch. A
+monotonic baseline shift makes whichever manoeuvre points the same way look correct, so the
+test was vulnerable to the artifact it was designed to detect.
+
+**How to recognise it in the raw trace:** both manoeuvres moving counts the same direction.
+Re-seat the sensor, let it settle, re-run.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 
@@ -454,7 +478,18 @@ fact or shared.
 floor. On `rest3`, dropping red halves the threshold (16.8 vs 34.3 µm/s) — but on `rest1`
 two-wavelength is slightly *better* (7.65 vs 9.05), so there is no clean case for removing it.
 
-**Leading hypothesis.** Red LED self-heating. Auto-tune set red to 19.8 mA against IR's
+**Evidence against the leading hypothesis (2026-10-09).** Two measurements weaken it:
+a 10 s capture at red_amp=**105** (21 mA, the highest tested) drifted only +7.9 ct/s versus
+IR's +3.9 — **2×**, not 90×. And die temperature on the 2026-10-06 run started at 34.7 °C,
+roughly 10 °C above ambient, rising only **+0.81 °C** across 85 s. So the part does run hot,
+but reaches steady state: self-heating looks like a startup transient, not ongoing drift.
+
+The original 90× figure came from `rest1` of the 2026-10-06 run — the first 15 s after
+strapping, which is exactly when contact pressure is settling. `rest2` and `rest3` followed
+arm manoeuvres, so their "drift" may be genuine physiological recovery rather than
+instrumental. **The confound is time-since-strapping, not LED current.**
+
+**Original hypothesis (now doubtful).** Red LED self-heating. Auto-tune set red to 19.8 mA against IR's
 8.4 mA, and datasheet Table 13 gives up to 8 °C rise at high current and duty cycle.
 
 **Next test (ready to run).** Two back-to-back still captures at the same placement, red

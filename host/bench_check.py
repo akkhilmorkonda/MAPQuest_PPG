@@ -589,9 +589,10 @@ def run_provocation_mode(dev: Device, args, report: Report) -> int:
     detail = f"verdict {verdict}, strongest effect z={best:.1f}"
     if verdict == "responds":
         report.add(OK, "responds to blood volume", detail)
-    elif verdict == "inverted":
+    elif verdict in ("inverted", "contradictory"):
         report.add(BAD, "responds to blood volume",
-                   detail + " — response has the wrong sign")
+                   detail + (" — response has the wrong sign" if verdict == "inverted"
+                             else " — manoeuvres disagree; baseline is drifting"))
     else:
         report.add(WARN, "responds to blood volume",
                    detail + " — see the diagnosis above")

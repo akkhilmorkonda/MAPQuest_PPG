@@ -1,0 +1,61 @@
+Port : COM6
+
+MAPQuest bench check (SPEC 3.5)
+================================================================
+  [  ok  ] MAX30101 found at 0x57
+           part_id=0x15 rev=0x06 firmware=mapquest-fw-0.2
+
+  Config: ir/red @ 100 Hz, PPG only
+  Columns: idx,t_us,ir,red
+
+  Measuring DARK (LEDs off, ~2 s)...
+  [  ok  ] DARK offsets <= 128 counts
+           ir=10, red=14
+
+  Provocation test — sensor on the wrist.
+  Strap it on now and keep it in place for the whole run.
+  Die temp: 34.69 C at start
+
+  Protocol: 85 s total. Follow the prompts; keep the sensor still against the skin throughout.
+
+
+  >>> Arm at HEART LEVEL, relaxed and still   (15 s)
+
+  >>> Raise arm STRAIGHT UP, above your head   (20 s)
+
+  >>> Back to HEART LEVEL   (15 s)
+
+  >>> Hang arm DOWN, well below heart level   (20 s)
+
+  >>> Back to HEART LEVEL   (15 s)
+
+  Die temp: 35.50 C at end (+0.81 C over the run)
+  [  ok  ] die temperature stable
+           +0.81 C over the run
+  [  ok  ] serial link stable
+           ran the full 85 s
+
+Provocation result — wrist
+----------------------------------------------------------------
+  Phase levels (steady-state tail of each phase):
+    rest rest1  Arm at HEART LEVEL, relaxed and still      IR     84,512   dV·L    +0.02 um
+     >>  up     Raise arm STRAIGHT UP, above your head     IR     83,079   dV·L   -32.75 um
+    rest rest2  Back to HEART LEVEL                        IR     93,167   dV·L  -231.61 um
+     >>  down   Hang arm DOWN, well below heart level      IR     80,332   dV·L   +92.08 um
+    rest rest3  Back to HEART LEVEL                        IR     86,086   dV·L   -46.90 um
+
+  Manoeuvre effects (vs mean of the rests either side):
+    up        -5,760 counts (-6.484%)   dV·L  +83.05 um   z= 15.1   expected +   WRONG SIGN
+    down      -9,294 counts (-10.370%)   dV·L +231.34 um   z= 24.4   expected -   ok
+
+  => The sensor RESPONDS to blood volume. The optical path reaches perfused
+     tissue, and this site is viable for return-to-flow regardless of whether
+     a cardiac pulse is resolvable.
+  [  ok  ] responds to blood volume
+           verdict responds, strongest effect z=24.4
+
+  Saved capture to C:\Users\akkhi\Documents\Projects\MAPQuest\data\provocation_wrist_20261006_161139.csv
+  Saved plot to C:\Users\akkhi\Documents\Projects\MAPQuest\data\provocation_wrist_20261006_161139.png
+
+================================================================
+RESULT: all checks passed — M1 hardware criteria met

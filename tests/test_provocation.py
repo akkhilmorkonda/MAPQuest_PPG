@@ -225,3 +225,40 @@ def test_load_csv_rebuilds_phase_durations(tmp_path):
     for _k, dur, _l, _r in protocol:
         assert abs(dur - 5.0) < 1e-6
     assert (phase_of == 0).sum() == n_each
+
+
+def test_contradictory_run_is_not_called_a_success():
+    """One manoeuvre right, one strongly wrong, must not report 'responds'.
+
+    Seen on real hardware 2026-10-06: both manoeuvres drove counts DOWN while
+    the strap settled. Arm-down happened to agree with that drift, so the old
+    logic -- which returned 'responds' on any correct effect, without checking
+    for wrong ones -- declared a drift-dominated run a working sensor.
+    """
+    ch, ph, proto = build(600.0)
+    # Force both manoeuvres the same direction, as monotonic settling would.
+    ch = dict(ch)
+    ch["ir"] = ch["ir"].copy()
+    ch["ir"][ph == 1] -= 1200          # arm UP pushed DOWN: wrong sign
+    r = pv.analyse(ch, ph, proto, FS, dark={"ir": 11, "red": 13})
+
+    assert r.effects["up"]["sign_ok"] is False
+    assert r.effects["up"]["z"] >= 3.0
+    assert r.effects["down"]["sign_ok"] is True
+    assert r.verdict == "contradictory", r.effects
+
+
+def test_contradictory_verdict_explains_itself():
+    ch, ph, proto = build(600.0)
+    ch = dict(ch)
+    ch["ir"] = ch["ir"].copy()
+    ch["ir"][ph == 1] -= 1200
+    r = pv.analyse(ch, ph, proto, FS)
+    text = pv.format_result(r, site="wrist")
+    assert "CONTRADICTORY" in text
+    assert "settling" in text or "monotonic" in text
+
+
+def test_clean_run_still_responds():
+    """The veto must not break the normal path."""
+    assert analyse(600.0).verdict == "responds"

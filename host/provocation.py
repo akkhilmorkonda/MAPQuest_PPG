@@ -129,15 +129,25 @@ class ProvocationResult:
 
     @property
     def verdict(self) -> str:
-        """'responds', 'weak', 'inverted' or 'flat'."""
+        """'responds', 'contradictory', 'inverted', 'weak' or 'flat'.
+
+        A strong wrong-signed effect vetoes 'responds' even when another
+        manoeuvre looks right. Both manoeuvres pushing counts the same way
+        means something monotonic — contact settling or drift — is moving the
+        baseline, and whichever manoeuvre happens to agree with that direction
+        will look like a correct response. Reporting that as success is how a
+        drift-dominated run gets mistaken for a working sensor.
+        """
         good = [e for e in self.effects.values()
                 if e["sign_ok"] and e["z"] >= 3.0]
         wrong = [e for e in self.effects.values()
                  if not e["sign_ok"] and e["z"] >= 3.0]
-        if good:
-            return "responds"
+        if wrong and good:
+            return "contradictory"
         if wrong:
             return "inverted"
+        if good:
+            return "responds"
         if any(e["z"] >= 1.5 for e in self.effects.values()):
             return "weak"
         return "flat"
@@ -347,6 +357,13 @@ def format_result(r: ProvocationResult, site: str = "") -> str:
         lines.append("     tissue, and this site is viable for return-to-flow "
                      "regardless of whether")
         lines.append("     a cardiac pulse is resolvable.")
+    elif v == "contradictory":
+        lines.append("  => CONTRADICTORY. One manoeuvre reads correct and another reads")
+        lines.append("     backwards, both strongly. Check the raw trace: if both pushed")
+        lines.append("     counts the same way, a monotonic baseline shift (contact")
+        lines.append("     settling, strap creep) is driving the result and whichever")
+        lines.append("     manoeuvre agreed with it only looks correct. Re-seat the")
+        lines.append("     sensor, let it settle, and re-run.")
     elif v == "inverted":
         lines.append("  => Response has the WRONG SIGN. Arm up should RAISE counts "
                      "(less blood,")

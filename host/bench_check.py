@@ -49,6 +49,9 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DC_MIN, DC_MAX = 105_000, 157_000
 DC_TARGET = (DC_MIN + DC_MAX) // 2
 DARK_MAX = 128
+# Below this, Welch cannot average enough segments for peak prominence to mean
+# anything, and the reported rate swings with the analysis window.
+MIN_PULSE_SECONDS = 30.0
 RATE_TOLERANCE = 0.01  # 1%
 
 OK, BAD, WARN, SKIP = "PASS", "FAIL", "WARN", "SKIP"
@@ -365,7 +368,14 @@ def _channel_metrics(x: np.ndarray, ac: np.ndarray, fs: float,
     peak prominence measures.
     """
     dc = float(np.mean(x))
-    nperseg = int(min(len(x), fs * 8))
+
+    # Welch needs several segments to average before peak heights mean
+    # anything. A 10 s capture with 8 s segments averages ~1 segment -- that
+    # is a raw periodogram, whose variance is as large as its mean, and
+    # "prominence" measured on it is noise. Target ~8 segments while keeping
+    # the resolution fine enough to separate a heart rate from its harmonics.
+    nperseg = int(np.clip(len(x) // 4, fs * 4, fs * 10))
+    nperseg = min(nperseg, len(x))
     f, pxx = sig.welch(x - np.mean(x), fs=fs, nperseg=nperseg)
 
     m: dict = {
@@ -662,6 +672,10 @@ def main() -> int:
                     help="where the sensor is placed; recorded in the output")
     ap.add_argument("--phase-seconds", type=float,
                     help="override every provocation phase duration")
+    ap.add_argument("--settle", type=float, default=0.0, metavar="SEC",
+                    help="wait this long after configuring before capturing, so "
+                         "contact pressure stops settling (drift is worst in the "
+                         "first ~30 s after strapping)")
     ap.add_argument("--stall-timeout", type=float, default=3.0,
                     help="declare the link stalled after this many seconds of "
                          "silence mid-capture")
@@ -783,6 +797,10 @@ def _main(args, tee: Tee) -> int:
         if args.provocation:
             return run_provocation_mode(dev, args, report)
 
+        if args.settle > 0:
+            print(f"\n  Settling for {args.settle:.0f} s — leave the sensor "
+                  "strapped and still.")
+            time.sleep(args.settle)
         print(f"\n  Capturing {seconds:.0f} s — keep the sensor still "
               f"on the {args.site}.")
         idx, t_us, channels, link = capture(dev, seconds,
@@ -871,7 +889,17 @@ def _main(args, tee: Tee) -> int:
     # -- Beyond SPEC 3.5: is the sensor actually seeing blood? ------------
     # Every criterion above would pass with the photodiode staring at a wall.
     pulse = analyse_pulse(channels, fs_cfg)
-    if "channels" not in pulse:
+    # Gate on how much DATA arrived, not how long we sat there: if the link
+    # stalled, a 60 s wall-clock run may hold only 10 s of samples, and it is
+    # the sample count that limits what the spectrum can resolve.
+    data_s = n / fs_cfg if fs_cfg else 0.0
+    if data_s < MIN_PULSE_SECONDS:
+        report.add(SKIP, "cardiac pulse detected",
+                   f"capture holds {data_s:.0f} s of data; needs "
+                   f">= {MIN_PULSE_SECONDS:.0f} s "
+                   "for the spectrum to average enough segments. Any rate from a "
+                   "shorter record swings with the analysis window.")
+    elif "channels" not in pulse:
         report.add(WARN, "cardiac pulse detected",
                    f"capture too short to measure ({actual_s:.1f} s; needs ~8 s)")
     else:

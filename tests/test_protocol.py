@@ -39,7 +39,7 @@ class FakeSerial:
                  sensor_ok=True, part_id=0x15,
                  pulse_frac=0.0015, bpm=68.0,
                  die_at=None, stall_at=None, reset_at=None,
-                 temp_c=28.5, temp_rise_per_sample=0.0):
+                 temp_c=28.5, temp_rise_per_sample=0.0, rate_limit=False):
         self.port = port
         self.fs = fs
         self.ir_dc = ir_dc
@@ -56,6 +56,8 @@ class FakeSerial:
         self.sent = 0
         self.temp_c = temp_c
         self.temp_rise_per_sample = temp_rise_per_sample
+        self.rate_limit = rate_limit   # emit at fs, like real hardware
+        self._t0 = None
         self.part_id = part_id if sensor_ok else 0x00
         self.ir_amp = 31
         self.red_amp = 31
@@ -186,6 +188,13 @@ class FakeSerial:
                 "'The device does not recognize the command.', None, 22))")
         if self.stall_at is not None and self.sent >= self.stall_at:
             return b""  # port still open, firmware silent
+        if self.rate_limit:
+            import time as _t
+            if self._t0 is None:
+                self._t0 = _t.time()
+            due = self._t0 + self.sent / self.fs
+            if _t.time() < due:
+                return b""   # nothing ready yet, like a real FIFO
         if self.reset_at is not None and self.sent == self.reset_at:
             self.idx = 0  # board restarted
         self.sent += 1
@@ -738,3 +747,67 @@ def test_stdout_restored_after_run(fake):
     before = _sys.stdout
     run_bench(fake, ["--seconds", "1", "--no-dark"], sensor_ok=False)
     assert _sys.stdout is before
+
+
+def test_short_capture_skips_pulse_verdict(fake):
+    """A 10 s capture cannot support a pulse verdict and must say so.
+
+    Observed on hardware 2026-10-09: the same 10 s record reported 195 bpm,
+    255 bpm or 30 bpm depending only on the Welch segment length, because at
+    that duration ~1 segment is averaged and prominence is measured on raw
+    periodogram noise.
+    """
+    code, out = run_bench(fake, ["--seconds", "2", "--no-dark"],
+                          rate_limit=True)
+    assert code == 0, out
+    assert "s of data" in out and "needs >= 30 s" in out
+    assert "cardiac pulse detected" in out
+
+
+def test_welch_window_adapts_to_record_length():
+    """nperseg must leave several segments to average, at any duration."""
+    import bench_check as bc
+
+    fs = 100.0
+    for seconds in (10, 30, 60, 300):
+        n = int(fs * seconds)
+        nperseg = int(np.clip(n // 4, fs * 4, fs * 10))
+        nperseg = min(nperseg, n)
+        segments = max(1, (n - nperseg // 2) // (nperseg // 2))
+        assert nperseg >= fs * 4, f"{seconds}s: resolution too coarse"
+        if seconds >= 30:
+            assert segments >= 4, f"{seconds}s: only {segments} segments"
+
+
+def test_pulse_rate_agrees_between_channels_on_a_real_pulse(fake):
+    """A genuine pulse gives the same rate on both wavelengths.
+
+    Disagreement between IR and red was the tell that the old detector was
+    reporting noise (195 vs 172 bpm on one real capture).
+    """
+    import bench_check as bc
+
+    fs, n = 100.0, 6000
+    t = np.arange(n) / fs
+    rng = np.random.default_rng(5)
+    beat = np.sin(2 * np.pi * 1.25 * t)
+    ir = 134_000 + 134_000 * 0.0012 * beat + rng.normal(0, 45, n)
+    red = 137_000 + 137_000 * 0.0009 * beat + rng.normal(0, 55, n)
+    m = bc.analyse_pulse({"ir": ir, "red": red}, fs)["channels"]
+    assert m["ir"]["bpm"] is not None and m["red"]["bpm"] is not None
+    # Resolution is 0.1 Hz = 6 bpm per bin, so agreement is judged in bins.
+    assert abs(m["ir"]["bpm"] - m["red"]["bpm"]) <= 12.0
+    assert abs(m["ir"]["bpm"] - 75.0) <= 6.0
+    assert abs(m["red"]["bpm"] - 75.0) <= 6.0
+
+
+def test_settle_delays_capture(fake, monkeypatch):
+    """--settle must actually wait before capturing."""
+    import bench_check as bc
+
+    slept: list[float] = []
+    monkeypatch.setattr(bc.time, "sleep", lambda s: slept.append(s))
+    code, out = run_bench(fake, ["--seconds", "1", "--no-dark", "--settle", "5"])
+    assert code == 0, out
+    assert 5 in slept
+    assert "Settling for 5 s" in out

@@ -31,6 +31,7 @@ experiment settles something.
 | [D19](#d19) | Pressure path compiled out behind a flag | accepted |
 | [D20](#d20) | Explicit LED currents + die-temperature bracketing | accepted |
 | [D21](#d21) | A wrong-signed manoeuvre vetoes a 'responds' verdict | accepted — bug fix |
+| [D22](#d22) | Pulse detection needs >= 30 s and an adaptive Welch window | accepted — bug fix |
 | [O1](#o1) | Red channel drift — cause and mitigation | **open** |
 | [O2](#o2) | `synth.py` noise defaults do not match hardware | **open** |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **open** |
@@ -461,6 +462,32 @@ Re-seat the sensor, let it settle, re-run.
 
 ---
 
+<a id="d22"></a>
+## D22 — Pulse detection requires ≥30 s, with an adaptive Welch window
+
+**Status:** accepted · 2026-10-09 · bug fix
+
+**Problem.** `nperseg` was fixed at 8 s. On a 10 s capture that averages **one** segment —
+a raw periodogram, whose variance equals its mean — so "prominence" was measured on noise.
+The same 10 s record from 2026-10-09 reported **195, 255 or 30 bpm** depending only on the
+segment length chosen. Across channels it gave 195 bpm on IR and 172 on red, which a real
+pulse cannot do.
+
+**Decision.**
+- `nperseg = clip(len/4, 4 s, 10 s)` — target ~8 averaged segments while keeping resolution
+  fine enough to separate a rate from its harmonics.
+- Skip the pulse verdict entirely below **30 s of data**, and say why.
+- Gate on **data duration, not wall-clock**: a stalled link can burn 60 s and deliver 10 s
+  of samples, and it is the sample count that limits the spectrum.
+
+**Result.** The same 10 s capture now reports **75 bpm on both channels** — plausible, and
+agreeing across wavelengths, which is the signature of a real pulse rather than noise.
+
+**Consequence.** The 10 s auto-tune run no longer claims anything about pulse. Any capture
+meant to answer "is there a pulse" must be ≥30 s.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 
@@ -492,7 +519,15 @@ instrumental. **The confound is time-since-strapping, not LED current.**
 **Original hypothesis (now doubtful).** Red LED self-heating. Auto-tune set red to 19.8 mA against IR's
 8.4 mA, and datasheet Table 13 gives up to 8 °C rise at high current and duty cycle.
 
-**Next test (ready to run).** Two back-to-back still captures at the same placement, red
+**Update 2026-10-09 — re-seating fixed it.** After re-strapping, a 10 s capture at
+red_amp=102 drifted **+15.8 ct/s** against IR's −8.1 — around 2×, and both negligible.
+Against the original `rest1` figure of −290 ct/s, red is roughly **18× more stable**. Taken
+with the die-temperature evidence above, O1 looks resolved: **the drift was contact settling
+in the first seconds after strapping, not LED current.** The mitigation is a settling period
+before recording (`--settle`), not a current change. Confirm with one 60 s run before
+closing.
+
+**Original next test (now lower priority).** Two back-to-back still captures at the same placement, red
 current high then low, IR pinned identically in both — see D20 for the flags. Measured with
 the arm **still**: drift is a resting property, and the provocation's movement transients
 would only obscure it. Die temperature is now logged either side of each run, so the

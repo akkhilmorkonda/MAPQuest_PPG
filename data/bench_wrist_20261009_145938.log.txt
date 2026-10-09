@@ -1,0 +1,45 @@
+Port : COM6
+
+MAPQuest bench check (SPEC 3.5)
+================================================================
+  [  ok  ] MAX30101 found at 0x57
+           part_id=0x15 rev=0x06 firmware=mapquest-fw-0.2
+
+  Config: ir/red @ 100 Hz, PPG only
+  Columns: idx,t_us,ir,red
+  [ skip ] DARK offsets <= 128 counts
+           --no-dark
+
+  Auto-tuning LED current for IR DC near 131,000...
+     ir  amp= 31 ( 6.2 mA)  DC=  94,801
+     ir  amp= 43 ( 8.6 mA)  DC= 134,777
+  [  ok  ] auto-tune ir
+           amp=43 (8.6 mA), DC=134,777
+    red  amp= 31 ( 6.2 mA)  DC=  39,659
+    red  amp=102 (20.4 mA)  DC= 137,695
+
+  Capturing 10 s — keep the sensor still on the wrist.
+
+
+  Captured 997 samples over 10.0 s
+  [  ok  ] serial link stable
+           ran the full 10 s, longest gap between samples 2 ms
+  [  ok  ] IR DC in 105,000-157,000
+           mean=134,547  min=134,330  max=134,745  (51% of full scale)
+  [  ok  ] output rate within 1%
+           99.65 Hz measured vs 100 Hz configured (-0.35%)
+  [  ok  ] zero dropped samples
+           997 consecutive indices over 10 s
+  [ skip ] pressure stream at ~40 Hz
+           HX710B not fitted (PRESSURE_ENABLED=0)
+             ir: perfusion index 0.026% rms, peak 195 bpm, 13.2 dB prominence, drift/cardiac power 4x
+            red: perfusion index 0.019% rms, peak 172 bpm, 19.2 dB prominence, drift/cardiac power 5x
+  [ warn ] cardiac pulse detected
+           no periodic cardiac component on IR. Every check above can pass with no blood in the light path, so do not trust a recording yet.
+           Almost no pulsatile content. A healthy DC with no AC usually means light is reaching the photodiode WITHOUT passing through perfused tissue — it pipes across the surface from the LEDs. Raising LED current makes this worse, not better. Press the sensor flat against skin and strap it.
+           Fastest way to tell hardware from placement: try a FINGERTIP. Finger PPG is 10-50x stronger than forearm. Clear beats there means the board, firmware and config are fine and this is purely a forearm coupling problem; no beats there means the fault is upstream of placement.
+
+  Saved capture to C:\Users\akkhi\Documents\Projects\MAPQuest\data\bench_20261009_150002.csv
+
+================================================================
+RESULT: all checks passed, 1 warning(s)

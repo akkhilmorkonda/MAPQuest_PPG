@@ -125,9 +125,9 @@ python analyze.py ../data/<date>_T01_1.csv
 The logger sends `INFO`, then `DARK`, then `START`, and writes a self-describing CSV. Ctrl-C sends
 `STOP` and closes cleanly.
 
-## Heart-rate monitor
+## PPG monitor — heart rate and blood volume
 
-A standalone live heart-rate display, separate from the return-to-flow tools:
+A standalone live display with two tabs, separate from the return-to-flow tools:
 
 ```bash
 cd host && python hr_monitor.py --auto-tune --site finger
@@ -138,6 +138,12 @@ marked, the HR trend, the live spectrum, perfusion, pulse SNR and HRV. A number 
 only when beat timing and the spectrum agree for 3 s — otherwise it shows why not. A
 fingertip reads in ~11 s; the wrist works but is ~50× weaker. `--replay CAPTURE.csv`
 plays any saved recording through it without the board. Details in D33.
+
+The **Blood volume** tab plots two-wavelength and IR-only ΔV·L over time (relative µm,
++ = more blood), each channel's % change, and the rate of change against its noise floor,
+with a FILLING / DRAINING / STABLE readout. **Z** zeroes the baseline, **M** drops a labelled
+marker. One LED tuning serves both tabs; re-tuning breaks and re-zeroes the volume trace and
+is refused while recording. Details in D34.
 
 ## Layout
 
@@ -151,7 +157,7 @@ host/
     pipeline.py        raw -> dOD -> dV*L -> low-pass -> dV/dt -> onset
   bench_check.py       SPEC 3.5 hardware acceptance checks, LED auto-tune
   provocation.py       arm-raise blood-volume response test
-  hr_monitor.py        live heart-rate GUI (standalone)
+  hr_monitor.py        live PPG monitor: heart-rate + blood-volume tabs
   logger.py            recording + two-point pressure calibration
   analyze.py           offline analysis, figure, results.csv row
   synth.py             synthetic recordings with known ground truth

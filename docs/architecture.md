@@ -4,7 +4,7 @@ Living document. Updated as the system changes; see the status table at the bott
 is verified on hardware versus only on synthetic data. The reasoning behind each choice
 lives in [`decisions.md`](decisions.md).
 
-Last updated: 2026-10-09 — added the standalone heart-rate monitor (D33). Earlier the same day, after the first graded run — added coupling-slip detection (D31),
+Last updated: 2026-10-09 — added the blood-volume tab to the monitor (D34), and the monitor itself (D33). Earlier the same day, after the first graded run — added coupling-slip detection (D31),
 demoted harmonics to informational (D30), and opened O4 (red is contact-sensitive).
 
 ---
@@ -53,7 +53,9 @@ flowchart TD
         PIPE["mapquest/pipeline.py<br/>return-to-flow analysis"]
         ANA["analyze.py<br/>onset + figure + results row"]
         HRE["mapquest/heartrate.py<br/>streaming HR estimator (D33)"]
-        HRM["hr_monitor.py<br/>live heart-rate GUI"]
+        HRM["hr_monitor.py<br/>live PPG monitor:<br/>heart-rate + blood-volume tabs"]
+        VOLT["mapquest/volume.py<br/>streaming blood volume (D34)"]
+        VOLT --> HRM
         IO --> BENCH
         IO --> PROV
         IO --> LOG
@@ -221,11 +223,59 @@ because venous compliance is itself non-linear.
 
 ---
 
-## 5. Heart-rate monitor (standalone)
+## 5. PPG monitor (standalone) — two tabs, one acquisition path
 
-`hr_monitor.py`, separate from the return-to-flow tooling. The guiding rule (D33): **show a
-number only when two independent estimates corroborate it** — a blank with a reason beats a
-confident wrong value.
+`hr_monitor.py`, separate from the return-to-flow tooling. One source, one LED tuning, two
+estimators fed from the same samples; only the visible tab redraws.
+
+```mermaid
+flowchart LR
+    SRC(["Board<br/>(DARK on connect)<br/>or --replay"]) --> CORE["MonitorCore<br/>drains samples,<br/>controls, recording"]
+    TUNE["Auto-tune: IR + red<br/>to DC mid-scale"] -.-> SRC
+    CORE -->|IR| HRE["HeartRateEstimator<br/>(D33)"]
+    CORE -->|"IR + red"| VOL["VolumeTracker<br/>(D34)"]
+    HRE --> T1["<b>Heart rate tab</b>"]
+    VOL --> T2["<b>Blood volume tab</b>"]
+    TUNE -.->|"re-tune breaks trace,<br/>re-zeroes; refused<br/>while recording"| VOL
+    CORE --> REC["Record: raw + events,<br/>_hr.csv, _vol.csv"]
+
+    classDef gate fill:#fff4e0,stroke:#e07b00
+    class TUNE gate
+```
+
+### Blood volume tab
+
+```mermaid
+flowchart TD
+    RAW["IR + red counts"] --> DK["Dark subtraction"]
+    DK --> LP["<b>Low-pass 0.3 Hz</b>, causal<br/><i>~0.75 s lag; offline uses zero-phase</i>"]
+    LP --> REF{"Reference set?<br/>Zero button, or auto<br/>10 s after connect / re-tune"}
+    REF -->|no| WAIT["NO BASELINE"]
+    REF -->|yes| OD["delta-OD = ln(ref / counts)"]
+    OD --> DV["<b>ΔV·L</b>, relative µm<br/>two-wavelength and IR-only<br/>side by side (O4)"]
+    DV --> RATE["Rate: slope over 2 s"]
+    LP --> MOT{"Either channel moving<br/>> 2 %/s (low-passed)?"}
+    MOT -->|yes| MS["MOTION — red strip"]
+    RATE --> FL["Noise floor μ0, σ0<br/>from 10 s after zero"]
+    FL --> TR{"Beyond μ0 ± 3σ0<br/>for 2 s?"}
+    TR -->|above| FILL(["FILLING"])
+    TR -->|below| DRAIN(["DRAINING"])
+    TR -->|no| STAB(["STABLE"])
+
+    classDef gate fill:#fff4e0,stroke:#e07b00
+    classDef bad fill:#ffe6e6,stroke:#c43b2f
+    class REF,MOT,TR gate
+    class MS,WAIT bad
+```
+
+On the graded run the rest-period floor was ±2.5 µm/s, against ±0.3 on the still capture;
+the difference is consistent with breathing (46 % of power at 0.15–0.4 Hz). That floor is
+what any onset detection has to clear.
+
+### Heart rate tab
+
+The guiding rule (D33): **show a number only when two independent estimates corroborate
+it** — a blank with a reason beats a confident wrong value.
 
 ```mermaid
 flowchart TD
@@ -307,18 +357,21 @@ flowchart LR
     subgraph HW["Real hardware captures"]
         CAP["data/*.csv in git<br/>anchor tests to real signals"]
     end
-    subgraph TESTS["143 tests"]
+    subgraph TESTS["160 tests"]
         T1["test_pipeline.py<br/>SPEC section 6 criteria"]
         T2["test_protocol.py<br/>link, bench_check, pulse"]
         T3["test_provocation.py<br/>verdicts, dose-response"]
         T4["test_quality.py<br/>motion + slips"]
         T5["test_heartrate.py<br/>HR estimator + GUI"]
+        T6["test_volume.py<br/>blood volume + tab"]
     end
     SYNTH --> T1
     FAKE --> T2
     PBUILD --> T3
     CAP --> T4
     CAP --> T5
+    CAP --> T6
+    SYNTH --> T6
     PBUILD --> T5
     CAP --> T3
 ```
@@ -340,7 +393,8 @@ flowchart LR
 | Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
 | Pressure calibration | never run | no HX710B |
-| Heart-rate monitor | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
+| Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
+| Blood-volume tab | **works on real replay** | still capture STABLE throughout; graded-run slip flagged live; not yet run live |
 
 ### Open issues
 

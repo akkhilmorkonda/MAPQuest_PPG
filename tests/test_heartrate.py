@@ -208,19 +208,19 @@ def _run_app(path: Path, tmp_path: Path, monkeypatch, record: bool = False):
     monkeypatch.setattr(hm, "DATA_DIR", tmp_path)
     q: queue.Queue = queue.Queue()
     src = hm.ReplaySource(q, path, speed=50.0)
-    app = hm.HRMonitorApp(src, site="finger", show=False)
+    app = hm.MonitorCore(src, site="finger")
     src.start()
     t0 = time.time()
     started = False
     while not app.eof and time.time() - t0 < 30:
         app.tick()
         if record and not started and app.meta:
-            app._on_record()
+            app.toggle_record()
             started = True
         time.sleep(0.01)
     app.tick()
     if record:
-        app._stop_recording()
+        app.stop_recording()
     return app
 
 
@@ -236,13 +236,18 @@ def test_gui_recording_writes_consistent_files(tmp_path, monkeypatch):
     path = tmp_path / "finger.csv"
     _write_capture(path, ppg(30, 72))
     _run_app(path, tmp_path, monkeypatch, record=True)
-    raws = [p for p in tmp_path.glob("hr_*.csv") if not p.name.endswith("_hr.csv")]
+    raws = [p for p in tmp_path.glob("hr_*.csv")
+            if not p.name.endswith(("_hr.csv", "_vol.csv"))]
     hrs = list(tmp_path.glob("hr_*_hr.csv"))
     assert raws and hrs
     body = [ln for ln in raws[0].read_text().splitlines() if not ln.startswith("#")]
     header = body[0].split(",")
     assert header == ["idx", "ir", "red"], header
-    assert all(len(ln.split(",")) == len(header) for ln in body[1:50])
+    data = [ln for ln in body[1:] if not ln.startswith("#")]
+    assert all(len(ln.split(",")) == len(header) for ln in data[:50])
+    vols = list(tmp_path.glob("hr_*_vol.csv"))
+    assert vols, "blood-volume log missing"
+    assert vols[0].read_text().splitlines()[0].startswith("t_s,dv_um")
     hr_lines = hrs[0].read_text().splitlines()
     assert hr_lines[0].startswith("t_s,hr_shown")
     assert len(hr_lines) > 10

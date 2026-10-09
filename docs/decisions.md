@@ -43,6 +43,7 @@ experiment settles something.
 | [D31](#d31) | Coupling slips detected inside holds; affected manoeuvres excluded | accepted |
 | [D32](#d32) | Run inputs in the CSV header; console log written through | accepted — bug fix |
 | [D33](#d33) | Standalone heart-rate monitor: only show a corroborated number | accepted |
+| [D34](#d34) | Live blood-volume tab; one LED tuning for both tabs | accepted |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **resolved** |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **likely yes** |
@@ -805,6 +806,50 @@ notches in the filtered waveform.
 **Open.** No reference comparison yet — the Whoop is the obvious one, and the monitor's
 Record button saves a per-second HR log to compare against. RMSSD from 100 Hz wrist PPG
 (92 ms on the real capture) is likely inflated by timing jitter; treat it as indicative.
+
+---
+
+<a id="d34"></a>
+## D34 — Live blood-volume tab, sharing one LED tuning with heart rate
+
+**Status:** accepted · 2026-10-09
+
+**What.** A second tab in the monitor, backed by `host/mapquest/volume.py`: the streaming
+counterpart of the offline pipeline. Dark subtraction → 0.3 Hz low-pass → ΔOD against a
+reference → two-wavelength ΔV·L (relative µm, D26) → rate over a 2 s window → FILLING /
+DRAINING / STABLE using the offline rule, μ0 ± 3σ0 held for 2 s. Two-wavelength and IR-only
+are drawn side by side, with each channel's percent change, because which to trust is O4.
+
+**Live forced three differences from offline:**
+- **Causal low-pass**, so the trace lags ~0.75 s. Fine for watching; onset timing is still
+  measured offline with zero-phase filtering (D8).
+- **Operator-set reference.** "Zero" takes the last 3 s; it is also set automatically 10 s
+  after connecting or re-tuning, once the filter has settled.
+- **The noise floor comes from the 10 s after each zero.**
+
+**One tuning for both tabs — the user's question.** Yes: both want DC mid-scale, heart rate
+for SNR and blood volume for headroom, since filling lowers counts and draining raises
+them. Two changes followed. Auto-tune now sets **red as well as IR**, which the two-wavelength
+solve needs and the heart-rate monitor had ignored. And because a re-tune changes counts
+with no change in blood, it **interrupts** the volume trace — history kept, gap and marker
+inserted, baseline re-zeroed — and is **refused while recording** (SPEC §9's rule, enforced
+in software). DARK is now measured on connect (SPEC §5.1 step 3).
+
+**Motion** uses D27's 2 %/s floor, applied to the *low-passed* channels — a strong fingertip
+pulse alone has a raw slope near 8 %/s and would otherwise read as motion.
+
+**Verified.** Against synthetic ground truth: within 1.5 µm, rate 2.97–3.01 µm/s for a
+3.0 µm/s ramp, FILLING reported 3 s after true onset (filter lag + rate lag + 2 s hold),
+STABLE before. Real still capture: STABLE throughout, no false filling. Real graded run: the
+36.4 s slip appears as a +100 µm jump, flagged as motion as it happens. Identical history
+regardless of block size, after a fix (auto-zero had been checked only at block ends).
+
+**Finding: breathing sets the rate floor.** On the graded run's opening rest the band was
+±2.5 µm/s, against ±0.3 on the still capture. 46 % of the volume signal's power there lay
+in the 0.15–0.4 Hz respiratory band (peak at 9 breaths/min), against 15 % on the still
+capture. Respiration modulates venous volume, so this is physiology rather than noise —
+and it is the floor any onset detection has to clear. Consistent with breathing, not yet
+proven: twenty seconds holds only a few breaths.
 
 ---
 

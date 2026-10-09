@@ -1,7 +1,14 @@
-# Recordings — regenerate rather than commit
-data/*.csv
-data/*.png
-!data/.gitkeep
+# Hardware captures are IRREPLACEABLE and are tracked in git.
+# A capture of a real arm at a real moment cannot be regenerated, and a
+# capture deleted before it was committed is simply gone -- which happened
+# once (provocation_wrist_20261006_133005). Only regenerable data is ignored.
+data/sim_*.csv
+data/sim_*.png
+data/synth_*.csv
+data/synth_*.png
+data/_*.csv
+data/_*.png
+data/results.csv
 
 # Build output
 firmware/**/build/
@@ -13,3 +20,4 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+.pytest_cache/

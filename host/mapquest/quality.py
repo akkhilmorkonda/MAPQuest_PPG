@@ -157,3 +157,78 @@ def clean_mean(x: np.ndarray, mask: np.ndarray) -> float:
     if not keep.any():
         return float(np.mean(x))
     return float(np.mean(np.asarray(x)[keep]))
+
+
+@dataclass
+class SlipReport:
+    """Per-phase coupling slips found by ``detect_slips``."""
+
+    slipped: dict[int, float]
+    """phase index -> largest window-to-window level jump, % of DC."""
+
+    times: dict[int, float]
+    """phase index -> time of that jump, s."""
+
+    threshold_pct: float
+
+    def describe(self, keys: list[str]) -> str:
+        if not self.slipped:
+            return "no coupling slips during holds"
+        parts = [f"{keys[i]} at {self.times[i]:.1f} s ({v:+.1f}%)"
+                 for i, v in sorted(self.slipped.items())]
+        return "coupling slipped mid-hold: " + ", ".join(parts)
+
+
+def detect_slips(
+    channels: dict[str, np.ndarray],
+    phase_of: np.ndarray,
+    fs: float,
+    allow_s: float = 5.0,
+    window_s: float = 1.0,
+    threshold_pct: float = 1.0,
+) -> SlipReport:
+    """Find sudden level changes inside a hold, after the transition settles.
+
+    The motion detector cannot catch this on its own: on 2026-10-09 an
+    arm-raise and a slip 6.5 s later were one continuous flagged span, so the
+    slip was filed as part of the transition. A slip is better defined by what
+    it does to the level than by when the flagged span started.
+
+    Within a hold, once ``allow_s`` has passed, real blood-volume change is
+    gradual: an exponential settle with a time constant of seconds moves the
+    level ~0.1 %/s. The sensor shifting on the skin moves it several percent in
+    under a second. Comparing medians of consecutive ``window_s`` windows
+    separates the two with a wide margin, and medians shrug off the spikes
+    that accompany the slip itself.
+
+    All channels are checked, because a tilt can change red and IR coupling
+    differently -- their LEDs sit at different positions in the package.
+    """
+    slipped: dict[int, float] = {}
+    times: dict[int, float] = {}
+    w = max(int(round(window_s * fs)), 2)
+    step = max(w // 4, 1)
+
+    for i in np.unique(phase_of):
+        idx = np.flatnonzero(phase_of == i)
+        lo = idx[0] + int(round(allow_s * fs))
+        hi = idx[-1] - int(round(0.5 * fs))
+        if hi - lo < 2 * w:
+            continue
+        worst, worst_t = 0.0, float("nan")
+        for v in channels.values():
+            v = np.asarray(v, dtype=float)
+            dc = float(np.median(v[idx]))
+            if dc <= 0:
+                continue
+            for s in range(lo, hi - 2 * w + 1, step):
+                a = float(np.median(v[s:s + w]))
+                b = float(np.median(v[s + w:s + 2 * w]))
+                jump = (b - a) / dc * 100.0
+                if abs(jump) > abs(worst):
+                    worst, worst_t = jump, (s + w) / fs
+        if abs(worst) > threshold_pct:
+            slipped[int(i)] = worst
+            times[int(i)] = worst_t
+
+    return SlipReport(slipped=slipped, times=times, threshold_pct=threshold_pct)

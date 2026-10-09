@@ -65,13 +65,24 @@ class Tee:
     report rather than thousands of countdown frames.
     """
 
-    def __init__(self, stream):
+    def __init__(self, stream, path: Path | None = None):
         self.stream = stream
         self.lines: list[str] = []
+        # Write through to disk as we go. The first version buffered and
+        # dumped at exit, so a run killed while the plot window was open lost
+        # its log entirely -- which is what happened to the 2026-10-09 graded
+        # capture, taking the Whoop reading with it.
+        self._fh = None
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._fh = path.open("w", encoding="utf-8")
 
     def write(self, text: str) -> int:
         if not text.startswith("\r"):
             self.lines.append(text)
+            if self._fh is not None:
+                self._fh.write(text)
+                self._fh.flush()
         return self.stream.write(text)
 
     def flush(self) -> None:
@@ -79,6 +90,11 @@ class Tee:
 
     def __getattr__(self, name):
         return getattr(self.stream, name)
+
+    def close(self) -> None:
+        if self._fh is not None:
+            self._fh.close()
+            self._fh = None
 
     def dump(self, path: Path) -> None:
         path.write_text("".join(self.lines), encoding="utf-8")
@@ -561,6 +577,12 @@ def run_reanalyse(args) -> int:
     r = provocation.analyse(channels, phase_of, protocol, fs,
                             dark=meta["_dark"])
     print(provocation.format_result(r, site=site))
+    arm = float(meta.get("arm_cm", args.arm_cm))
+    dr = provocation.dose_response(r, arm_cm=arm)
+    if dr is not None:
+        print(provocation.format_dose_response(dr))
+    if "whoop_bpm" in meta:
+        print(f"\n  Whoop reading recorded with this run: {meta['whoop_bpm']} bpm")
 
     if args.plot or args.save:
         png = Path(args.reanalyse).with_suffix(".reanalysis.png")
@@ -619,7 +641,11 @@ def run_provocation_mode(dev: Device, args, report: Report) -> int:
         print(provocation.format_dose_response(dr))
         detail = (f"Spearman {dr['spearman_rho']:+.2f}, "
                   f"{dr['slope_um_per_cm']:+.2f} um/cm, R^2 {dr['r2']:.2f}")
-        if not dr["extremes_significant"]:
+        if dr.get("extremes_compromised"):
+            report.add(WARN, "volume monotonic with wrist height",
+                       f"COMPROMISED — coupling slipped in "
+                       f"{', '.join(dr['excluded'])}; no conclusion possible")
+        elif not dr["extremes_significant"]:
             report.add(BAD, "volume monotonic with wrist height",
                        detail + " — no significant response at the extremes")
         elif dr["strictly_monotonic"]:
@@ -660,6 +686,9 @@ def run_provocation_mode(dev: Device, args, report: Report) -> int:
     detail = f"verdict {verdict}, strongest effect z={best:.1f}"
     if verdict == "responds":
         report.add(OK, "responds to blood volume", detail)
+    elif verdict == "compromised":
+        report.add(WARN, "responds to blood volume",
+                   detail + " — every comparison straddles a coupling slip")
     elif verdict in ("inverted", "contradictory"):
         report.add(BAD, "responds to blood volume",
                    detail + (" — response has the wrong sign" if verdict == "inverted"
@@ -680,6 +709,13 @@ def run_provocation_mode(dev: Device, args, report: Report) -> int:
                 fh.write(f"# recorded_at="
                          f"{datetime.now().isoformat(timespec='seconds')}\n")
                 fh.write(f"# site={args.site}\n")
+                # Run inputs that exist nowhere else. The Whoop reading and
+                # arm length were console-only, so the 2026-10-09 graded run
+                # lost both when its log was not written.
+                fh.write(f"# protocol={'graded' if args.graded else 'provocation'}\n")
+                fh.write(f"# arm_cm={args.arm_cm:g}\n")
+                if args.whoop_bpm is not None:
+                    fh.write(f"# whoop_bpm={args.whoop_bpm:g}\n")
                 # Mirror the full firmware header. Without LED amplitudes a
                 # recording cannot be reproduced or compared against another
                 # run, and LED current is the first thing worth varying.
@@ -766,15 +802,14 @@ def main() -> int:
         kind = "provocation" if args.provocation else "bench"
         args.log = DATA_DIR / f"{kind}_{args.site}_{stamp}.log.txt"
 
-    tee = Tee(sys.stdout)
+    tee = Tee(sys.stdout, path=args.log)
     sys.stdout = tee
     try:
         return _main(args, tee)
     finally:
         sys.stdout = tee.stream
+        tee.close()
         if args.log:
-            args.log.parent.mkdir(parents=True, exist_ok=True)
-            tee.dump(args.log)
             print(f"  Saved console report to {args.log}")
 
 
@@ -999,7 +1034,11 @@ def _main(args, tee: Tee) -> int:
         harm = m.get("harmonics") or []
         if harm:
             head += f", harmonics at {'/'.join(f'{x}x' for x in harm)}"
-        if plausible and (prom >= 6.0 or (prom >= 3.0 and harm)):
+        # Harmonics are reported but never rescue a weak peak (D30). Measured
+        # on real captures, an arbitrary in-band frequency "has harmonics" 62%
+        # of the time on a noisy spectrum and 21% even on a clean one at a
+        # 6 dB bar, so a harmonic match is mostly chance.
+        if plausible and prom >= 6.0:
             report.add(OK, "cardiac pulse detected", head)
         elif plausible and prom >= 3.0:
             report.add(WARN, "cardiac pulse detected",

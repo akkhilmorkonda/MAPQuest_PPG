@@ -105,3 +105,80 @@ def test_real_movement_capture_catches_every_manoeuvre():
     bounds = [i / FS for i in range(1, len(ph)) if ph[i] != ph[i - 1]]
     for b in bounds:
         assert any(a0 - 2 <= b <= b0 + 2 for a0, b0 in r.events), f"missed {b:.1f}s"
+
+
+# ---------------------------------------------------------------------------
+# Coupling slips inside holds (D31)
+# ---------------------------------------------------------------------------
+
+from mapquest.quality import detect_slips  # noqa: E402
+
+
+def phases(n_each=(1500, 2000, 1500)):
+    return np.concatenate([np.full(n, i) for i, n in enumerate(n_each)])
+
+
+def test_mid_hold_step_is_a_slip():
+    ph = phases()
+    ir = still(n=len(ph))
+    ir[1500 + 650:] -= 0.07 * 142_000        # -7% step 6.5 s into phase 1
+    s = detect_slips({"ir": ir}, ph, FS)
+    assert 1 in s.slipped
+    assert abs(s.times[1] - 21.5) < 1.0
+    assert s.slipped[1] < -5.0
+
+
+def test_gradual_settling_is_not_a_slip():
+    """Venous volume settles exponentially; that is physiology, not a slip."""
+    ph = phases()
+    ir = still(n=len(ph))
+    t = np.arange(2000) / FS
+    ir[1500:3500] += 0.03 * 142_000 * (1 - np.exp(-t / 4.0))   # +3%, tau 4 s
+    s = detect_slips({"ir": ir}, ph, FS)
+    assert 1 not in s.slipped, s.slipped
+
+
+def test_step_at_the_transition_is_not_a_slip():
+    """Moving the arm is expected to move the level; only holds are policed."""
+    ph = phases()
+    ir = still(n=len(ph))
+    ir[1500 + 100:] += 0.05 * 142_000        # 1 s after the transition
+    s = detect_slips({"ir": ir}, ph, FS)
+    assert 1 not in s.slipped
+
+
+def test_red_only_slip_is_caught():
+    """A tilt can move one LED's coupling and not the other's."""
+    ph = phases()
+    ir = still(n=len(ph))
+    red = still(n=len(ph), seed=4, dc=170_000)
+    red[1500 + 900:] += 0.04 * 170_000
+    s = detect_slips({"ir": ir, "red": red}, ph, FS)
+    assert 1 in s.slipped
+
+
+def test_real_graded_capture_has_exactly_one_slip():
+    """Anchored on hardware: the 2026-10-09 graded run slipped in up90 only."""
+    path = DATA / "provocation_wrist_20261009_170105.csv"
+    if not path.exists():
+        import pytest
+        pytest.skip("hardware capture not present")
+    import provocation as pv
+    ch, ph, proto, meta = pv.load_csv(path)
+    s = detect_slips(ch, ph, meta["_fs"])
+    keys = [p[0] for p in proto]
+    assert [keys[i] for i in s.slipped] == ["up90"], s.describe(keys)
+    assert 35.0 < s.times[keys.index("up90")] < 38.0
+
+
+def test_real_clean_capture_has_no_slips():
+    path = DATA / "bench_20261009_160125.csv"
+    if not path.exists():
+        import pytest
+        pytest.skip("hardware capture not present")
+    lines = [ln for ln in path.read_text().splitlines() if not ln.startswith("#")]
+    cols = lines[0].split(",")
+    a = np.array([ln.split(",") for ln in lines[1:]], float)
+    s = detect_slips({c: a[:, cols.index(c)] for c in ("ir", "red")},
+                     np.zeros(len(a), dtype=int), FS)
+    assert not s.slipped

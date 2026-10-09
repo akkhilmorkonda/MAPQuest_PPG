@@ -29,7 +29,7 @@ import numpy as np
 
 from mapquest.io import Device, LinkLost, LinkStalled
 from mapquest.pipeline import blood_volume, delta_od
-from mapquest.quality import detect_motion
+from mapquest.quality import detect_motion, detect_slips
 
 # (key, seconds, on-screen instruction, is_rest)
 DEFAULT_PROTOCOL: list[tuple[str, float, str, bool]] = [
@@ -156,6 +156,7 @@ class ProvocationResult:
     effects: dict                 # per-manoeuvre effect sizes
     link: dict
     motion: object = None         # MotionReport for the whole capture
+    slips: object = None          # SlipReport: coupling changes mid-hold
 
     @property
     def verdict(self) -> str:
@@ -168,17 +169,20 @@ class ProvocationResult:
         will look like a correct response. Reporting that as success is how a
         drift-dominated run gets mistaken for a working sensor.
         """
-        good = [e for e in self.effects.values()
-                if e["sign_ok"] and e["z"] >= 3.0]
-        wrong = [e for e in self.effects.values()
-                 if not e["sign_ok"] and e["z"] >= 3.0]
+        # A manoeuvre whose comparison spans a coupling slip measures the
+        # sensor moving, not blood. It is excluded, not counted against.
+        usable = [e for e in self.effects.values() if not e.get("slipped")]
+        if self.effects and not usable:
+            return "compromised"
+        good = [e for e in usable if e["sign_ok"] and e["z"] >= 3.0]
+        wrong = [e for e in usable if not e["sign_ok"] and e["z"] >= 3.0]
         if wrong and good:
             return "contradictory"
         if wrong:
             return "inverted"
         if good:
             return "responds"
-        if any(e["z"] >= 1.5 for e in self.effects.values()):
+        if any(e["z"] >= 1.5 for e in usable):
             return "weak"
         return "flat"
 
@@ -284,6 +288,7 @@ def analyse(channels: dict[str, np.ndarray], phase_of: np.ndarray,
     # flagged samples keeps a transient from contaminating a phase level --
     # the manoeuvre itself is the loudest motion in the recording.
     motion = detect_motion(channels, fs)
+    slips = detect_slips(channels, phase_of, fs)
 
     def steady(mask: np.ndarray) -> np.ndarray:
         """Tail of a phase, after venous volume has had time to settle."""
@@ -348,6 +353,11 @@ def analyse(channels: dict[str, np.ndarray], phase_of: np.ndarray,
         refs = [stats[k].ir_mean for k in (before, after) if k]
         if not refs:
             continue
+        # A slip invalidates exactly the comparisons that straddle it: the
+        # manoeuvre it happened in, or one whose bracketing rest it shifted.
+        # Phases entirely after the slip share the new coupling and stay valid.
+        involved = [i] + [keys.index(k) for k in (before, after) if k]
+        slipped_in = [keys[j] for j in involved if j in slips.slipped]
         base = float(np.mean(refs))
         delta = stats[key].ir_mean - base
         dv_refs = [stats[k].dv_mean for k in (before, after) if k]
@@ -358,6 +368,8 @@ def analyse(channels: dict[str, np.ndarray], phase_of: np.ndarray,
             "delta_dv_um": stats[key].dv_mean - float(np.mean(dv_refs)),
             "z": abs(delta) / noise if noise and np.isfinite(noise) else float("nan"),
             # Arm up drains blood -> less absorption -> HIGHER counts.
+            "slipped": bool(slipped_in),
+            "slipped_in": slipped_in,
             "angle_deg": PHASE_ANGLE_DEG.get(key, 0.0),
             "expected": "+" if PHASE_ANGLE_DEG.get(key, 0.0) > 0 else "-",
             "sign_ok": ((delta > 0) if PHASE_ANGLE_DEG.get(key, 0.0) > 0
@@ -366,7 +378,7 @@ def analyse(channels: dict[str, np.ndarray], phase_of: np.ndarray,
 
     return ProvocationResult(
         t=t, channels=channels, phase_of=phase_of, protocol=protocol,
-        stats=stats, dv=dv, effects=effects, link=link or {}, motion=motion,
+        stats=stats, dv=dv, effects=effects, link=link or {}, motion=motion, slips=slips,
     )
 
 
@@ -375,6 +387,8 @@ def format_result(r: ProvocationResult, site: str = "") -> str:
              "-" * 64]
     if r.motion is not None:
         lines.append(f"  Motion: {r.motion.describe()}")
+    if r.slips is not None:
+        lines.append(f"  Slips:  {r.slips.describe([p[0] for p in r.protocol])}")
         lines.append("")
     lines.append("  Phase levels (steady-state tail of each phase):")
     for st in r.stats.values():
@@ -388,6 +402,8 @@ def format_result(r: ProvocationResult, site: str = "") -> str:
         lines.append("    none computed")
     for key, e in r.effects.items():
         mark = "ok" if e["sign_ok"] else "WRONG SIGN"
+        if e.get("slipped"):
+            mark = f"EXCLUDED — slip in {', '.join(e['slipped_in'])}"
         lines.append(
             f"    {key:<6} {e['delta_counts']:>+9,.0f} counts "
             f"({e['delta_pct']:+.3f}%)   dV·L {e['delta_dv_um']:>+7.2f} um   "
@@ -396,12 +412,20 @@ def format_result(r: ProvocationResult, site: str = "") -> str:
 
     v = r.verdict
     lines.append("")
+    excl = [k for k, e in r.effects.items() if e.get("slipped")]
+    if excl and v != "compromised":
+        lines.append(f"  ({len(excl)} manoeuvre(s) excluded for a coupling slip: "
+                     f"{', '.join(excl)}. Verdict uses the rest.)")
     if v == "responds":
         lines.append("  => The sensor RESPONDS to blood volume. The optical path "
                      "reaches perfused")
         lines.append("     tissue, and this site is viable for return-to-flow "
                      "regardless of whether")
         lines.append("     a cardiac pulse is resolvable.")
+    elif v == "compromised":
+        lines.append("  => COMPROMISED. Every manoeuvre's comparison straddles a coupling")
+        lines.append("     slip, so nothing here measures blood. Re-seat, strain-relieve")
+        lines.append("     the cable, settle, and re-run.")
     elif v == "contradictory":
         lines.append("  => CONTRADICTORY. One manoeuvre reads correct and another reads")
         lines.append("     backwards, both strongly. Check the raw trace: if both pushed")
@@ -509,13 +533,28 @@ def dose_response(r: "ProvocationResult", arm_cm: float = 60.0) -> dict | None:
     straight-line fit) is reported but not required: venous compliance is
     itself non-linear, so a curve is physiology, not error.
     """
-    pts = [(arm_cm * np.sin(np.radians(e["angle_deg"])), e["delta_dv_um"], k,
-            e["z"]) for k, e in r.effects.items() if "angle_deg" in e]
-    angles = {round(h, 3) for h, *_ in pts}
+    every = [(arm_cm * np.sin(np.radians(e["angle_deg"])), e["delta_dv_um"], k,
+              e["z"], bool(e.get("slipped"))) for k, e in r.effects.items()
+             if "angle_deg" in e]
+    angles = {round(h, 3) for h, *_ in every}
     if len(angles) < 3:
         return None
 
-    pts.sort()
+    # Slipped manoeuvres measure the sensor moving, not blood; leave them out
+    # of the fit and say so. If an extreme position slipped, the run cannot
+    # support a dose-response claim no matter how the rest looks.
+    excluded = [k for _h, _v, k, _z, bad in every if bad]
+    heights_all = [h for h, *_ in every]
+    extreme_keys = {k for h, _v, k, _z, _b in every
+                    if h in (min(heights_all), max(heights_all))}
+    extremes_compromised = bool(extreme_keys & set(excluded))
+    pts = sorted((h, v, k, z) for h, v, k, z, bad in every if not bad)
+    if len(pts) < 2:
+        return {"heights_cm": [], "dv_um": [], "keys": [], "spearman_rho": float("nan"),
+                "slope_um_per_cm": float("nan"), "r2": float("nan"),
+                "strictly_monotonic": False, "extremes_significant": False,
+                "supported": False, "excluded": excluded,
+                "extremes_compromised": True, "arm_cm": arm_cm}
     h = np.array([p[0] for p in pts])
     dv = np.array([p[1] for p in pts])
 
@@ -543,7 +582,8 @@ def dose_response(r: "ProvocationResult", arm_cm: float = 60.0) -> dict | None:
     # the largest hydrostatic change, so the largest expected effect -- to be
     # individually significant before the ordering means anything.
     zs = np.array([p[3] for p in pts])
-    extremes_significant = bool(zs[0] >= 3.0 and zs[-1] >= 3.0)
+    extremes_significant = (not extremes_compromised
+                            and bool(zs[0] >= 3.0 and zs[-1] >= 3.0))
     supported = steps_ok and extremes_significant
 
     return {
@@ -556,6 +596,8 @@ def dose_response(r: "ProvocationResult", arm_cm: float = 60.0) -> dict | None:
         "strictly_monotonic": steps_ok,
         "extremes_significant": extremes_significant,
         "supported": supported,
+        "excluded": excluded,
+        "extremes_compromised": extremes_compromised,
         "arm_cm": arm_cm,
     }
 
@@ -568,7 +610,13 @@ def format_dose_response(dr: dict) -> str:
                  "(-1 = perfectly monotonic: higher wrist, less blood)")
     lines.append(f"    Slope         {dr['slope_um_per_cm']:+.3f} um/cm   "
                  f"R^2 {dr['r2']:.3f}")
-    if not dr["extremes_significant"]:
+    if dr.get("excluded"):
+        lines.append(f"    Excluded (coupling slipped): {', '.join(dr['excluded'])}")
+    if dr.get("extremes_compromised"):
+        lines.append("  => COMPROMISED. An extreme position slipped, so the run cannot")
+        lines.append("     support or refute a dose-response. The signal was not shown")
+        lines.append("     wrong — the sensor moved. Strain-relieve the cable and re-run.")
+    elif not dr["extremes_significant"]:
         lines.append("  => NO MEASURABLE RESPONSE. The extreme positions are not "
                      "significant,")
         lines.append("     so any ordering here is noise — four random values sort "

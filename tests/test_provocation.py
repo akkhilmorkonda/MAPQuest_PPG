@@ -373,3 +373,46 @@ def test_graded_csv_roundtrip(tmp_path):
     r = pv.analyse(channels, phase_of, protocol, meta["_fs"])
     dr = pv.dose_response(r)
     assert dr is not None and dr["strictly_monotonic"]
+
+
+def test_slipped_extreme_compromises_the_dose_response():
+    """A slip in up90 must read as 'compromised', not as a failed physiology.
+
+    The 2026-10-09 graded run slipped 6.5 s into the up90 hold and was first
+    reported CONTRADICTORY / NOT MONOTONIC -- which reads as the signal being
+    wrong, when actually the sensor moved.
+    """
+    ch, ph, proto = build_graded()
+    ch = {k: v.copy() for k, v in ch.items()}
+    i_up90 = [p[0] for p in proto].index("up90")
+    start = np.flatnonzero(ph == i_up90)[0] + 650
+    ch["ir"][start:] -= 0.07 * 109_000
+    ch["red"][start:] -= 0.07 * 131_000
+    r = pv.analyse(ch, ph, proto, FS)
+    assert r.effects["up90"]["slipped"]
+    assert r.verdict != "contradictory"
+    dr = pv.dose_response(r)
+    assert dr["extremes_compromised"]
+    assert not dr["supported"]
+    assert "up90" in dr["excluded"]
+    assert "COMPROMISED" in pv.format_dose_response(dr)
+
+
+def test_slip_only_excludes_comparisons_that_straddle_it():
+    """Phases wholly after a slip share the new coupling and stay valid."""
+    ch, ph, proto = build_graded()
+    ch = {k: v.copy() for k, v in ch.items()}
+    keys = [p[0] for p in proto]
+    start = np.flatnonzero(ph == keys.index("up90"))[0] + 650
+    ch["ir"][start:] -= 0.07 * 109_000
+    r = pv.analyse(ch, ph, proto, FS)
+    assert r.effects["up90"]["slipped"]
+    assert not r.effects["dn45"]["slipped"]
+    assert not r.effects["dn90"]["slipped"]
+
+
+def test_clean_graded_run_has_no_exclusions():
+    ch, ph, proto = build_graded()
+    r = pv.analyse(ch, ph, proto, FS)
+    assert not any(e["slipped"] for e in r.effects.values())
+    assert pv.dose_response(r)["supported"]

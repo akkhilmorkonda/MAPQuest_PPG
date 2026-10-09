@@ -33,15 +33,19 @@ experiment settles something.
 | [D21](#d21) | A wrong-signed manoeuvre vetoes a 'responds' verdict | accepted — bug fix |
 | [D22](#d22) | Pulse detection needs >= 30 s and an adaptive Welch window | accepted — bug fix |
 | [D23](#d23) | Non-blocking serial reads + watchdog | accepted — bug fix |
-| [D24](#d24) | Harmonic series as pulse evidence | accepted |
+| [D24](#d24) | ~~Harmonic series as pulse evidence~~ | **superseded by D30** |
 | [D25](#d25) | Green evaluated as a third channel, declined | accepted |
 | [D26](#d26) | Scope: relative & monotonic accuracy, 2–5 min, detect-and-flag motion | accepted — **user's call** |
 | [D27](#d27) | Motion flagged by speed: sigma test plus an absolute floor | accepted |
 | [D28](#d28) | Graded dose-response as the validation, with a magnitude gate | accepted |
 | [D29](#d29) | Hardware captures are tracked in git | accepted — after data loss |
+| [D30](#d30) | Harmonics are informational only; a pulse needs ≥6 dB on its own | accepted — reverses D24 |
+| [D31](#d31) | Coupling slips detected inside holds; affected manoeuvres excluded | accepted |
+| [D32](#d32) | Run inputs in the CSV header; console log written through | accepted — bug fix |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **resolved** |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **likely yes** |
+| [O4](#o4) | Red is the contact-sensitive channel — two-wavelength vs IR-only | **open** |
 
 ---
 
@@ -527,9 +531,9 @@ is transparent to them.
 ---
 
 <a id="d24"></a>
-## D24 — A harmonic series is the strongest evidence of a real pulse
+## D24 — ~~A harmonic series is the strongest evidence of a real pulse~~
 
-**Status:** accepted · 2026-10-09
+**Status:** **superseded by D30** · 2026-10-09
 
 **Context.** Peak prominence alone kept being ambiguous: 4.4 dB on one capture, with no way
 to tell a weak real pulse from a lucky noise bump.
@@ -682,6 +686,78 @@ name only.
 
 ---
 
+<a id="d30"></a>
+## D30 — Harmonics are informational only
+
+**Status:** accepted · 2026-10-09 · **reverses D24**
+
+**What D24 claimed.** That noise and drift do not produce a harmonic series, so a 3–6 dB peak
+with peaks near 2× and 3× it could pass as a pulse.
+
+**Why it was wrong.** The implementation matched *any* peak of ≥2 dB prominence within
+1.5 bins of 2× or 3×, and a noisy spectrum has dozens of those. Measured directly — the
+fraction of arbitrary in-band frequencies that "have harmonics":
+
+| harmonic prominence bar | noisy rest (graded run) | clean 60 s capture |
+|---|---|---|
+| 2 dB (as implemented) | **62 %** | 69 % |
+| 4 dB | 14 % | 34 % |
+| 6 dB | 0 % | 21 % |
+
+So the rule mostly certified chance. It passed a 129 bpm "pulse" at 3.5 dB on the graded run
+while red, in the same window, put the rate at 104 bpm.
+
+**Decision.** A pulse needs **≥6 dB prominence on its own**. Harmonics are still reported,
+with no effect on the verdict.
+
+**What survives.** The clean capture's 78 bpm stands on its own 14.3 dB, and its harmonics at
+162 bpm (8.4 dB) and 234 bpm (5.9 dB) are genuinely prominent — consistent with a real
+pulse, but no longer counted as proof of one.
+
+---
+
+<a id="d31"></a>
+## D31 — Coupling slips are detected inside holds, and the comparisons they break are excluded
+
+**Status:** accepted · 2026-10-09
+
+**What happened.** The first graded run (2026-10-09 17:01) slipped **6.5 s into the +90°
+hold**: both channels stepped down ~7 % in under a second and never returned. Venous
+drainage moves counts *up*, smoothly. The run was reported CONTRADICTORY and NOT MONOTONIC —
+which reads as the signal being wrong, when the sensor had moved.
+
+**Why the motion detector missed it.** The arm-raise and the slip were one continuous
+flagged span, and spans were classified by where they *started* — at the transition.
+
+**Decision.** After a 5 s allowance for each transition, compare medians of consecutive
+1 s windows on every channel. A jump over **1 % of DC** is a slip. Real settling moves
+~0.1 %/s; a slip moves several percent in under a second. Medians ignore the spikes that
+accompany the slip itself.
+
+A slip excludes exactly the comparisons that straddle it — the manoeuvre it occurred in, or
+one whose bracketing rest it shifted. Phases entirely after it share the new coupling and
+remain valid. If an extreme position is excluded, the dose-response is reported
+**COMPROMISED**: neither supported nor refuted.
+
+**Verified.** Finds exactly one slip on the graded run — up90 at 36.4 s, −7.1 % — and none
+on the clean capture. Ignores a 3 % exponential settle and steps at transitions.
+
+---
+
+<a id="d32"></a>
+## D32 — Run inputs live in the CSV header; the console log writes through
+
+**Status:** accepted · 2026-10-09 · bug fix
+
+The graded run has no `.log.txt`. The log was buffered and written at exit, so a process
+killed while the plot window was open lost it — and with it the Whoop reading and arm
+length, which existed nowhere else.
+
+The log now writes through to disk line by line, and `protocol`, `arm_cm` and `whoop_bpm` are
+written into the CSV header, so the capture is self-contained either way.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 
@@ -784,3 +860,36 @@ arm-raise is a proxy, not the measurement. But with 22× headroom against that p
 noise floor has stopped being the thing most likely to sink the project.
 
 **Resolves fully when** the HX710B arrives and a real deflation can be recorded.
+
+---
+
+<a id="o4"></a>
+## O4 — Red is the contact-sensitive channel: two-wavelength or IR-only?
+
+**Status:** **open** · raised 2026-10-09
+
+**Observation.** On the graded run, between rests — arm at heart level every time, so any
+change is coupling, not physiology — red's baseline moved **2–3× more** than IR's:
+
+| | rest1→2 | rest2→3 | rest3→4 | rest4→5 |
+|---|---|---|---|---|
+| IR | −2.77 % | −1.11 % | +1.24 % | +1.23 % |
+| red | −3.29 % | −3.21 % | +3.35 % | +1.45 % |
+
+Red also stepped +2.7 % at the start of the −45° hold while IR barely moved. This fits O1,
+where red's early drift was also contact settling: shorter wavelength, shallower
+penetration, more weight on the surface where contact changes happen — and the red LED sits
+at a different position in the package, so a tilt changes its coupling differently.
+
+**Why it matters.** With the slip excluded, the three remaining graded positions are
+correctly ordered in **IR-only** ΔV·L (−60 cm: +14.0, −42 cm: +3.6, +42 cm: −1.1 µm) but
+**not** in two-wavelength ΔV·L, because red's coupling wander enters through the 229·ΔOD₆₆₀
+term. (Three values order correctly by chance 1 time in 6, so this is suggestive only.)
+
+**The trade-off.** Two-wavelength exists to reject desaturation of trapped blood under
+occlusion (D1) — and that rejection is real, tested in SPEC §6. IR-only avoids red's contact
+sensitivity but loses it. In arm-position tests no blood is trapped, so desaturation is
+absent and IR-only is legitimate there; during a real cuff occlusion it is not.
+
+**Resolves with** a clean graded run (no slips) analysed both ways, and eventually a cuff
+occlusion where desaturation actually occurs. Not decided here.

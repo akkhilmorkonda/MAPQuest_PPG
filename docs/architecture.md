@@ -4,8 +4,8 @@ Living document. Updated as the system changes; see the status table at the bott
 is verified on hardware versus only on synthetic data. The reasoning behind each choice
 lives in [`decisions.md`](decisions.md).
 
-Last updated: 2026-10-09 — focus shifted to the blood-volume measurement itself (D26);
-added motion flagging (D27) and the graded dose-response validation (D28).
+Last updated: 2026-10-09, after the first graded run — added coupling-slip detection (D31),
+demoted harmonics to informational (D30), and opened O4 (red is contact-sensitive).
 
 ---
 
@@ -96,20 +96,22 @@ flowchart TD
     SETTLE --> RAW["<b>Raw counts</b><br/>IR + red, 18-bit, 100 Hz"]
     RAW --> MOT{"<b>Motion flag</b> (D27)<br/>rate > 8 sigma<br/>AND > 2 % of DC per second"}
     MOT -->|flagged| EXCL["Excluded from analysis<br/><i>never interpolated —<br/>invented data is worse than a gap</i>"]
-    MOT -->|clean| DARK["Dark subtraction"]
+    MOT -->|clean| SLIP{"<b>Coupling slip?</b> (D31)<br/>level jump > 1% between<br/>1 s windows, mid-hold"}
+    SLIP -->|yes| EXCL2["Comparisons straddling<br/>the slip excluded<br/><i>sensor moved, not blood</i>"]
+    SLIP -->|no| DARK["Dark subtraction"]
     DARK --> OD["<b>delta-OD</b><br/>ln(ref / counts) per wavelength"]
-    OD --> DV["<b>Blood volume, relative</b><br/>dV·L = 229·dOD660 + 1555·dOD880<br/><i>L unknown, so relative µm (D26)</i>"]
+    OD --> DV["<b>Blood volume, relative</b><br/>dV·L = 229·dOD660 + 1555·dOD880<br/><i>L unknown, so relative µm (D26)</i><br/><i>red is contact-sensitive — O4</i>"]
 
     DV --> USE1["Return-to-flow onset<br/>(section 3)"]
     DV --> USE2["Graded dose-response<br/>validation (section 4)"]
 
-    RAW -.-> PULSE["<b>Cardiac pulse</b> — quality only<br/>adaptive Welch, >= 30 s (D22)<br/>prominence + 2x/3x harmonics (D24)"]
+    RAW -.-> PULSE["<b>Cardiac pulse</b> — quality only<br/>adaptive Welch, >= 30 s (D22)<br/>needs >= 6 dB prominence;<br/>harmonics informational (D30)"]
     PULSE -.->|"cross-check"| WH["Whoop heart rate"]
 
     classDef gate fill:#fff4e0,stroke:#e07b00
     classDef bad fill:#ffe6e6,stroke:#c43b2f
-    class MOT,SETTLE gate
-    class EXCL bad
+    class MOT,SETTLE,SLIP gate
+    class EXCL,EXCL2 bad
 ```
 
 **Measured on hardware (2026-10-09, settled 60 s wrist capture):** onset threshold
@@ -185,7 +187,9 @@ flowchart TD
     U90 --> U45["+45 deg — wrist ~+42 cm"]
     U45 --> D45["-45 deg — wrist ~-42 cm"]
     D45 --> D90["-90 deg — wrist ~-60 cm"]
-    D90 --> FIT["<b>Dose-response fit</b><br/>dV·L vs wrist height<br/>(rests between each, ABA)"]
+    D90 --> SL{"<b>Slip check</b> (D31)<br/>did an extreme position's<br/>coupling move mid-hold?"}
+    SL -->|yes| COMP["<b>COMPROMISED</b><br/>neither supported nor refuted —<br/>strain-relieve cable, re-run"]
+    SL -->|no| FIT["<b>Dose-response fit</b><br/>dV·L vs wrist height<br/>(rests between each, ABA)"]
 
     FIT --> GATE{"<b>Magnitude gate</b><br/>are ±90 deg individually<br/>significant, z >= 3?"}
     GATE -->|no| NOISE2["NO MEASURABLE RESPONSE<br/><i>4 noise values sort correctly<br/>1 time in 24</i>"]
@@ -201,8 +205,12 @@ flowchart TD
     classDef gate fill:#fff4e0,stroke:#e07b00
     class PASS,FE good
     class NOISE2,FAIL bad
-    class GATE gate
+    class GATE,SL,COMP gate
 ```
+
+**First hardware run (2026-10-09 17:01): COMPROMISED.** The +90° hold slipped at 36.4 s
+(−7.1 %). The three remaining positions order correctly in IR-only ΔV·L but not in
+two-wavelength — see O4.
 
 Rank order is judged by Spearman correlation; linearity (R²) is reported but not required,
 because venous compliance is itself non-linear.
@@ -256,7 +264,7 @@ flowchart LR
     subgraph HW["Real hardware captures"]
         CAP["data/*.csv in git<br/>anchor tests to real signals"]
     end
-    subgraph TESTS["112 tests"]
+    subgraph TESTS["121 tests"]
         T1["test_pipeline.py<br/>SPEC section 6 criteria"]
         T2["test_protocol.py<br/>link, bench_check, pulse"]
         T3["test_provocation.py<br/>verdicts, dose-response"]
@@ -281,8 +289,9 @@ flowchart LR
 | Blood-volume signal | **responds on hardware** | wrist provocation z=37.8 / 19.2 (raw data lost, D29) |
 | Noise floor | **good on hardware** | 0.627 µm/s settled, ~22× headroom vs arm-raise response |
 | Motion flagging | **working on hardware** | 0 false events on still capture; 4/4 movements caught |
-| Graded dose-response | built, **not yet run on hardware** | synthetic + mock only |
-| Whoop HR cross-check | built, **not yet run on hardware** | mock only |
+| Graded dose-response | **run once: compromised** | +90° slipped mid-hold; needs a clean re-run |
+| Slip detection | **working on hardware** | finds the one real slip; none on the clean capture |
+| Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
 | Pressure calibration | never run | no HX710B |
 
@@ -290,7 +299,9 @@ flowchart LR
 
 | Issue | Impact |
 |---|---|
-| Graded dose-response not yet run on a real arm | the D26 accuracy claim is still unvalidated |
+| Graded dose-response compromised by a coupling slip | the D26 accuracy claim is still unvalidated |
+| Sensor slips on skin during arm movement | mechanical fixation, likely cable strain — blocks every validation |
+| Red ~2–3× more contact-sensitive than IR (O4) | contaminates two-wavelength ΔV·L; trade-off against desaturation rejection |
 | Motion mask not wired into return-to-flow onset | a transient during deflation could be read as filling |
 | Serial stall with port still present — parked by user | costs retries; would ruin a real deflation mid-measurement |
 | ΔV·L is relative (unknown path length) | fine for D26; reopens if absolute volume is ever needed |

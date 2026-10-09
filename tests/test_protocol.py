@@ -961,17 +961,22 @@ def test_no_harmonics_on_drift():
     )
 
 
-def test_harmonics_let_a_weaker_peak_pass(fake):
-    """A modest peak with harmonics is better evidence than a tall lone one."""
+def test_harmonics_never_rescue_a_weak_peak(fake, monkeypatch):
+    """Regression for D30, which reversed D24.
+
+    D24 let a 3-6 dB peak pass if it had harmonics. On the 2026-10-09 graded
+    capture that passed a 129 bpm "pulse" at 3.5 dB that red put at 104 bpm:
+    on a noisy spectrum an arbitrary frequency "has harmonics" 62% of the time.
+    """
     import bench_check as bc
 
-    fs, n = 100.0, 6000
-    t = np.arange(n) / fs
-    phase = np.mod(1.3 * t, 1.0)
-    beat = np.exp(-0.5 * ((phase - 0.2) / 0.06) ** 2)
-    beat -= beat.mean()
-    rng = np.random.default_rng(3)
-    ir = 142_000 + 142_000 * 0.0004 * beat + rng.normal(0, 45, n)
-    m = bc.analyse_pulse({"ir": ir}, fs)["channels"]["ir"]
-    if m["prominence_db"] is not None and 3.0 <= m["prominence_db"] < 6.0:
-        assert m["harmonics"], "weak-but-real pulse should still show harmonics"
+    def fake_pulse(channels, fs):
+        m = {"pi_pct": 0.02, "bpm": 129.0, "prominence_db": 3.5,
+             "harmonics": [2, 3], "drift_ratio": 2.0, "peak_hz": 2.15}
+        return {"band": (0.7, 3.5), "ac": {}, "fs": fs,
+                "channels": {"ir": m, "red": dict(m, bpm=104.0, harmonics=[])}}
+
+    monkeypatch.setattr(bc, "analyse_pulse", fake_pulse)
+    code, out = run_bench(fake, ["--seconds", "1", "--no-dark"])
+    line = next(ln for ln in out.splitlines() if "cardiac pulse detected" in ln)
+    assert "ok" not in line, f"a 3.5 dB peak passed on harmonics alone: {line}"

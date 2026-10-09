@@ -42,6 +42,7 @@ experiment settles something.
 | [D30](#d30) | Harmonics are informational only; a pulse needs ≥6 dB on its own | accepted — reverses D24 |
 | [D31](#d31) | Coupling slips detected inside holds; affected manoeuvres excluded | accepted |
 | [D32](#d32) | Run inputs in the CSV header; console log written through | accepted — bug fix |
+| [D33](#d33) | Standalone heart-rate monitor: only show a corroborated number | accepted |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **resolved** |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **likely yes** |
@@ -755,6 +756,55 @@ length, which existed nowhere else.
 
 The log now writes through to disk line by line, and `protocol`, `arm_cm` and `whoop_bpm` are
 written into the CSV header, so the capture is self-contained either way.
+
+---
+
+<a id="d33"></a>
+## D33 — Standalone heart-rate monitor: show a number only when it is corroborated
+
+**Status:** accepted · 2026-10-09
+
+**What.** `host/hr_monitor.py`, a live GUI, with the processing in
+`host/mapquest/heartrate.py`. Independent of the return-to-flow tooling.
+
+**Standard pipeline.** Causal 4th-order Butterworth band-pass, 0.5–4 Hz, with filter state
+carried across blocks (zero-phase needs the future, so D8 does not apply live). Inverted,
+since reflectance systole is a trough. Peaks with a 0.3 s refractory period and an adaptive
+prominence, accepted only once 0.6 s old, refined sub-sample by parabolic interpolation.
+Intervals gated to 0.3–2.0 s and to within 30 % of the running median; four rejections in a
+row reset the history. HR = 60 / median of the last 9 good intervals.
+
+**Three safeguards the tests forced — without them the monitor showed confident wrong numbers:**
+
+1. **Pulse SNR gate.** The beat detector's threshold is relative to the signal, so it finds
+   "beats" in pure noise. In-band power is now compared with the white-noise floor measured
+   above 10 Hz; below 3, no peaks are accepted. Noise reads ~1.3, a fingertip ~50, the real
+   wrist capture ~10.
+
+2. **Spectrum on raw data, judged by concentration.** First version: Welch on the
+   *band-passed* signal. Filtered white noise takes on the filter's shape, an in-band hump
+   between steep stopband walls, and pure noise passed a 6 dB prominence test **100 %** of
+   the time, at up to 41 dB. Moving to the raw signal still left 85 % passing at 10 dB:
+   a 12 s window averages only a few segments, and prominence measured against their random
+   dips is meaningless (the D22 lesson again). **Spectral concentration** — fraction of
+   in-band power within 0.15 Hz of the peak — separates cleanly: noise never exceeded 0.30;
+   real pulses 0.44–0.71.
+
+3. **Corroboration, persisting 3 s.** Drift's tail reaches into the pulse band, raising SNR,
+   and its wiggles time as beats. With beat HR shown uncorroborated, pulse-free drift
+   produced a number in **310 of 390** seconds. Requiring beat and spectral estimates to
+   agree within 8 bpm cut that to 7; requiring that agreement for 3 consecutive seconds cut
+   it to **0**, at the cost of a first reading after ~11 s.
+
+**Verified.** Synthetic: within 2 bpm from 48 to 170 bpm; reacquires a 60→100 bpm change;
+ignores missed beats; RMSSD within 8 ms of a known rhythm; identical beats regardless of
+block size. Real 60 s wrist capture: shown in 44 of 44 seconds after warm-up, median
+79.3 bpm against 78 from the full-minute spectrum, with clear systolic peaks and dicrotic
+notches in the filtered waveform.
+
+**Open.** No reference comparison yet — the Whoop is the obvious one, and the monitor's
+Record button saves a per-second HR log to compare against. RMSSD from 100 Hz wrist PPG
+(92 ms on the real capture) is likely inflated by timing jitter; treat it as indicative.
 
 ---
 

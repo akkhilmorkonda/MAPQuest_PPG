@@ -4,7 +4,7 @@ Living document. Updated as the system changes; see the status table at the bott
 is verified on hardware versus only on synthetic data. The reasoning behind each choice
 lives in [`decisions.md`](decisions.md).
 
-Last updated: 2026-10-09, after the first graded run — added coupling-slip detection (D31),
+Last updated: 2026-10-09 — added the standalone heart-rate monitor (D33). Earlier the same day, after the first graded run — added coupling-slip detection (D31),
 demoted harmonics to informational (D30), and opened O4 (red is contact-sensitive).
 
 ---
@@ -52,9 +52,13 @@ flowchart TD
         LOG["logger.py<br/>recording + pressure calibration"]
         PIPE["mapquest/pipeline.py<br/>return-to-flow analysis"]
         ANA["analyze.py<br/>onset + figure + results row"]
+        HRE["mapquest/heartrate.py<br/>streaming HR estimator (D33)"]
+        HRM["hr_monitor.py<br/>live heart-rate GUI"]
         IO --> BENCH
         IO --> PROV
         IO --> LOG
+        IO --> HRM
+        HRE --> HRM
         QUAL --> PROV
         LOG --> PIPE
         PIPE --> ANA
@@ -217,7 +221,46 @@ because venous compliance is itself non-linear.
 
 ---
 
-## 5. Diagnostic path — what we run before trusting a recording
+## 5. Heart-rate monitor (standalone)
+
+`hr_monitor.py`, separate from the return-to-flow tooling. The guiding rule (D33): **show a
+number only when two independent estimates corroborate it** — a blank with a reason beats a
+confident wrong value.
+
+```mermaid
+flowchart TD
+    SRC(["Board, or --replay CSV"]) --> RAW["Raw IR counts<br/>pushed in ~40 ms blocks"]
+    RAW --> BP["<b>Band-pass 0.5–4 Hz</b><br/>4th-order Butterworth, causal,<br/>state carried across blocks"]
+    BP --> INV["Invert<br/><i>reflectance: systole = fewer counts</i>"]
+    RAW --> SNR{"<b>Pulse SNR</b> >= 3?<br/>in-band vs noise floor above 10 Hz"}
+    SNR -->|no| NOB["No beats timed<br/><i>relative threshold would find<br/>'beats' in noise</i>"]
+    INV --> PK["<b>Peaks</b><br/>0.3 s refractory, adaptive prominence,<br/>confirmed after 0.6 s, sub-sample refined"]
+    SNR -->|yes| PK
+    PK --> IBI["<b>Interval gating</b><br/>0.3–2.0 s, within 30% of median;<br/>4 rejections reset history"]
+    IBI --> HRB["Beat HR<br/>60 / median of 9 intervals"]
+    RAW --> SPEC["<b>Spectral HR</b>, last 12 s<br/>Welch on RAW detrended data<br/>confidence = concentration"]
+    HRB --> AGREE{"Agree within 8 bpm<br/>and concentration >= 0.35?"}
+    SPEC --> AGREE
+    AGREE -->|"yes, for 3 s"| SHOW(["<b>Show heart rate</b>"])
+    AGREE -->|no| BLANK["Show -- and the reason"]
+    RAW --> Q{"No contact? saturated?<br/>baseline moving?"}
+    Q -->|yes| BLANK
+
+    classDef gate fill:#fff4e0,stroke:#e07b00
+    classDef good fill:#e6f5ea,stroke:#0a7d2c
+    classDef bad fill:#ffe6e6,stroke:#c43b2f
+    class SNR,AGREE,Q gate
+    class SHOW good
+    class NOB,BLANK bad
+```
+
+Each safeguard was added because a test caught the monitor showing a confident wrong number:
+on pulse-free drift, the first version showed a heart rate in 310 of 390 seconds; the final
+one in 0. On the real 60 s wrist capture it reads in 44 of 44 seconds, median 79 bpm.
+
+---
+
+## 6. Diagnostic path — what we run before trusting a recording
 
 ```mermaid
 flowchart TD
@@ -250,7 +293,7 @@ flowchart TD
 
 ---
 
-## 6. Test layer
+## 7. Test layer
 
 ```mermaid
 flowchart LR
@@ -264,22 +307,25 @@ flowchart LR
     subgraph HW["Real hardware captures"]
         CAP["data/*.csv in git<br/>anchor tests to real signals"]
     end
-    subgraph TESTS["121 tests"]
+    subgraph TESTS["143 tests"]
         T1["test_pipeline.py<br/>SPEC section 6 criteria"]
         T2["test_protocol.py<br/>link, bench_check, pulse"]
         T3["test_provocation.py<br/>verdicts, dose-response"]
-        T4["test_quality.py<br/>motion flagging"]
+        T4["test_quality.py<br/>motion + slips"]
+        T5["test_heartrate.py<br/>HR estimator + GUI"]
     end
     SYNTH --> T1
     FAKE --> T2
     PBUILD --> T3
     CAP --> T4
+    CAP --> T5
+    PBUILD --> T5
     CAP --> T3
 ```
 
 ---
 
-## 7. Status
+## 8. Status
 
 | Layer | State | Evidence |
 |---|---|---|
@@ -294,6 +340,7 @@ flowchart LR
 | Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
 | Pressure calibration | never run | no HX710B |
+| Heart-rate monitor | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
 
 ### Open issues
 

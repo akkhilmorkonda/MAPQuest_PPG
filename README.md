@@ -125,6 +125,20 @@ python analyze.py ../data/<date>_T01_1.csv
 The logger sends `INFO`, then `DARK`, then `START`, and writes a self-describing CSV. Ctrl-C sends
 `STOP` and closes cleanly.
 
+## Heart-rate monitor
+
+A standalone live heart-rate display, separate from the return-to-flow tools:
+
+```bash
+cd host && python hr_monitor.py --auto-tune --site finger
+```
+
+Shows heart rate coloured by signal quality, the band-passed waveform with every beat
+marked, the HR trend, the live spectrum, perfusion, pulse SNR and HRV. A number appears
+only when beat timing and the spectrum agree for 3 s — otherwise it shows why not. A
+fingertip reads in ~11 s; the wrist works but is ~50× weaker. `--replay CAPTURE.csv`
+plays any saved recording through it without the board. Details in D33.
+
 ## Layout
 
 ```
@@ -137,6 +151,7 @@ host/
     pipeline.py        raw -> dOD -> dV*L -> low-pass -> dV/dt -> onset
   bench_check.py       SPEC 3.5 hardware acceptance checks, LED auto-tune
   provocation.py       arm-raise blood-volume response test
+  hr_monitor.py        live heart-rate GUI (standalone)
   logger.py            recording + two-point pressure calibration
   analyze.py           offline analysis, figure, results.csv row
   synth.py             synthetic recordings with known ground truth

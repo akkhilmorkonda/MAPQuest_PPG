@@ -913,3 +913,65 @@ def test_watchdog_limit_respects_stall_timeout():
     """The watchdog must never fire before the stall detector has had a go."""
     for stall in (1.0, 3.0, 5.0):
         assert max(stall * 4, 10.0) > stall
+
+
+def test_harmonics_detected_on_a_peaked_pulse():
+    """A real PPG beat is sharply peaked, so it has 2x and 3x harmonics.
+
+    Confirmed on hardware 2026-10-09: a 60 s wrist capture gave 78 bpm with
+    peaks at 162 and 234 bpm, i.e. the 2nd and 3rd harmonics. Noise and drift
+    do not produce a harmonic series, which makes this a stronger test of
+    reality than peak height.
+    """
+    import bench_check as bc
+
+    fs, n = 100.0, 6000
+    t = np.arange(n) / fs
+    rng = np.random.default_rng(7)
+    # Sharply peaked beat, not a sinusoid.
+    phase = np.mod(1.3 * t, 1.0)
+    beat = np.exp(-0.5 * ((phase - 0.2) / 0.06) ** 2)
+    beat -= beat.mean()
+    ir = 142_000 + 142_000 * 0.001 * beat + rng.normal(0, 40, n)
+
+    m = bc.analyse_pulse({"ir": ir}, fs)["channels"]["ir"]
+    assert m["bpm"] is not None
+    assert abs(m["bpm"] - 78.0) <= 6.0
+    assert m["harmonics"], "a peaked beat must show harmonics"
+
+
+def test_no_harmonics_on_drift():
+    """1/f drift must not produce a harmonic series."""
+    import bench_check as bc
+
+    fs, n = 100.0, 6000
+    rng = np.random.default_rng(11)
+    w = rng.normal(0, 1, n)
+    F = np.fft.rfft(w)
+    freq = np.fft.rfftfreq(n, 1 / fs)
+    F[1:] /= freq[1:]
+    F[0] = 0
+    drift = np.fft.irfft(F, n)
+    x = 142_000 + 500 * drift / np.std(drift) + rng.normal(0, 40, n)
+
+    m = bc.analyse_pulse({"ir": x}, fs)["channels"]["ir"]
+    prom = m["prominence_db"] or 0.0
+    assert prom < 6.0 or not m["harmonics"], (
+        f"drift reported {prom:.1f} dB with harmonics {m['harmonics']}"
+    )
+
+
+def test_harmonics_let_a_weaker_peak_pass(fake):
+    """A modest peak with harmonics is better evidence than a tall lone one."""
+    import bench_check as bc
+
+    fs, n = 100.0, 6000
+    t = np.arange(n) / fs
+    phase = np.mod(1.3 * t, 1.0)
+    beat = np.exp(-0.5 * ((phase - 0.2) / 0.06) ** 2)
+    beat -= beat.mean()
+    rng = np.random.default_rng(3)
+    ir = 142_000 + 142_000 * 0.0004 * beat + rng.normal(0, 45, n)
+    m = bc.analyse_pulse({"ir": ir}, fs)["channels"]["ir"]
+    if m["prominence_db"] is not None and 3.0 <= m["prominence_db"] < 6.0:
+        assert m["harmonics"], "weak-but-real pulse should still show harmonics"

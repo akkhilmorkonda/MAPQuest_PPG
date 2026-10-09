@@ -1,0 +1,41 @@
+Port : COM6
+
+MAPQuest bench check (SPEC 3.5)
+================================================================
+  [  ok  ] MAX30101 found at 0x57
+           part_id=0x15 rev=0x06 firmware=mapquest-fw-0.2
+  LED   : ir set to 43 (8.6 mA)
+  LED   : red set to 102 (20.4 mA)
+
+  Config: ir/red @ 100 Hz, PPG only
+  Columns: idx,t_us,ir,red
+
+  Measuring DARK (LEDs off, ~2 s)...
+  [  ok  ] DARK offsets <= 128 counts
+           ir=8, red=12
+
+  Settling for 45 s — leave the sensor strapped and still.
+
+  Capturing 60 s — keep the sensor still on the wrist.
+
+
+  Captured 5,980 samples over 60.0 s
+  [  ok  ] serial link stable
+           ran the full 60 s, longest gap between samples 4 ms
+  [  ok  ] IR DC in 105,000-157,000
+           mean=142,300  min=142,132  max=142,509  (54% of full scale)
+  [  ok  ] output rate within 1%
+           99.65 Hz measured vs 100 Hz configured (-0.35%)
+  [  ok  ] zero dropped samples
+           5,980 consecutive indices over 60 s
+  [ skip ] pressure stream at ~40 Hz
+           HX710B not fitted (PRESSURE_ENABLED=0)
+             ir: perfusion index 0.009% rms, peak 78 bpm, 14.3 dB prominence, drift/cardiac power 2x
+            red: perfusion index 0.005% rms, peak 126 bpm, 4.3 dB prominence, drift/cardiac power 4x
+  [  ok  ] cardiac pulse detected
+           IR 78 bpm at 14.3 dB prominence
+
+  Saved capture to C:\Users\akkhi\Documents\Projects\MAPQuest\data\bench_20261009_160125.csv
+
+================================================================
+RESULT: all checks passed — M1 hardware criteria met

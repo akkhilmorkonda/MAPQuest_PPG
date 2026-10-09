@@ -387,6 +387,7 @@ def _channel_metrics(x: np.ndarray, ac: np.ndarray, fs: float,
         "peak_hz": None,
         "bpm": None,
         "prominence_db": None,
+        "harmonics": [],
     }
 
     # How far the spectrum is dominated by sub-cardiac drift and motion.
@@ -410,6 +411,23 @@ def _channel_metrics(x: np.ndarray, ac: np.ndarray, fs: float,
             m["peak_hz"] = float(f[cand[k]])
             m["bpm"] = m["peak_hz"] * 60.0
             m["prominence_db"] = float(proms[k])
+
+            # Harmonic check. A PPG beat is sharply peaked, not sinusoidal, so
+            # a real pulse puts energy at 2x and 3x the fundamental. Noise and
+            # drift do not produce a harmonic series, which makes this a far
+            # stronger discriminator than peak height alone -- and it catches
+            # the opposite error too, where a harmonic is mistaken for the
+            # fundamental.
+            bin_hz = float(f[1] - f[0])
+            tol = bin_hz * 1.5
+            found = []
+            for mult in (2, 3):
+                target = m["peak_hz"] * mult
+                if target > f[-1]:
+                    break
+                if np.any(np.abs(f[peaks] - target) <= tol):
+                    found.append(mult)
+            m["harmonics"] = found
     return m
 
 
@@ -908,6 +926,9 @@ def _main(args, tee: Tee) -> int:
             if m["bpm"] is not None:
                 bits.append(f"peak {m['bpm']:.0f} bpm, "
                             f"{m['prominence_db']:.1f} dB prominence")
+                h = m.get("harmonics") or []
+                bits.append(f"harmonics at {'/'.join(f'{x}x' for x in h)}"
+                            if h else "no harmonics")
             else:
                 bits.append("no spectral peak in the cardiac band")
             if "drift_ratio" in m:
@@ -921,7 +942,10 @@ def _main(args, tee: Tee) -> int:
         head = (f"IR {bpm:.0f} bpm at {prom:.1f} dB prominence"
                 if plausible else "no periodic cardiac component on IR")
 
-        if plausible and prom >= 6.0:
+        harm = m.get("harmonics") or []
+        if harm:
+            head += f", harmonics at {'/'.join(f'{x}x' for x in harm)}"
+        if plausible and (prom >= 6.0 or (prom >= 3.0 and harm)):
             report.add(OK, "cardiac pulse detected", head)
         elif plausible and prom >= 3.0:
             report.add(WARN, "cardiac pulse detected",

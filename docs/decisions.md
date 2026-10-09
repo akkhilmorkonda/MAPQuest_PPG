@@ -33,9 +33,10 @@ experiment settles something.
 | [D21](#d21) | A wrong-signed manoeuvre vetoes a 'responds' verdict | accepted — bug fix |
 | [D22](#d22) | Pulse detection needs >= 30 s and an adaptive Welch window | accepted — bug fix |
 | [D23](#d23) | Non-blocking serial reads + watchdog | accepted — bug fix |
-| [O1](#o1) | Red channel drift — cause and mitigation | **open** |
-| [O2](#o2) | `synth.py` noise defaults do not match hardware | **open** |
-| [O3](#o3) | Is the onset noise floor low enough to work? | **open** |
+| [D24](#d24) | Harmonic series as pulse evidence | accepted |
+| [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
+| [O2](#o2) | `synth.py` noise defaults vs hardware | **resolved** |
+| [O3](#o3) | Is the onset noise floor low enough to work? | **likely yes** |
 
 ---
 
@@ -520,10 +521,31 @@ is transparent to them.
 
 ---
 
+<a id="d24"></a>
+## D24 — A harmonic series is the strongest evidence of a real pulse
+
+**Status:** accepted · 2026-10-09
+
+**Context.** Peak prominence alone kept being ambiguous: 4.4 dB on one capture, with no way
+to tell a weak real pulse from a lucky noise bump.
+
+**Decision.** After finding the best in-band peak, check for peaks near 2× and 3× it.
+
+**Why.** A PPG beat is sharply peaked, not sinusoidal, so a real pulse necessarily puts
+energy at its harmonics. Noise and 1/f drift do not produce a harmonic series. A peak with
+harmonics now passes at ≥3 dB where a lone peak still needs ≥6 dB.
+
+**Confirmed on hardware.** The clean 60 s wrist capture gave 78 bpm with peaks at 162 and
+234 bpm — the 2nd and 3rd harmonics — turning "is 78 bpm real?" from a judgement call into
+an automated check. Red on the same capture showed 126 bpm at 4.3 dB with no coherent
+series, correctly staying unconvincing.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 
-**Status:** **open** · raised 2026-10-06
+**Status:** **RESOLVED 2026-10-09** · raised 2026-10-06
 
 **Observation.** With the arm still, red drifts ~90× more than IR:
 
@@ -559,7 +581,16 @@ in the first seconds after strapping, not LED current.** The mitigation is a set
 before recording (`--settle`), not a current change. Confirm with one 60 s run before
 closing.
 
-**Original next test (now lower priority).** Two back-to-back still captures at the same placement, red
+**RESOLUTION.** A settled 60 s capture at red_amp=102 (20.4 mA, the high current) drifted
+**+5.70 ct/s** against IR's +2.84 — a ratio of **2.0×**, with total spans of 478 and 377
+counts on ~168k and ~142k DC. Against the original 90× figure, the cause is settled:
+
+> **The drift was contact settling in the first seconds after strapping. Not LED current,
+> not self-heating.** The mitigation is `--settle`, not a current change.
+
+Red at 20.4 mA is fine. No reason to reduce it, and the A/B current test is unnecessary.
+
+**Original next test (no longer needed).** Two back-to-back still captures at the same placement, red
 current high then low, IR pinned identically in both — see D20 for the flags. Measured with
 the arm **still**: drift is a resting property, and the provocation's movement transients
 would only obscure it. Die temperature is now logged either side of each run, so the
@@ -568,9 +599,9 @@ heating hypothesis is tested directly rather than inferred.
 ---
 
 <a id="o2"></a>
-## O2 — `synth.py` noise defaults do not match hardware
+## O2 — `synth.py` noise defaults vs hardware
 
-**Status:** **open** · raised 2026-10-06
+**Status:** **RESOLVED 2026-10-09** · raised 2026-10-06
 
 **Problem.** `synth.py` defaults to a 3 µm/s filling ramp. The measured onset threshold in the
 cleanest rest period is **7.65 µm/s** — the simulator's signal is below the real hardware's
@@ -579,9 +610,14 @@ noise floor. The SPEC §6 tests have been passing against conditions easier than
 **Impact.** False confidence. A green test suite currently does not imply the measurement
 will work.
 
-**Options.** Re-anchor the simulator's noise on measured per-phase figures; or treat the
-synthetic tests as checking algorithm correctness only, and add a separate hardware-anchored
-test. Not yet decided.
+**RESOLUTION.** The premise was a measurement taken before the settling problem (O1) was
+understood. On a clean, settled 60 s capture the threshold is **0.627 µm/s**, so the
+simulator's 3 µm/s ramp sits **4.8× above** it rather than below. The synthetic tests are
+conservative relative to real hardware, not optimistic. No re-anchoring needed.
+
+**Keep in view:** this holds only for *settled* captures. A run without `--settle` had a
+threshold of 7.65 µm/s, above the simulator's ramp. The settling discipline is what makes
+the tests representative.
 
 ---
 
@@ -590,12 +626,21 @@ test. Not yet decided.
 
 **Status:** **open** · raised 2026-10-06
 
-**Measured.** Threshold `μ₀ + 3σ₀` = **+7.65 µm/s** in the cleanest rest phase; +34 and
-+113 µm/s in the two contaminated ones.
+**Measured 2026-10-09, settled.** Threshold `μ₀ + 3σ₀` = **+0.627 µm/s** over a clean
+60 s wrist capture — **12× lower** than the best unsettled figure of 7.65 µm/s. IR-only
+gives essentially the same (0.616), so red no longer costs anything.
+
+Against the arm-raise response (~14 µm/s of dV·L), that is roughly **22× headroom**.
+
+**Earlier, unsettled:** +7.65 µm/s in the cleanest rest phase; +34 and +113 in the two
+contaminated ones.
 
 **Unknown.** The real venous filling rate under cuff occlusion at the wrist. The arm-raise
 produced ~70 µm over ~5 s settling (≈14 µm/s), which clears the threshold roughly 2×. If cuff
 filling is comparable it will work; if it is slower it will not.
 
-**Resolves when** the HX710B arrives and a real deflation can be recorded. Until then this is
-the single largest unknown in whether the project works.
+**Still unknown:** the real venous filling rate under cuff occlusion at the wrist. The
+arm-raise is a proxy, not the measurement. But with 22× headroom against that proxy, the
+noise floor has stopped being the thing most likely to sink the project.
+
+**Resolves fully when** the HX710B arrives and a real deflation can be recorded.

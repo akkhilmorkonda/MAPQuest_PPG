@@ -9,6 +9,7 @@ from .io import (
     load_csv,
     save_calibration,
 )
+from .quality import MotionReport, clean_mean, detect_motion
 from .pipeline import (
     COEFF_IR_880,
     COEFF_RED_660,
@@ -26,6 +27,7 @@ from .pipeline import (
 )
 
 __all__ = [
+    "MotionReport", "detect_motion", "clean_mean",
     "Device", "Meta", "find_port", "load_csv", "check_continuity",
     "load_calibration", "save_calibration",
     "PipelineConfig", "Derivation", "STAGES", "derive",

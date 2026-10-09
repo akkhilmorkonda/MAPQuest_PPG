@@ -29,6 +29,7 @@ import numpy as np
 
 from mapquest.io import Device, LinkLost, LinkStalled
 from mapquest.pipeline import blood_volume, delta_od
+from mapquest.quality import detect_motion
 
 # (key, seconds, on-screen instruction, is_rest)
 DEFAULT_PROTOCOL: list[tuple[str, float, str, bool]] = [
@@ -38,6 +39,33 @@ DEFAULT_PROTOCOL: list[tuple[str, float, str, bool]] = [
     ("down",  20.0, "Hang arm DOWN, well below heart level", False),
     ("rest3", 15.0, "Back to HEART LEVEL", True),
 ]
+
+# Graded dose-response (D28). Arm held straight and rotated at the shoulder, so
+# the wrist's height above the heart is roughly arm_length * sin(angle). The
+# hydrostatic pressure change is rho*g*h -- predictable from geometry alone --
+# so blood volume should fall monotonically as the wrist rises. That is the
+# strongest validation available with no reference instrument.
+#
+# rest1 is 30 s so the cardiac pulse can be resolved there (D22 needs >= 30 s)
+# and compared against an independent heart-rate reading.
+GRADED_PROTOCOL: list[tuple[str, float, str, bool]] = [
+    ("rest1", 30.0, "Arm at HEART LEVEL, relaxed and still", True),
+    ("up90",  20.0, "Arm STRAIGHT UP (90 deg above horizontal)", False),
+    ("rest2", 15.0, "Back to HEART LEVEL", True),
+    ("up45",  20.0, "Arm HALF UP (45 deg above horizontal)", False),
+    ("rest3", 15.0, "Back to HEART LEVEL", True),
+    ("dn45",  20.0, "Arm HALF DOWN (45 deg below horizontal)", False),
+    ("rest4", 15.0, "Back to HEART LEVEL", True),
+    ("dn90",  20.0, "Arm STRAIGHT DOWN, hanging", False),
+    ("rest5", 15.0, "Back to HEART LEVEL", True),
+]
+
+# Arm angle above horizontal for each manoeuvre. Positive = wrist above heart
+# = venous drainage = HIGHER counts and NEGATIVE dV*L.
+PHASE_ANGLE_DEG: dict[str, float] = {
+    "up": 90.0, "down": -90.0,
+    "up90": 90.0, "up45": 45.0, "dn45": -45.0, "dn90": -90.0,
+}
 
 # Venous volume takes time to settle, so only the tail of each phase is used
 # for the steady-state estimate.
@@ -90,7 +118,8 @@ def load_csv(path):
     # Rebuild the protocol from the phase keys, taking durations from the data
     # so a run made with --phase-seconds reanalyses correctly.
     fs = float(meta.get("fs", 100.0))
-    by_key = {k: (d, lbl, rest) for k, d, lbl, rest in DEFAULT_PROTOCOL}
+    by_key = {k: (d, lbl, rest)
+              for k, d, lbl, rest in DEFAULT_PROTOCOL + GRADED_PROTOCOL}
     protocol = []
     for i, k in enumerate(keys):
         n = int((phase_of == i).sum())
@@ -126,6 +155,7 @@ class ProvocationResult:
     dv: np.ndarray                # two-wavelength blood volume, um
     effects: dict                 # per-manoeuvre effect sizes
     link: dict
+    motion: object = None         # MotionReport for the whole capture
 
     @property
     def verdict(self) -> str:
@@ -250,13 +280,23 @@ def analyse(channels: dict[str, np.ndarray], phase_of: np.ndarray,
     t = np.arange(n) / fs
     dark = dark or {}
 
+    # Arm movement at the phase boundaries is a genuine artifact. Excluding
+    # flagged samples keeps a transient from contaminating a phase level --
+    # the manoeuvre itself is the loudest motion in the recording.
+    motion = detect_motion(channels, fs)
+
     def steady(mask: np.ndarray) -> np.ndarray:
         """Tail of a phase, after venous volume has had time to settle."""
         where = np.flatnonzero(mask)
         if where.size == 0:
             return where
         cut = where[int(len(where) * (1.0 - STEADY_FRACTION)):]
-        return cut if cut.size else where
+        if cut.size == 0:
+            cut = where
+        clean = cut[~motion.mask[cut]]
+        # Fall back to the full tail if motion swallowed the whole phase;
+        # a contaminated estimate beats no estimate, and the report says so.
+        return clean if clean.size >= 8 else cut
 
     # Blood volume in the same units the onset detector uses, referenced to
     # the first rest phase.
@@ -318,19 +358,24 @@ def analyse(channels: dict[str, np.ndarray], phase_of: np.ndarray,
             "delta_dv_um": stats[key].dv_mean - float(np.mean(dv_refs)),
             "z": abs(delta) / noise if noise and np.isfinite(noise) else float("nan"),
             # Arm up drains blood -> less absorption -> HIGHER counts.
-            "expected": "+" if key == "up" else "-",
-            "sign_ok": (delta > 0) if key == "up" else (delta < 0),
+            "angle_deg": PHASE_ANGLE_DEG.get(key, 0.0),
+            "expected": "+" if PHASE_ANGLE_DEG.get(key, 0.0) > 0 else "-",
+            "sign_ok": ((delta > 0) if PHASE_ANGLE_DEG.get(key, 0.0) > 0
+                        else (delta < 0)),
         }
 
     return ProvocationResult(
         t=t, channels=channels, phase_of=phase_of, protocol=protocol,
-        stats=stats, dv=dv, effects=effects, link=link or {},
+        stats=stats, dv=dv, effects=effects, link=link or {}, motion=motion,
     )
 
 
 def format_result(r: ProvocationResult, site: str = "") -> str:
     lines = ["", "Provocation result" + (f" — {site}" if site else ""),
              "-" * 64]
+    if r.motion is not None:
+        lines.append(f"  Motion: {r.motion.describe()}")
+        lines.append("")
     lines.append("  Phase levels (steady-state tail of each phase):")
     for st in r.stats.values():
         tag = "rest" if st.is_rest else " >> "
@@ -450,3 +495,95 @@ def plot(r: ProvocationResult, site: str = "", save=None, show: bool = True) -> 
         plt.show()
     else:
         plt.close(fig)
+
+
+def dose_response(r: "ProvocationResult", arm_cm: float = 60.0) -> dict | None:
+    """Fit blood-volume change against wrist height.
+
+    Returns None unless at least three distinct arm angles were measured,
+    since fewer cannot distinguish monotonic from coincidental.
+
+    Monotonic is judged by Spearman rank correlation, which asks only whether
+    higher wrist means less blood -- the claim we can actually defend, given
+    "relative and monotonic" is the accuracy target (D26). Linearity (R^2 of a
+    straight-line fit) is reported but not required: venous compliance is
+    itself non-linear, so a curve is physiology, not error.
+    """
+    pts = [(arm_cm * np.sin(np.radians(e["angle_deg"])), e["delta_dv_um"], k,
+            e["z"]) for k, e in r.effects.items() if "angle_deg" in e]
+    angles = {round(h, 3) for h, *_ in pts}
+    if len(angles) < 3:
+        return None
+
+    pts.sort()
+    h = np.array([p[0] for p in pts])
+    dv = np.array([p[1] for p in pts])
+
+    def ranks(x):
+        order = np.argsort(x)
+        rk = np.empty(len(x))
+        rk[order] = np.arange(len(x))
+        return rk
+
+    rh, rd = ranks(h), ranks(dv)
+    rho = float(np.corrcoef(rh, rd)[0, 1]) if len(h) > 1 else float("nan")
+
+    slope, intercept = np.polyfit(h, dv, 1)
+    pred = slope * h + intercept
+    ss_res = float(np.sum((dv - pred) ** 2))
+    ss_tot = float(np.sum((dv - dv.mean()) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+
+    # Strictly monotonic: every step up in height is a step down in volume.
+    steps_ok = bool(np.all(np.diff(dv) < 0))
+
+    # Magnitude gate. Four noise values land in perfect descending order 1
+    # time in 24, so rank order alone "proves" a dose-response ~4% of the time
+    # on a recording with no response at all. Require the extreme positions --
+    # the largest hydrostatic change, so the largest expected effect -- to be
+    # individually significant before the ordering means anything.
+    zs = np.array([p[3] for p in pts])
+    extremes_significant = bool(zs[0] >= 3.0 and zs[-1] >= 3.0)
+    supported = steps_ok and extremes_significant
+
+    return {
+        "heights_cm": h.tolist(),
+        "dv_um": dv.tolist(),
+        "keys": [p[2] for p in pts],
+        "spearman_rho": rho,
+        "slope_um_per_cm": float(slope),
+        "r2": float(r2),
+        "strictly_monotonic": steps_ok,
+        "extremes_significant": extremes_significant,
+        "supported": supported,
+        "arm_cm": arm_cm,
+    }
+
+
+def format_dose_response(dr: dict) -> str:
+    lines = ["", "  Dose-response (wrist height vs blood volume):"]
+    for h, v, k in zip(dr["heights_cm"], dr["dv_um"], dr["keys"]):
+        lines.append(f"    {k:<5} wrist {h:+6.1f} cm   dV·L {v:+8.2f} um")
+    lines.append(f"    Spearman rho  {dr['spearman_rho']:+.3f}   "
+                 "(-1 = perfectly monotonic: higher wrist, less blood)")
+    lines.append(f"    Slope         {dr['slope_um_per_cm']:+.3f} um/cm   "
+                 f"R^2 {dr['r2']:.3f}")
+    if not dr["extremes_significant"]:
+        lines.append("  => NO MEASURABLE RESPONSE. The extreme positions are not "
+                     "significant,")
+        lines.append("     so any ordering here is noise — four random values sort "
+                     "themselves")
+        lines.append("     correctly about 1 time in 24.")
+    elif dr["strictly_monotonic"]:
+        lines.append("  => MONOTONIC. Every rise in wrist height lowered blood volume.")
+        lines.append("     The signal tracks blood volume in rank order — the D26 target.")
+    elif dr["spearman_rho"] <= -0.8:
+        lines.append("  => MOSTLY MONOTONIC, with one out-of-order step. Check that "
+                     "phase for")
+        lines.append("     flagged motion before reading anything into it.")
+    else:
+        lines.append("  => NOT MONOTONIC. The signal does not track wrist height in "
+                     "order —")
+        lines.append("     either coupling changed mid-run or the response is "
+                     "drift-dominated.")
+    return "\n".join(lines)

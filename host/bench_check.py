@@ -570,7 +570,8 @@ def run_reanalyse(args) -> int:
 
 def run_provocation_mode(dev: Device, args, report: Report) -> int:
     """Arm-raise blood-volume response test (see host/provocation.py)."""
-    protocol = provocation.DEFAULT_PROTOCOL
+    protocol = (provocation.GRADED_PROTOCOL if args.graded
+                else provocation.DEFAULT_PROTOCOL)
     if args.phase_seconds:
         protocol = [(k, args.phase_seconds, lbl, rest)
                     for k, _d, lbl, rest in protocol]
@@ -611,6 +612,48 @@ def run_provocation_mode(dev: Device, args, report: Report) -> int:
     r = provocation.analyse(channels, phase_of, protocol, dev.meta.fs,
                             dark=dev.meta.dark, link=link)
     print(provocation.format_result(r, site=args.site))
+
+    # -- Graded: does blood volume track wrist height in order? -----------
+    dr = provocation.dose_response(r, arm_cm=args.arm_cm)
+    if dr is not None:
+        print(provocation.format_dose_response(dr))
+        detail = (f"Spearman {dr['spearman_rho']:+.2f}, "
+                  f"{dr['slope_um_per_cm']:+.2f} um/cm, R^2 {dr['r2']:.2f}")
+        if not dr["extremes_significant"]:
+            report.add(BAD, "volume monotonic with wrist height",
+                       detail + " — no significant response at the extremes")
+        elif dr["strictly_monotonic"]:
+            report.add(OK, "volume monotonic with wrist height", detail)
+        elif dr["spearman_rho"] <= -0.8:
+            report.add(WARN, "volume monotonic with wrist height",
+                       detail + " — one step out of order")
+        else:
+            report.add(BAD, "volume monotonic with wrist height", detail)
+
+    # -- Independent heart-rate check (rest1 is 30 s in the graded run) ---
+    if args.whoop_bpm is not None:
+        rest_mask = phase_of == 0
+        rest = {c: v[rest_mask] for c, v in channels.items()}
+        rest_s = rest_mask.sum() / dev.meta.fs
+        if rest_s < MIN_PULSE_SECONDS:
+            report.add(SKIP, "heart rate agrees with Whoop",
+                       f"first rest phase is {rest_s:.0f} s; needs "
+                       f">= {MIN_PULSE_SECONDS:.0f} s — use --graded")
+        else:
+            m = analyse_pulse(rest, dev.meta.fs).get("channels", {}).get("ir", {})
+            bpm = m.get("bpm")
+            if bpm is None:
+                report.add(WARN, "heart rate agrees with Whoop",
+                           f"Whoop {args.whoop_bpm:.0f} bpm, no IR pulse peak found")
+            else:
+                diff = bpm - args.whoop_bpm
+                # One FFT bin is ~6 bpm here, so agreement is judged in bins.
+                status = OK if abs(diff) <= 8 else WARN
+                harm = m.get("harmonics") or []
+                report.add(status, "heart rate agrees with Whoop",
+                           f"IR {bpm:.0f} bpm vs Whoop {args.whoop_bpm:.0f} bpm "
+                           f"({diff:+.0f}); harmonics "
+                           f"{'/'.join(f'{x}x' for x in harm) or 'none'}")
 
     verdict = r.verdict
     best = max((e["z"] for e in r.effects.values()), default=float("nan"))
@@ -688,6 +731,15 @@ def main() -> int:
     ap.add_argument("--site", default="wrist",
                     choices=("wrist", "forearm", "finger", "other"),
                     help="where the sensor is placed; recorded in the output")
+    ap.add_argument("--graded", action="store_true",
+                    help="graded dose-response: arm at +90/+45/-45/-90 deg "
+                         "with rests between (~3 min). Implies --provocation")
+    ap.add_argument("--arm-cm", type=float, default=60.0,
+                    help="shoulder-to-wrist length, for converting arm angle "
+                         "to wrist height")
+    ap.add_argument("--whoop-bpm", type=float, metavar="BPM",
+                    help="heart rate shown on your Whoop during the first rest "
+                         "phase, to cross-check the IR pulse")
     ap.add_argument("--phase-seconds", type=float,
                     help="override every provocation phase duration")
     ap.add_argument("--settle", type=float, default=0.0, metavar="SEC",
@@ -704,6 +756,8 @@ def main() -> int:
     ap.add_argument("--save", action="store_true",
                     help="keep the capture as a CSV in data/")
     args = ap.parse_args()
+    if args.graded:
+        args.provocation = True
 
     # --save implies a console log: the report carries the auto-tune steps,
     # warnings and verdicts that the CSV alone does not.

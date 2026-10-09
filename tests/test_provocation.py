@@ -262,3 +262,114 @@ def test_contradictory_verdict_explains_itself():
 def test_clean_run_still_responds():
     """The veto must not break the normal path."""
     assert analyse(600.0).verdict == "responds"
+
+
+# ---------------------------------------------------------------------------
+# Graded dose-response (D28)
+# ---------------------------------------------------------------------------
+
+def build_graded(dv_per_cm: float = -1.2, arm_cm: float = 60.0,
+                 shuffle: dict | None = None, noise: float = 40.0, seed: int = 9):
+    """Synthesise a graded run where counts track wrist height.
+
+    ``dv_per_cm`` < 0 means higher wrist -> less blood -> higher counts.
+    ``shuffle`` overrides the response at named phases, to break monotonicity.
+    """
+    rng = np.random.default_rng(seed)
+    proto = pv.GRADED_PROTOCOL
+    phases, levels = [], []
+    for i, (k, d, _l, rest) in enumerate(proto):
+        n = int(d * FS)
+        phases += [i] * n
+        if rest:
+            lvl = 0.0
+        else:
+            h = arm_cm * np.sin(np.radians(pv.PHASE_ANGLE_DEG[k]))
+            lvl = -dv_per_cm * h * 20.0          # counts per cm of wrist height
+            if shuffle and k in shuffle:
+                lvl = shuffle[k]
+        tau = np.arange(n) / FS
+        levels.append(lvl * (1 - np.exp(-tau / 4.0)))
+    ir = 109_000 + np.concatenate(levels) + rng.normal(0, noise, len(phases))
+    red = 131_000 + (ir - 109_000) * 0.8 + rng.normal(0, noise * 1.2, len(phases))
+    return {"ir": ir, "red": red}, np.asarray(phases), proto
+
+
+def test_graded_protocol_fits_the_stability_window():
+    """D26 targets 2-5 min; the graded run must sit inside it."""
+    total = sum(p[1] for p in pv.GRADED_PROTOCOL)
+    assert 120 <= total <= 300, total
+    # rest1 must support a pulse verdict (D22).
+    assert pv.GRADED_PROTOCOL[0][1] >= 30.0
+
+
+def test_graded_response_is_monotonic():
+    ch, ph, proto = build_graded()
+    r = pv.analyse(ch, ph, proto, FS)
+    dr = pv.dose_response(r)
+    assert dr is not None
+    assert dr["strictly_monotonic"], dr
+    assert dr["spearman_rho"] < -0.95
+    assert dr["slope_um_per_cm"] < 0, "higher wrist must mean LESS blood"
+
+
+def test_graded_signs_follow_the_angle_not_the_key():
+    """Every raised position must raise counts, every lowered one lower them."""
+    ch, ph, proto = build_graded()
+    r = pv.analyse(ch, ph, proto, FS)
+    for k, e in r.effects.items():
+        assert e["sign_ok"], f"{k}: {e}"
+    assert r.verdict == "responds"
+
+
+def test_out_of_order_step_is_not_called_monotonic():
+    """+45 reading MORE extreme than +90 breaks the dose-response."""
+    ch, ph, proto = build_graded(shuffle={"up45": 3000.0})
+    r = pv.analyse(ch, ph, proto, FS)
+    dr = pv.dose_response(r)
+    assert not dr["strictly_monotonic"]
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_flat_response_is_never_supported(seed):
+    """Regression: noise sorted itself into perfect order on seed 9.
+
+    With four points, pure noise lands strictly descending 1 time in 24. Rank
+    order alone therefore certified a dose-response on a run whose verdict was
+    'flat'. The magnitude gate must reject every one of these.
+    """
+    ch, ph, proto = build_graded(dv_per_cm=0.0, seed=seed)
+    r = pv.analyse(ch, ph, proto, FS)
+    dr = pv.dose_response(r)
+    assert not dr["supported"], dr
+    assert not dr["extremes_significant"]
+    assert "NO MEASURABLE RESPONSE" in pv.format_dose_response(dr)
+
+
+def test_real_graded_response_is_supported():
+    ch, ph, proto = build_graded()
+    dr = pv.dose_response(pv.analyse(ch, ph, proto, FS))
+    assert dr["supported"]
+
+
+def test_dose_response_needs_three_angles():
+    """The two-position protocol cannot support a dose-response claim."""
+    ch, ph, proto = build(600.0)
+    r = pv.analyse(ch, ph, proto, FS)
+    assert pv.dose_response(r) is None
+
+
+def test_graded_csv_roundtrip(tmp_path):
+    ch, ph, proto = build_graded()
+    keys = [p[0] for p in proto]
+    csv = tmp_path / "g.csv"
+    with csv.open("w") as fh:
+        fh.write("# fs=100.00\n# site=wrist\n")
+        fh.write(f"# phases={','.join(keys)}\n")
+        fh.write("idx,phase,ir,red\n")
+        for i in range(len(ph)):
+            fh.write(f"{i},{keys[ph[i]]},{ch['ir'][i]:.0f},{ch['red'][i]:.0f}\n")
+    channels, phase_of, protocol, meta = pv.load_csv(csv)
+    r = pv.analyse(channels, phase_of, protocol, meta["_fs"])
+    dr = pv.dose_response(r)
+    assert dr is not None and dr["strictly_monotonic"]

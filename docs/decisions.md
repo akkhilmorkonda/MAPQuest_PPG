@@ -34,6 +34,11 @@ experiment settles something.
 | [D22](#d22) | Pulse detection needs >= 30 s and an adaptive Welch window | accepted — bug fix |
 | [D23](#d23) | Non-blocking serial reads + watchdog | accepted — bug fix |
 | [D24](#d24) | Harmonic series as pulse evidence | accepted |
+| [D25](#d25) | Green evaluated as a third channel, declined | accepted |
+| [D26](#d26) | Scope: relative & monotonic accuracy, 2–5 min, detect-and-flag motion | accepted — **user's call** |
+| [D27](#d27) | Motion flagged by speed: sigma test plus an absolute floor | accepted |
+| [D28](#d28) | Graded dose-response as the validation, with a magnitude gate | accepted |
+| [D29](#d29) | Hardware captures are tracked in git | accepted — after data loss |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **resolved** |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **likely yes** |
@@ -539,6 +544,141 @@ harmonics now passes at ≥3 dB where a lone peak still needs ≥6 dB.
 234 bpm — the 2nd and 3rd harmonics — turning "is 78 bpm real?" from a judgement call into
 an automated check. Red on the same capture showed 126 bpm at 4.3 dB with no coherent
 series, correctly staying unconvincing.
+
+---
+
+<a id="d25"></a>
+## D25 — Green evaluated as a third channel, and declined
+
+**Status:** accepted · 2026-10-09
+
+**Question.** Could the unused green LED improve accuracy? This revisits D1, which ruled green
+out of the *measurement*; the question here was whether it earns a place as an auxiliary
+channel.
+
+**What it would have bought.** Not ΔV·L accuracy — the two-wavelength solve is fixed at
+660/880 nm and green has no coefficient. Two real but indirect benefits: motion
+discrimination (green at 0.3–0.8 mm vs IR at 1.5–2.5 mm, so a coupling change hits both
+while deep filling hits mostly IR), and an independent heart-rate channel to validate the
+optical front end against a reference.
+
+**The cost, from datasheet Table 14 (p.26).** Channel-to-channel timing at 411 µs is
+**1107 µs**. Three channels need 3,321 µs per sample, which does not fit the 2,500 µs period
+at 400 sps; two channels (2,214 µs) do, which is exactly why SpO₂ caps there. Adding green
+forces either 200 sps with 2× averaging, or 215 µs at 17-bit — **about 1.4× more noise**
+either way, moving the onset threshold from 0.627 to ~0.88 µm/s.
+
+**Decision.** Decline. Protect the measurement channels.
+
+**Why.** The benefits are diagnostic, not measurement accuracy, and both have adequate
+substitutes: motion can be flagged from transient speed (D27), and IR already shows a clean
+78 bpm with 2nd and 3rd harmonics for the heart-rate cross-check. Paying a permanent 1.4×
+noise penalty on the measurement for diagnostic convenience is the wrong trade.
+
+**Revisit if** motion artifacts prove unflaggable from IR/red alone, or if the noise budget
+later turns out to have slack we are not using.
+
+---
+
+<a id="d26"></a>
+## D26 — Scope: what "accurately measure blood volume change" means here
+
+**Status:** accepted · 2026-10-09 · **user's call**
+
+Four scoping decisions, taken together because each constrains the others.
+
+| Question | Decision |
+|---|---|
+| Accuracy target | **Relative and monotonic.** The signal must be proportional to true volume change and repeatable; absolute scale stays arbitrary. |
+| Validation | **Graded dose-response** (D28), plus a **Whoop** as an independent heart-rate reference for the optical front end. |
+| Stability window | **2–5 minutes** — one full return-to-flow protocol with margin. |
+| Motion | **Detect and flag** (D27). Flagged spans are excluded, never repaired. |
+
+**Why relative is enough.** Return-to-flow reads MAP off the *timing* of filling onset; a
+constant scale error on ΔV·L cancels. Absolute µm would need the optical path length
+(differential pathlength factor), which varies with tissue, wavelength and geometry, and a
+reference standard to calibrate against — a known-hard problem that nothing downstream
+currently needs.
+
+**Consequence.** ΔV·L remains volume × an unknown path length. Its units are honest only as
+*relative* micrometres. Any future claim of absolute volume reopens this decision.
+
+---
+
+<a id="d27"></a>
+## D27 — Motion is flagged by speed, with a sigma test and an absolute floor
+
+**Status:** accepted · 2026-10-09
+
+**Context.** With green declined (D25), motion has to be separated from blood volume without
+a depth reference.
+
+**Decision.** Flag a sample when its fractional rate of change is both **> 8 robust sigmas**
+*and* **> 2 % of DC per second**. Dilate each span by 0.75 s, merge spans closer than
+0.25 s. Exclude flagged samples from analysis; never interpolate across them — an onset
+sitting on invented data is worse than a gap.
+
+**Why speed works.** Motion and filling live on different timescales. On real captures a
+settled still run never exceeds **1.3 %/s**; genuine arm movement reaches **17 %/s** at the
+95th percentile and **187 %/s** at peak. Venous filling is a ramp over seconds.
+
+**Why both tests.** The first version used the sigma test alone and flagged a clean still
+capture: on a very quiet signal the robust sigma collapses and ordinary noise clears
+8 sigma. The absolute floor sits in the 1.3–17 %/s gap with room on both sides.
+
+**Verified on hardware.** Clean 60 s capture: 0 events. Provocation run: all 4 arm
+movements caught. A synthetic −0.1 %/s filling ramp passes through untouched.
+
+---
+
+<a id="d28"></a>
+## D28 — Graded dose-response is the validation, with a magnitude gate
+
+**Status:** accepted · 2026-10-09
+
+**Protocol.** Arm straight, rotated at the shoulder: +90°, +45°, −45°, −90°, with
+heart-level rests between (`--graded`, 170 s). Wrist height ≈ arm length × sin(angle), and
+hydrostatic pressure is ρgh — predictable from geometry alone. So blood volume should fall
+monotonically as the wrist rises. That is the strongest validation available with no
+reference instrument, and it tests exactly the D26 target.
+
+`rest1` is 30 s so the cardiac pulse can be resolved there (D22) and compared against the
+Whoop via `--whoop-bpm`.
+
+**Judged by rank, not by line.** Spearman correlation asks only whether higher wrist means
+less blood. Linearity (R²) is reported but not required — venous compliance is itself
+non-linear, so a curve is physiology, not error.
+
+**The magnitude gate — found by the tests.** Four noise values land in perfect descending
+order **1 time in 24**. A synthetic flat run (seed 9) produced ΔV·L of
+[0.04, 0.03, 0.01, 0.00] µm — Spearman −1.00, "strictly monotonic" — on a recording whose
+verdict was *flat*. Rank order alone would certify a dose-response ~4 % of the time with no
+response at all. So a dose-response is only **supported** when the extreme positions
+(±90°, the largest expected effect) are individually significant, z ≥ 3.
+
+**Expected sign comes from the angle, not the phase name**, so any protocol with angles in
+`PHASE_ANGLE_DEG` gets correct sign checks.
+
+---
+
+<a id="d29"></a>
+## D29 — Hardware captures are tracked in git
+
+**Status:** accepted · 2026-10-09 · after data loss
+
+**What happened.** `data/*.csv` was gitignored, and pre-commit cleanups ran
+`rm -f data/*.csv data/*.png`. That permanently deleted
+`provocation_wrist_20261006_133005` — the run that established the wrist as viable
+(z = 37.8). Its numbers survive in D18 and the conversation record, but the raw data cannot
+be re-analysed with D27's motion detection or D21's corrected verdict.
+
+**Decision.** Hardware captures are committed. Only regenerable artifacts stay ignored:
+`sim_*`, `synth_*`, scratch `_*`, and `results.csv`. A capture of a real arm at a real moment
+cannot be regenerated, and at ~180 kB per minute there is no cost argument against keeping
+it.
+
+**Rule going forward.** Never bulk-delete `data/`. Remove specific known-scratch files by
+name only.
 
 ---
 

@@ -47,6 +47,7 @@ experiment settles something.
 | [D35](#d35) | Volume noise floor: rolling envelope band with hysteresis | accepted — fixes D34 |
 | [D36](#d36) | Heart rate averaged over a sliding time window | accepted |
 | [D37](#d37) | Recordings carry session_t0 so events align with raw rows | accepted — bug fix |
+| [D38](#d38) | Cuff pressure read from a phone video of the gauge beside an on-screen clock | accepted — **user's proposal** |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **reopened** — real filling ~3× slower than simulated |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **yes on first cuff run, but margin ~2×, not 22×** |
@@ -940,6 +941,40 @@ started); raw rows count from zero in each recording. The first cuff run had to 
 by inferring the offset from the `_vol` log, to ±0.1 s. The raw header now records
 `session_t0`, so event time *T* falls on raw row (*T* − `session_t0`) × fs. Also stops
 `dark_*` being written twice when the firmware header already carries it.
+
+---
+
+<a id="d38"></a>
+## D38 — Cuff pressure from a phone video of the gauge, beside an on-screen clock
+
+**Status:** accepted · 2026-10-09 · user's proposal
+
+**Problem.** Until the HX710B arrives there is no pressure channel, so onset can be timed but
+not converted to mmHg.
+
+**Considered first:** Inflate / Hold / Deflate / Release buttons plus a box for typing gauge
+readings, interpolating a steady deflation between them. Partly built, then reverted in
+favour of the user's alternative — it demanded keypresses mid-procedure, and still assumed
+a hand-bled deflation was linear.
+
+**Decision.** Film the analogue gauge and the monitor together on a phone. The monitor now
+shows a large **session clock** in the toolbar (and ● REC while recording). Every video frame
+therefore carries its own (session time, gauge reading) pair — no clock synchronisation
+between phone and PC, because both readings are in the same image. The clock uses the same
+time base as event lines, the `_hr`/`_vol` logs and `session_t0` (D37).
+
+**Processing.** Frames sampled with OpenCV, the gauge and clock regions cropped and tiled
+into contact sheets, read, and saved as `data/<recording>_gauge.csv` (time, mmHg). That
+gives the **real** deflation curve, so the cuff pressure at onset comes from the actual
+trace rather than an assumed rate. Phases — inflate, hold, deflate — are visible in the
+gauge trace, so no buttons are needed.
+
+**Expected accuracy.** Limited by reading an analogue dial off video: about ±2–5 mmHg
+depending on angle, glare and resolution — around the ±5 mmHg per-person repeatability SPEC
+M6 asks for, and good enough for bench trials. The HX710B remains the proper answer.
+
+**Storage.** Videos are large and stay out of git (`data/video/`, `*.mp4`, `*.mov`). The
+extracted `_gauge.csv` readings are tracked, as hardware data (D29).
 
 ---
 

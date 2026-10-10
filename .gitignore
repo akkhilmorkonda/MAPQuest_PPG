@@ -21,3 +21,12 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+
+# Phone videos of the cuff gauge are large; keep them out of git. The
+# readings extracted from them (data/*_gauge.csv) ARE tracked (D29).
+data/video/*
+!data/video/.keep
+*.mp4
+*.mov
+*.MOV
+*.MP4

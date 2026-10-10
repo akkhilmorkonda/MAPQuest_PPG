@@ -3,3 +3,5 @@ numpy>=1.24
 scipy>=1.10
 matplotlib>=3.7
 pytest>=7.0
+# optional: reading cuff-gauge videos (D38)
+opencv-python-headless>=4.8

@@ -959,6 +959,15 @@ class TkShell:
         sel.bind("<<ComboboxSelected>>",
                  lambda _e: core.set_hr_window(float(self.hr_window.get().split()[0])))
 
+        # Session clock, large enough to read off a phone video alongside the
+        # cuff gauge (D38). Same time base as events, the _hr/_vol logs and
+        # session_t0, so a frame showing both gives a (time, mmHg) pair with
+        # no clock synchronisation needed.
+        self.l_rec = tk.Label(bar, text="", font=("Segoe UI", 16, "bold"), fg="#c43b2f")
+        self.l_rec.pack(side="right", padx=(4, 10))
+        self.l_clock = tk.Label(bar, text="t = --", font=("Consolas", 26, "bold"))
+        self.l_clock.pack(side="right", padx=8)
+
         self.nb = ttk.Notebook(root)
         self.nb.pack(side="top", fill="both", expand=True)
         f_hr, f_vol = ttk.Frame(self.nb), ttk.Frame(self.nb)
@@ -1001,6 +1010,9 @@ class TkShell:
                     and not self.core.recording)
         self.b_tune.state(["!disabled"] if can_tune else ["disabled"])
         self.l_status.config(text=self.core.status)
+        vol = self.core.vol
+        self.l_clock.config(text="t = --" if vol is None else f"t = {vol.t_now:7.1f} s")
+        self.l_rec.config(text="● REC" if self.core.recording else "")
         self.root.after(50, self._loop)
 
     def run(self) -> None:

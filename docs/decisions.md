@@ -48,11 +48,12 @@ experiment settles something.
 | [D36](#d36) | Heart rate averaged over a sliding time window | accepted |
 | [D37](#d37) | Recordings carry session_t0 so events align with raw rows | accepted — bug fix |
 | [D38](#d38) | Cuff pressure read from a phone video of the gauge beside an on-screen clock | accepted — **user's proposal** |
+| [D39](#d39) | Onset intersects the ramp with a sloped occlusion baseline; threshold needs net filling | accepted — resolves O5 |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **reopened** — real filling ~3× slower than simulated |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **yes on first cuff run, but margin ~2×, not 22×** |
 | [O4](#o4) | Red is the contact-sensitive channel — two-wavelength vs IR-only | **open** |
-| [O5](#o5) | Blood volume is not flat under occlusion — onset baseline must be sloped | **open** |
+| [O5](#o5) | Blood volume is not flat under occlusion — onset baseline must be sloped | **resolved by D39** |
 
 ---
 
@@ -998,6 +999,79 @@ extracted `_gauge.csv` readings are tracked, as hardware data (D29).
 
 ---
 
+<a id="d39"></a>
+## D39 — Sloped occlusion baseline for the onset intersect; onset needs net filling
+
+**Status:** accepted · 2026-10-09 · resolves O5 · supersedes the flat-level part of D10
+
+**Problem (O5).** D10 extrapolates the filling ramp back to the *mean level* of the reference
+window, which assumes blood volume is frozen under occlusion. On both real cuff trials it
+drained instead. A rising ramp meets a level the falling baseline has already left behind
+**late**, so the pressure reads **low**, and by an amount that depends on how far before
+onset the reference window sits.
+
+**Decision.**
+
+1. **Sloped baseline (default).** Fit a line to `dv_lp` over the 10 s that end 2 s before the
+   threshold crossing (`baseline_s`, `baseline_guard_s`), never earlier than the reference
+   window. Onset is where that line meets the ramp line. The 2 s gap keeps the fit out of
+   the corner the zero-phase low-pass smears backwards. If there is under 3 s of room, the
+   reference window is fitted instead. On a flat baseline the fitted slope is about 0 and
+   the result matches the flat method (within 0.5 mmHg, tested).
+2. **Threshold floor (`floor_mu0`).** threshold = max(μ0, 0) + kσ0. Under occlusion nothing
+   can make volume rise, but a drain that slows down makes dV/dt climb towards zero by
+   itself. With μ0 taken where the drain is steepest (the SPEC default window, right after
+   inflation), the literal μ0 + kσ0 is crossed by that slowing alone. On synthetic data
+   that gave a false onset 56 mmHg early. The floor changes nothing when μ0 ≥ 0. It only
+   seeds the ramp fit, and the intersection refines the time backwards, so a later seed
+   costs no accuracy.
+
+Both baselines are always computed (`onset_time_sloped`, `onset_time_flat`), and
+`analyze.py` prints the one not selected. `--baseline flat` restores D10.
+
+**Why the sloped fit is robust to how the drain behaves.** The onset is the corner where
+the occlusion trend gives way to the ramp. Whether the drain continues through onset or
+stops there changes only the ramp's slope, not where the two segments meet, so line–line
+intersection finds the corner either way. What it does need is a trend that is close to
+straight over the last few seconds before onset. A drain that is slowing down curves, and
+the short extrapolation then adds a small early bias, 0.2–0.3 mmHg in the synthetic case
+below.
+
+**Validation, synthetic** (`synth.py --drain-rate --drain-tau`, new). Error vs ground truth
+in mmHg:
+
+| Case | Sloped | Flat |
+|---|---|---|
+| no drain, fill 3 µm/s | −0.1 | −0.2 |
+| constant drain −0.29 µm/s, fill 1.1 | −0.1 | −22.6 |
+| slowing drain (−1.4 µm/s, τ 18 s, the 20:35 shape), fill 1.1 | +0.3 | −26.7 |
+| same, MAP 70 | +0.2 | −27.7 |
+| slowing drain, no filling | no onset ✓ | no onset ✓ |
+
+The 2 s gap was chosen from a sweep of 1, 2 and 3 s. All were within ±0.5 mmHg; 3 s grows
+the slowing-drain bias to +0.5.
+
+**Validation, real.** Each trial was run with two reference windows, one late in the
+occlusion and one right after inflation, where SPEC puts it:
+
+| Trial | Reference window | Sloped | Flat |
+|---|---|---|---|
+| 20:35 | 97–102 s | 108.18 s → **109.4 mmHg** | 110.19 s → 98.3 mmHg |
+| 20:35 | 77–80 s | 108.03 s → **109.8 mmHg** | 118.02 s → **56.8 mmHg** |
+| 19:40 (no pressure) | 189–194 s | 197.91 s | 198.75 s |
+| 19:40 | 173–176 s | 197.63 s | 204.55 s |
+
+The sloped result moves by 0.4 mmHg between windows; the flat one by 42 mmHg. On the 20:35
+trial, first regular beats returned at 108.8 s (106 mmHg), just after the sloped onset as
+expected. On the 19:40 trial the pulse returned at 198.6 s.
+
+**Known gap, not caused by this change.** With the synthetic HeartMate-style artificial
+pulse switched on and a realistic 1.1 µm/s fill, no onset is found with either baseline.
+The ripple left in dV/dt (σ0 ≈ 0.55 µm/s) puts the threshold above the ramp. The existing
+pulses test passes only because it fills at 3 µm/s. Logged under O2.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 
@@ -1075,6 +1149,13 @@ conservative relative to real hardware, not optimistic. No re-anchoring needed.
 synthetic SPEC §6 tests therefore assume a signal ~3× stronger than reality — the same
 false-confidence problem, now from the signal side. Re-anchor `fill_rate` near 1 µm/s and
 re-check the ±1 mmHg criterion before trusting those tests.
+
+**Found while validating D39 (2026-10-09).** With `--artificial-pulse` and a 1.1 µm/s fill,
+the pipeline finds no onset at all. The 0.5 Hz ripple survives the 2 s Savitzky–Golay
+derivative (σ0 ≈ 0.55 µm/s with `ap_frac` 0.004), which lifts the threshold above the ramp.
+At 3 µm/s the test passes. Before re-anchoring `fill_rate`, decide whether the synthetic
+pump ripple's amplitude is realistic. If it is, the SPEC §5.1 claim that the 2 s window
+cancels the HeartMate 3 pulse needs revisiting.
 
 **Keep in view:** this holds only for *settled* captures. A run without `--settle` had a
 threshold of 7.65 µm/s, above the simulator's ramp. The settling discipline is what makes
@@ -1167,7 +1248,7 @@ occlusion where desaturation actually occurs. Not decided here.
 <a id="o5"></a>
 ## O5 — Blood volume is not flat under occlusion; the onset baseline must be sloped
 
-**Status:** **open** · raised 2026-10-09
+**Status:** **RESOLVED 2026-10-09 by [D39](#d39)** · raised 2026-10-09
 
 **SPEC §1 assumes** "cuff inflates above arterial pressure → forearm blood volume frozen → PPG
 DC flat". **On the first real cuff run it was not**: with the pulse gone (cuff above
@@ -1189,7 +1270,7 @@ opposite sign, as the geometry requires.) SPEC §8 holds the cuff for 10 s befor
 that takes 20–30 s to reach systolic, so the bias could be several seconds — several mmHg. Here the onset was found by intersecting
 two *fitted lines* (the pre-onset trend and the ramp), which handles the slope.
 
-**Proposed** (not yet implemented): fit a line to the baseline immediately preceding the
+**Proposed** (implemented as D39): fit a line to the baseline immediately preceding the
 threshold crossing, not a level from a fixed early window, and intersect line with line.
 Validate on synthetic data with a declining occlusion baseline, then on this recording.
 

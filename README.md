@@ -202,7 +202,10 @@ ramp's corner backwards in time — so the derivative starts climbing before fil
 That misses the spec's own ±1 mmHg acceptance criterion. The `intersect` method fits the
 established ramp and extrapolates back to the occlusion baseline, which is unaffected by corner
 smearing; it lands within ±0.2 mmHg on synthetic data. Both are always computed and both are
-printed. Pass `--onset-method threshold` for literal spec behaviour.
+printed. Pass `--onset-method threshold` for literal spec behaviour. The ramp is extrapolated back to a
+line fitted to the occlusion trend (`--baseline sloped`, default), because on a real arm blood
+volume keeps draining while the cuff is up. Extrapolating to a flat level instead read 11 mmHg
+low on the first trial with pressure, and 53 mmHg low with an earlier reference window (D39).
 
 **Healthy subjects read near systolic, not MAP.** Teammates have a pulse, so filling begins when
 the cuff drops below *systolic*. Bench trials validate the signal chain and detection, not MAP

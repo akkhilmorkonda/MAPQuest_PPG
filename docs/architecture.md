@@ -4,7 +4,7 @@ Living document. Updated as the system changes; see the status table at the bott
 is verified on hardware versus only on synthetic data. The reasoning behind each choice
 lives in [`decisions.md`](decisions.md).
 
-Last updated: 2026-10-09 — first real cuff occlusion (O3, O5); earlier: rolling noise band for blood volume (D35) and sliding-window heart rate (D36), after the first live run of the monitor. Earlier the same day, after the first graded run — added coupling-slip detection (D31),
+Last updated: 2026-10-09 — sloped onset baseline (D39, resolves O5); first cuff trial with mmHg from the gauge video (D38); first real cuff occlusion (O3, O5); earlier: rolling noise band for blood volume (D35) and sliding-window heart rate (D36), after the first live run of the monitor. Earlier the same day, after the first graded run — added coupling-slip detection (D31),
 demoted harmonics to informational (D30), and opened O4 (red is contact-sensitive).
 
 ---
@@ -140,8 +140,8 @@ flowchart TD
     LP["<b>4. Low-pass</b><br/>Butterworth 0.3 Hz, 2nd order<br/>zero-phase (filtfilt)"]
     D1["<b>5. Derivative</b><br/>Savitzky-Golay, 2.0 s window<br/>one HeartMate-3 pulse period"]
     NOISE["<b>6. Noise floor</b><br/>mu0, sigma0 over the<br/>reference window"]
-    ONSET["<b>7. Onset</b><br/>sustained excursion above<br/>mu0 + 3·sigma0"]
-    REFINE["<b>7b. Ramp intersection</b><br/>fit the established ramp,<br/>extrapolate to baseline"]
+    ONSET["<b>7. Onset seed</b><br/>sustained excursion above<br/>max(mu0, 0) + 3·sigma0 (D39)"]
+    REFINE["<b>7b. Ramp intersection</b><br/>ramp line meets the<br/>sloped occlusion trend (D39)"]
     MAP["<b>8. Result</b><br/>cuff pressure at onset"]
 
     RAW --> DARK --> OD --> DV --> LP --> D1
@@ -172,7 +172,11 @@ flowchart TD
 **Orange** = deliberate deviation from SPEC §5.1 (D10). The spec's threshold-crossing onset
 reads ~2.6 mmHg high, because the 0.3 Hz zero-phase filter and the 2 s Savitzky–Golay window
 are both symmetric kernels and smear the ramp corner backwards in time. `--onset-method
-intersect` fits the established ramp and extrapolates back, landing within ±0.2 mmHg.
+intersect` fits the established ramp and extrapolates back, landing within ±0.2 mmHg. Since D39
+it meets a line fitted to the occlusion trend, not a flat level, because real blood volume drains
+under occlusion (O5). On the 20:35 trial the flat level read 11–53 mmHg low depending on the
+reference window; the sloped one is stable to 0.4 mmHg. The threshold is floored at
+0 + 3σ0 so that a slowing drain cannot trigger it.
 
 **Red dashed** = not yet built or not yet fitted. The motion mask exists and is used by the
 provocation analysis, but onset detection does not consult it yet — so a motion transient
@@ -392,7 +396,7 @@ flowchart LR
 | Slip detection | **working on hardware** | finds the one real slip; none on the clean capture |
 | Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
-| **Return of flow, real cuff** | **detected, with mmHg (provisional)** | 20:35 trial: refill onset 110 mmHg (sloped baseline), pulse back 106 mmHg; flat-baseline D10 gives 99 (O5) |
+| **Return of flow, real cuff** | **detected, with mmHg (provisional)** | 20:35 trial: pipeline onset 109.4 mmHg (sloped baseline, D39), pulse back 106 mmHg; the old flat baseline gave 57–98 depending on window |
 | Pressure calibration | never run | no HX710B |
 | Cuff pressure from video (D38) | **works** | 3,804 frames read; zero held to 1.4 mmHg across the trial; gauge span unverified |
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |

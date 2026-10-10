@@ -51,13 +51,16 @@ SYNTH_DEFAULTS = dict(
 
 def make(**overrides):
     """Build a synthetic recording in memory and run the pipeline on it."""
-    args = argparse.Namespace(**{**SYNTH_DEFAULTS, **overrides})
+    args = argparse.Namespace(**{**SYNTH_DEFAULTS,
+                                 **{k: v for k, v in overrides.items() if not k.startswith("_")}})
     rng = np.random.default_rng(args.seed)
     t, ir, red, p_mmhg, _p_idx, _p_raw, dv_true = synth.build(args, rng)
 
     cfg = PipelineConfig(
         ir_only=overrides.get("_ir_only", False),
         onset_method=overrides.get("_onset_method", "intersect"),
+        baseline=overrides.get("_baseline", "sloped"),
+        floor_mu0=overrides.get("_floor_mu0", True),
     )
     d = derive(
         {"ir": ir.astype(float), "red": red.astype(float)},
@@ -196,6 +199,79 @@ def test_threshold_method_is_biased_early():
     int_err = onset_mmhg(d, t, p) - args.map
     assert thr_err > 1.0, f"expected threshold method to read high, got {thr_err:+.2f}"
     assert abs(int_err) < abs(thr_err), "intersect should be the more accurate of the two"
+
+
+# ---------------------------------------------------------------------------
+# O5 / D39: blood volume drains under occlusion
+# ---------------------------------------------------------------------------
+
+# Shape of the drain on the 2026-10-09 20:35 trial: ~-1.4 um/s just after
+# inflation, slowing with a time constant of ~18 s. Fill rate ~1.1 um/s (O2).
+SLOWING_DRAIN = dict(drain_rate=-1.4, drain_tau=18.0, fill_rate=1.1)
+
+
+def test_sloped_baseline_with_constant_drain():
+    d, t, p, _, args = make(drain_rate=-0.29, fill_rate=1.1)
+    err = onset_mmhg(d, t, p) - args.map
+    assert abs(err) <= 1.0, f"sloped-baseline error {err:+.2f} mmHg under a constant drain"
+
+
+@pytest.mark.parametrize("map_true", [70.0, 90.0, 105.0])
+def test_sloped_baseline_with_slowing_drain(map_true):
+    """A curving drain: the line fitted just before onset is still close enough."""
+    d, t, p, _, args = make(map=map_true, **SLOWING_DRAIN)
+    err = onset_mmhg(d, t, p) - map_true
+    assert abs(err) <= 1.0, f"MAP {map_true}: sloped-baseline error {err:+.2f} mmHg"
+
+
+def test_flat_baseline_reads_low_under_drain():
+    """Characterises the bias D39 removes: a rising ramp meets a level left
+    behind by a falling baseline late, so the pressure reads low."""
+    d, t, p, _, args = make(_baseline="flat", **SLOWING_DRAIN)
+    err = onset_mmhg(d, t, p) - args.map
+    assert err < -5.0, f"expected the flat baseline to read well low, got {err:+.2f} mmHg"
+    assert d.onset_time_flat == d.onset_time
+    assert d.onset_time_sloped is not None
+    sloped_err = float(np.interp(d.onset_time_sloped, t, p)) - args.map
+    assert abs(sloped_err) < abs(err)
+
+
+def test_sloped_matches_flat_without_drain():
+    """No drain: the fitted slope is ~0 and both baselines agree."""
+    d, t, p, _, _ = make()
+    a = float(np.interp(d.onset_time_sloped, t, p))
+    b = float(np.interp(d.onset_time_flat, t, p))
+    assert abs(a - b) < 0.5, f"sloped {a:.2f} vs flat {b:.2f} mmHg on a flat baseline"
+    assert abs(d.baseline_fit[0]) < 0.05
+
+
+def test_no_false_onset_from_slowing_drain():
+    """A drain that slows makes dV/dt rise towards zero; that is not filling."""
+    d, *_ = make(no_filling=True, cardiac=True, drain_rate=-1.4, drain_tau=18.0)
+    assert d.onset_time is None, f"false onset at t={d.onset_time} from a slowing drain"
+
+
+def test_unfloored_threshold_fires_on_slowing_drain():
+    """Why floor_mu0 exists: with mu0 from the steep start of the drain, the
+    literal SPEC threshold is crossed by the drain decelerating -- long before
+    any blood arrives."""
+    d, t, p, _, args = make(_floor_mu0=False, cardiac=True, **SLOWING_DRAIN)
+    assert d.threshold_time is not None
+    early = float(np.interp(d.threshold_time, t, p)) - args.map
+    assert early > 10.0, f"expected a crossing well before onset, got {early:+.2f} mmHg"
+
+
+def test_fit_baseline_recovers_known_line():
+    from mapquest.pipeline import fit_baseline
+    fs = 100.0
+    t = np.arange(0, 60, 1 / fs)
+    y = 5.0 - 0.3 * t
+    (slope, intercept), (t0, t1) = fit_baseline(y, t, fs, slice(500, 800), 4000, 10.0, 2.0)
+    assert np.isclose(slope, -0.3) and np.isclose(intercept, 5.0)
+    assert np.isclose(t1, 38.0, atol=0.02) and np.isclose(t0, 28.0, atol=0.02)
+    # Too little room before the crossing: falls back to the reference window.
+    (_, _), (t0, t1) = fit_baseline(y, t, fs, slice(500, 800), 900, 10.0, 2.0)
+    assert np.isclose(t0, 5.0) and np.isclose(t1, 7.99)
 
 
 def test_reference_window_defaults_before_deflation():

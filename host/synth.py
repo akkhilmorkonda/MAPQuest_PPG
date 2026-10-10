@@ -69,6 +69,21 @@ def build(args, rng: np.random.Generator):
     if args.constant_volume:
         dv_true = np.zeros(n)
 
+    # -- Optional drain under occlusion (O5) -------------------------------
+    # Both real cuff trials showed tissue blood volume FALLING while the cuff
+    # was above systolic, not frozen as the model above assumes. Model it as a
+    # drain starting when the cuff goes up (t=0), at `drain_rate` um/s
+    # (negative), constant or slowing with time constant `drain_tau`. It runs
+    # through onset, so filling adds to it -- the onset is still the corner.
+    # 2026-10-09 20:35 trial: ~-1.4 um/s just after inflation, -0.29 at onset.
+    drain_rate = getattr(args, "drain_rate", 0.0)
+    drain_tau = getattr(args, "drain_tau", 0.0)
+    if drain_rate and not args.constant_volume:
+        if drain_tau > 0:
+            dv_true = dv_true + drain_rate * drain_tau * (1.0 - np.exp(-t / drain_tau))
+        else:
+            dv_true = dv_true + drain_rate * t
+
     # -- Invert the two-wavelength relation to get per-channel delta-OD ----
     # The analysis computes dV = 229*dOD_red + 1555*dOD_ir. We need a split
     # that reproduces dv_true. Healthy oxygenated blood puts most of the
@@ -157,6 +172,10 @@ def main() -> int:
     ap.add_argument("--no-filling", action="store_true",
                     help="never fill; the pipeline must report no onset")
     ap.add_argument("--constant-volume", action="store_true")
+    ap.add_argument("--drain-rate", type=float, default=0.0,
+                    help="blood-volume drain under occlusion, um/s (negative), O5")
+    ap.add_argument("--drain-tau", type=float, default=0.0,
+                    help="drain slows with this time constant, s (0 = constant)")
     ap.add_argument("--desaturate", action="store_true",
                     help="trapped blood desaturates 98%% -> --desat-to")
     ap.add_argument("--desat-to", type=float, default=0.70,

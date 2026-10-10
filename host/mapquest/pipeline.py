@@ -1,10 +1,11 @@
 """Return-to-flow analysis pipeline (docs/SPEC.md section 5).
 
 The measurement: an upper-arm cuff is inflated above arterial pressure, then
-bled down at ~2 mmHg/s. While the cuff is above systolic the forearm's blood
-volume is frozen. Once it falls below arterial pressure but stays above venous
-pressure, blood flows in and cannot drain, so the forearm fills, reflected
-light falls, and delta-OD rises. MAP is read off as the cuff pressure at the
+bled down at ~2 mmHg/s. SPEC assumes that while the cuff is above systolic the
+forearm's blood volume is frozen; on a real arm it drains slowly instead (O5),
+which is why onset uses a sloped baseline (D39). Once the cuff falls below
+arterial pressure but stays above venous pressure, blood flows in and cannot
+drain, so the forearm fills, reflected light falls, and delta-OD rises. MAP is read off as the cuff pressure at the
 onset of sustained filling.
 
 The signal of interest is therefore the SLOW DC trend, not the pulsatile
@@ -16,7 +17,8 @@ waveform. Every stage is retained so the chain can be inspected end to end:
       -> delta V*L       two-wavelength Beer-Lambert solve, in micrometres
       -> low-pass        0.3 Hz Butterworth, zero-phase
       -> dV/dt           Savitzky-Golay, 2.0 s window
-      -> onset           first sustained excursion above mu0 + k*sigma0
+      -> onset seed      first sustained excursion above max(mu0, 0) + k*sigma0
+      -> onset           filling ramp intersected with the sloped occlusion trend
 
 Two choices worth knowing about:
 
@@ -108,6 +110,37 @@ class PipelineConfig:
     fit_s: float = 5.0
     """Length of the established-ramp segment fitted by the intersect method."""
 
+    baseline: str = "sloped"
+    """What the intersect method extrapolates the ramp back to (D39, O5).
+
+    ``"flat"`` is D10 as first built: the mean level of the reference window.
+    That assumes blood volume is frozen under occlusion. On both real cuff
+    trials it was not -- it fell steadily -- and a rising ramp meets a level
+    left behind by a falling baseline LATE, so the pressure reads LOW: 11 mmHg
+    on the 2026-10-09 20:35 trial.
+
+    ``"sloped"`` fits a line to the occlusion trend just before the threshold
+    crossing and intersects line with line. On a flat baseline the fitted
+    slope is ~0 and it reduces to ``"flat"``; on a sloped one it finds the
+    corner wherever the reference window sits."""
+
+    baseline_s: float = 10.0
+    """Length of the pre-onset trend fitted by the sloped baseline."""
+
+    baseline_guard_s: float = 2.0
+    """Gap between the end of the trend fit and the threshold crossing. The
+    zero-phase low-pass smears the ramp's corner backwards in time; fitting
+    into that smear would tilt the trend up and pull the onset late."""
+
+    floor_mu0: bool = True
+    """Onset requires NET filling: threshold = max(mu0, 0) + k*sigma0.
+
+    Under occlusion nothing can make volume rise, but a drain that is slowing
+    down makes dV/dt rise towards zero by itself. With mu0 taken where the
+    drain is steepest (the SPEC default window, right after inflation), the
+    literal mu0 + k*sigma0 is crossed by that deceleration alone -- a false
+    onset. Flooring mu0 at zero changes nothing when mu0 >= 0."""
+
     ir_only: bool = False
     """Use the single-wavelength fallback instead of the two-wavelength solve."""
 
@@ -141,6 +174,15 @@ class Derivation:
     ramp_slope: float = float("nan")
     ramp_fit: tuple[float, float] | None = None
     """(slope, intercept) of the fitted ramp in dv_lp, for plotting."""
+    baseline_fit: tuple[float, float] | None = None
+    """(slope, intercept) of the baseline the ramp was intersected with. Slope
+    0 and the reference-window mean for ``baseline="flat"``."""
+    baseline_span: tuple[float, float] | None = None
+    """(start_s, end_s) of the data the sloped baseline was fitted to."""
+    onset_time_flat: float | None = None
+    onset_time_sloped: float | None = None
+    """Both baselines are always computed, so the difference stays visible.
+    `onset_time_intersect` is whichever config.baseline selects."""
 
     @property
     def onset_time(self) -> float | None:
@@ -226,6 +268,33 @@ def find_onset(
     return int(starts[0]), threshold
 
 
+def fit_baseline(
+    dv_lp: np.ndarray,
+    t: np.ndarray,
+    fs: float,
+    ref_slice: slice,
+    crossing_index: int,
+    baseline_s: float,
+    guard_s: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Line through the occlusion trend just before the threshold crossing.
+
+    The window ends ``guard_s`` before the crossing, to stay clear of the
+    corner the low-pass smears backwards, and runs ``baseline_s`` back from
+    there -- but never earlier than the reference window, the earliest data
+    known to be under occlusion. If that leaves under 3 s, the reference window
+    itself is fitted instead.
+
+    Returns ``((slope, intercept), (start_s, end_s))``.
+    """
+    end = crossing_index - int(round(guard_s * fs))
+    start = max(ref_slice.start, end - int(round(baseline_s * fs)))
+    if end - start < int(3.0 * fs):
+        start, end = ref_slice.start, ref_slice.stop
+    slope, intercept = np.polyfit(t[start:end], dv_lp[start:end], 1)
+    return (float(slope), float(intercept)), (float(t[start]), float(t[end - 1]))
+
+
 def ramp_intersection(
     dv_lp: np.ndarray,
     t: np.ndarray,
@@ -234,22 +303,26 @@ def ramp_intersection(
     crossing_index: int,
     hold_s: float,
     fit_s: float,
+    baseline: tuple[float, float] | None = None,
 ) -> tuple[float | None, float, tuple[float, float] | None]:
     """Extrapolate the established filling ramp back to the baseline.
 
     The threshold crossing tells us roughly where filling began; this refines
     it. We fit a straight line to the part of the ramp that is unambiguously
     established -- starting one hold period after the crossing, so the fit
-    never includes the smeared corner -- and intersect that line with the mean
-    baseline level from the occlusion reference window.
+    never includes the smeared corner -- and intersect that line with the
+    baseline: ``(slope, intercept)`` of the occlusion trend, or by default the
+    flat mean level of the occlusion reference window (D10).
 
     Corner smearing shifts WHERE the signal starts to bend, but not the slope
-    or offset of the straight part that follows, so the intersection is
+    or offset of the straight parts either side of it, so the intersection is
     unbiased by the filtering.
 
     Returns ``(onset_time, slope, (slope, intercept))``.
     """
-    baseline = float(np.mean(dv_lp[ref_slice]))
+    if baseline is None:
+        baseline = (0.0, float(np.mean(dv_lp[ref_slice])))
+    b_slope, b_intercept = baseline
 
     i0 = crossing_index + int(round(hold_s * fs))
     i1 = min(i0 + int(round(fit_s * fs)), len(dv_lp))
@@ -261,10 +334,10 @@ def ramp_intersection(
             return None, float("nan"), None
 
     slope, intercept = np.polyfit(t[i0:i1], dv_lp[i0:i1], 1)
-    if slope <= 0:
+    if slope <= max(b_slope, 0.0):
         return None, float(slope), (float(slope), float(intercept))
 
-    onset_t = (baseline - intercept) / slope
+    onset_t = (b_intercept - intercept) / (slope - b_slope)
 
     # The extrapolation must land inside the record and at or after the
     # reference window; otherwise the ramp fit was not describing real filling.
@@ -359,18 +432,34 @@ def derive(
 
     # -- 8. Onset (SPEC 5.1 steps 10-11) -----------------------------------
     search_from = int(np.searchsorted(t, deflation_start_s)) if deflation_start_s is not None else i1
+    mu_eff = max(mu0, 0.0) if cfg.floor_mu0 else mu0
     threshold_index, threshold = find_onset(
-        ddv, fs, search_from, mu0, sigma0, cfg.k_sigma, cfg.hold_s
+        ddv, fs, search_from, mu_eff, sigma0, cfg.k_sigma, cfg.hold_s
     )
 
     # -- 9. Bias-free refinement (see PipelineConfig.onset_method) ---------
+    # Both baselines are computed; config.baseline picks the reported one.
     onset_t_intersect: float | None = None
+    onset_flat = onset_sloped = None
     slope = float("nan")
-    ramp_fit = None
+    ramp_fit = base_fit = base_span = None
     if threshold_index is not None:
-        onset_t_intersect, slope, ramp_fit = ramp_intersection(
-            dv_lp, t, fs, ref, threshold_index, cfg.hold_s, cfg.fit_s
+        flat = (0.0, float(np.mean(dv_lp[ref])))
+        sloped, base_span = fit_baseline(
+            dv_lp, t, fs, ref, threshold_index, cfg.baseline_s, cfg.baseline_guard_s
         )
+        onset_flat, slope, ramp_fit = ramp_intersection(
+            dv_lp, t, fs, ref, threshold_index, cfg.hold_s, cfg.fit_s, flat
+        )
+        onset_sloped, _, _ = ramp_intersection(
+            dv_lp, t, fs, ref, threshold_index, cfg.hold_s, cfg.fit_s, sloped
+        )
+        if cfg.baseline == "flat":
+            onset_t_intersect, base_fit = onset_flat, flat
+        elif cfg.baseline == "sloped":
+            onset_t_intersect, base_fit = onset_sloped, sloped
+        else:
+            raise ValueError(f"unknown baseline {cfg.baseline!r}")
 
     return Derivation(
         fs=fs, t=t, raw=raw, dark_sub=dark_sub, d_od=d_od,
@@ -380,6 +469,8 @@ def derive(
         threshold_index=threshold_index,
         onset_time_intersect=onset_t_intersect,
         ramp_slope=slope, ramp_fit=ramp_fit,
+        baseline_fit=base_fit, baseline_span=base_span,
+        onset_time_flat=onset_flat, onset_time_sloped=onset_sloped,
     )
 
 

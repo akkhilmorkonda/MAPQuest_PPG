@@ -90,9 +90,26 @@ def plot_result(d, pressure_mmhg, meta, title, all_stages: bool,
         ax.axvspan(d.t[d.ref_slice.start], d.t[d.ref_slice.stop - 1],
                    color="#888", alpha=0.12, lw=0)
 
+        if key == "dv_lp" and d.ramp_fit is not None and d.baseline_fit is not None:
+            # The two lines whose intersection is the onset.
+            bs, bi = d.baseline_fit
+            lo = d.baseline_span[0] if d.baseline_span else d.t[d.ref_slice.start]
+            hi = onset_t + 3.0 if onset_t is not None else d.t[-1]
+            tb = np.array([lo, hi])
+            ax.plot(tb, bs * tb + bi, color="#5b3fa8", lw=1.0, ls=":",
+                    label=f"baseline ({d.config.baseline}) {bs:+.2f} um/s")
+            rs, ri = d.ramp_fit
+            tr = np.array([(onset_t if onset_t is not None else hi) - 2.0,
+                           (onset_t if onset_t is not None else hi) + d.config.hold_s
+                           + d.config.fit_s + 2.0])
+            ax.plot(tr, rs * tr + ri, color="#0a7d2c", lw=1.0, ls="--",
+                    label=f"ramp fit {rs:+.2f} um/s")
+            ax.legend(loc="upper left", fontsize=7)
         if key == "ddv":
+            floored = d.config.floor_mu0 and d.mu0 < 0
             ax.axhline(d.threshold, color="#e07b00", lw=1.0, ls="--",
-                       label=f"mu0 + {d.config.k_sigma:g}sigma0")
+                       label=(f"0 + {d.config.k_sigma:g}sigma0 (mu0 < 0, floored)" if floored
+                              else f"mu0 + {d.config.k_sigma:g}sigma0"))
             ax.axhline(d.mu0, color="#888", lw=0.6, ls=":")
             ax.legend(loc="upper left", fontsize=7)
         if onset_t is not None:
@@ -144,6 +161,11 @@ def main() -> int:
                     help="'threshold' is SPEC 5.1 verbatim but reads ~2.6 mmHg high "
                          "due to symmetric-filter corner smearing; 'intersect' "
                          "extrapolates the fitted ramp back to baseline (default)")
+    ap.add_argument("--baseline", choices=("sloped", "flat"), default="sloped",
+                    help="what the intersect method meets: 'sloped' fits the occlusion "
+                         "trend just before onset (default, D39); 'flat' is the "
+                         "reference-window mean (D10), which reads low when blood "
+                         "volume drains under occlusion")
     ap.add_argument("--sg-window", type=float, default=2.0,
                     help="Savitzky-Golay derivative window, s")
     ap.add_argument("--lowpass", type=float, default=0.3, help="low-pass corner, Hz")
@@ -212,6 +234,7 @@ def main() -> int:
         hold_s=args.hold,
         ir_only=args.ir_only,
         onset_method=args.onset_method,
+        baseline=args.baseline,
     )
 
     d = derive(
@@ -230,8 +253,10 @@ def main() -> int:
         print("  ! no dark offsets in header — run DARK before recording")
     print(f"  Noise floor mu0   : {d.mu0:+.5f} um/s")
     print(f"  Noise floor sigma0: {d.sigma0:.5f} um/s")
+    if cfg.floor_mu0 and d.mu0 < 0:
+        print("  (mu0 < 0: threshold floored at 0 + k*sigma0 -- onset needs net filling)")
     print(f"  Threshold         : {d.threshold:+.5f} um/s "
-          f"(mu0 + {args.k:g}sigma0, held {args.hold:g} s)")
+          f"({"max(mu0, 0)" if cfg.floor_mu0 else "mu0"} + {args.k:g}sigma0, held {args.hold:g} s)")
 
     puls = pulsatility_rms(d.d_od["ir"][d.ref_slice], meta.fs, cfg.pulsatility_band)
     print(f"  Pulsatility RMS   : {puls:.6f} OD (0.5–5 Hz, reference window)")
@@ -261,8 +286,20 @@ def main() -> int:
             if pressure_mmhg is not None:
                 line += f", {float(np.interp(other_t, t, pressure_mmhg)):.1f} mmHg"
             print(line)
+        if args.onset_method == "intersect":
+            other_b = "flat" if args.baseline == "sloped" else "sloped"
+            ob_t = d.onset_time_flat if other_b == "flat" else d.onset_time_sloped
+            if ob_t is not None:
+                line = f"  (for comparison)  : {other_b} baseline = {ob_t:.2f} s"
+                if pressure_mmhg is not None:
+                    line += f", {float(np.interp(ob_t, t, pressure_mmhg)):.1f} mmHg"
+                print(line)
         if np.isfinite(d.ramp_slope):
             print(f"  Fitted ramp slope : {d.ramp_slope:.3f} um/s")
+        if d.baseline_fit is not None:
+            span = (f" over {d.baseline_span[0]:.1f}–{d.baseline_span[1]:.1f} s"
+                    if args.baseline == "sloped" and d.baseline_span else "")
+            print(f"  Baseline ({args.baseline:<6}) : {d.baseline_fit[0]:+.3f} um/s{span}")
 
         if meta.raw.get("map_true") and pressure_mmhg is not None:
             truth = float(meta.raw["map_true"])

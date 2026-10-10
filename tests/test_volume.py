@@ -392,10 +392,11 @@ def test_recording_header_aligns_rows_with_session_time(tmp_path, monkeypatch):
     path = tmp_path / "align.csv"
     _write_capture(path, ir, red)
     core = _core(path, tmp_path, monkeypatch)
-    state = {"rec": False, "marked": False, "mark_t": None}
+    state = {"rec": False, "rec_t": None, "marked": False, "mark_t": None}
 
     def during(c):
         if c.vol and c.vol.t_now > 15 and not state["rec"]:
+            state["rec_t"] = c.vol.t_now
             c.toggle_record()
             state["rec"] = True
         if state["rec"] and c.vol.t_now > 25 and not state["marked"]:
@@ -408,7 +409,9 @@ def test_recording_header_aligns_rows_with_session_time(tmp_path, monkeypatch):
                if not p.name.endswith(("_hr.csv", "_vol.csv")))
     lines = raw.read_text().splitlines()
     t0 = float(next(ln.split("=")[1] for ln in lines if ln.startswith("# session_t0=")))
-    assert 14.0 < t0 < 17.0
+    # Compare with the clock when recording started, not a fixed window: at
+    # 60x replay one tick can carry the clock well past 15 s on a busy machine.
+    assert abs(t0 - state["rec_t"]) < 0.2
     ev = next(ln for ln in lines if "label=mark_1" in ln)
     t_ev = float(ev.split("t_s=")[1].split()[0])
     assert abs(t_ev - state["mark_t"]) < 0.2

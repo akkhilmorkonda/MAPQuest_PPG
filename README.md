@@ -145,6 +145,11 @@ with a FILLING / DRAINING / STABLE readout. **Z** zeroes the baseline, **M** dro
 marker. One LED tuning serves both tabs; re-tuning breaks and re-zeroes the volume trace and
 is refused while recording. Details in D34.
 
+The toolbar shows a large **session clock** (and ● REC while recording). Until the pressure
+sensor is fitted, film the cuff gauge and this screen together on a phone: every frame then
+pairs a gauge reading with session time, so cuff pressure can be read back against the
+recording with no clock sync. Put videos in `data/video/` (not tracked by git). Details in D38.
+
 ## Layout
 
 ```
@@ -165,7 +170,7 @@ tests/
   test_pipeline.py     SPEC section 6 analysis acceptance tests
   test_protocol.py     serial protocol against a mock firmware
   test_provocation.py  arm-raise response analysis
-data/                  recordings (gitignored)
+data/                  recordings (tracked, D29); data/video/ phone videos (ignored)
 docs/
   SPEC.md              the requirements
   decisions.md         decision log — every deviation and why

@@ -394,6 +394,7 @@ flowchart LR
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
 | **Return of flow, real cuff** | **detected** | filling onset 198.0 s vs pulse return 198.6 s; no pressure sensor, so no mmHg |
 | Pressure calibration | never run | no HX710B |
+| Cuff pressure from video (D38) | **ready, not yet used** | session clock on screen; gauge + clock filmed together, read back offline |
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
 | Blood-volume tab | **works on real replay** | still capture STABLE throughout; graded-run slip flagged live; not yet run live |
 
@@ -407,7 +408,7 @@ flowchart LR
 | Motion mask not wired into return-to-flow onset | a transient during deflation could be read as filling |
 | Serial stall with port still present — parked by user | costs retries; would ruin a real deflation mid-measurement |
 | ΔV·L is relative (unknown path length) | fine for D26; reopens if absolute volume is ever needed |
-| No HX710B | onset *time* only; no pressure, so no MAP |
+| No HX710B | onset time is measured live; mmHg comes from a video of the gauge (D38), ±2–5 mmHg |
 
 ### Resolved since last update
 

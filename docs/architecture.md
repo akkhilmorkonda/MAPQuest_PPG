@@ -156,6 +156,9 @@ flowchart TD
     PRES["Resample to PPG timebase<br/>interpolate on HX710B counter"]
     PRAW --> PCAL --> PRES --> MAP
 
+    VID["Phone video: gauge + on-screen clock<br/><b>gauge_video.py</b> (D38)<br/>align dial · read needle · zero offset<br/>→ &lt;recording&gt;_gauge.csv"]
+    VID -->|"interim, until the HX710B"| MAP
+
     IRONLY["IR-only fallback<br/>dOD880 / 6.13 cm^-1 × 1e4<br/>vulnerable to desaturation"]
     OD -.->|"--ir-only"| IRONLY
     IRONLY -.-> LP
@@ -396,9 +399,9 @@ flowchart LR
 | Slip detection | **working on hardware** | finds the one real slip; none on the clean capture |
 | Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
-| **Return of flow, real cuff** | **detected, with mmHg (provisional)** | 20:35 trial: pipeline onset 109.4 mmHg (sloped baseline, D39), pulse back 106 mmHg; the old flat baseline gave 57–98 depending on window |
+| **Return of flow, real cuff** | **detected, with mmHg (provisional)** | 3 trials, 2 subjects. Subject A 2026-10-09: onset 109 mmHg, pulse back 106. Subject B 13:45: 75 / 93 (fast deflation). Subject B 15:18 (Omron gauge, 1 mmHg/s): 87 / 86, all markers within 2 mmHg |
 | Pressure calibration | never run | no HX710B |
-| Cuff pressure from video (D38) | **works** | 3,804 frames read; zero held to 1.4 mmHg across the trial; gauge span unverified |
+| Cuff pressure from video (D38) | **packaged: `gauge_video.py`** | tripod and hand-held; matches hand readings to −0.1 mmHg median on 2026-10-09; light-on-dark gauges with `--invert`; spans unverified |
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
 | Blood-volume tab | **works on real replay** | still capture STABLE throughout; graded-run slip flagged live; not yet run live |
 

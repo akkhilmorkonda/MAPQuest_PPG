@@ -997,6 +997,54 @@ extracted `_gauge.csv` readings are tracked, as hardware data (D29).
   the offset held to 1.4 mmHg. **The span is unverified**, so every mmHg from this gauge is
   provisional until it is checked against a reference (a water column: 136 mm H₂O = 10 mmHg).
 
+**Packaged as `host/gauge_video.py` (2026-10-10).** One method for tripod and hand-held video.
+These choices differ from the first hand-run versions, and each was forced by a failure:
+
+- **Every frame is aligned** to a reference frame. The dial is found by a Hough circle, then
+  matched on ORB features of the dial face (similarity transform) and scaled to a fixed
+  canvas. A hand-held trial rolled −5.5 to +2°, which would have read as up to 5 mmHg.
+- **Background in two stages.** First a bright percentile; then a median with each frame's
+  needle masked out. A percentile alone was thrown by glare that moves with a hand-held
+  camera, and lost the needle under it. A plain median fails when the needle rests in one
+  place for half the video, as on 2026-10-09. Masking handles both.
+- **Tick ring by self-consistency.** Ring radii from 0.45 to 0.9 of the dial are each tried.
+  The one where the tick walk finds the most real marks, with the smoothest spacing, wins.
+  Three alternatives failed on real dials:
+  - Angular periodicity locked onto the printed numbers.
+  - Minor ticks are under 2 px apart on a small dial and can't be resolved.
+  - A template of the 2026-10-09 dial could not be matched under different lighting.
+- **Tick assignment** walks clockwise from every candidate first tick, then snaps each tick to
+  marks near a smooth curve fitted through them. Off-axis distortion is smooth, so a stray
+  mark or a tick under glare cannot drag the sequence off.
+- **Reading = where a line fitted to the needle's own pixels crosses the tick ring.** The
+  needle hub stands above the dial face, so in an angled view it is offset a few px from the
+  tick circle (parallax). A pure ray from the pivot estimate then picks up ~0.5 mmHg per px
+  of pivot error. The ticks are measured on that same ring, so the pivot drops out.
+- **Clock from hand-read values** off a contact sheet the tool writes: a straight line for
+  normal-speed video, piecewise-linear for slow motion.
+
+Options for other gauges: `--invert` for a light needle on a dark face (the blue Omron used
+2026-10-10 15:18), and `--scale first:last:step` / `--turn` for a different printed scale.
+
+**Validation.**
+
+| Case | Result |
+|---|---|
+| Synthetic hand-held video (drift, zoom, ±4° roll, uneven ticks, zero at 236) | median error < 1 mmHg, 95th percentile < 2.5 |
+| 2026-10-09 tripod video, against the hand-read CSV | tool − hand median −0.1 mmHg (5–95 %: −1.3 to +0.2); zero 236.8 vs 236.4, after release 238.0 vs 237.8 |
+| 2026-10-10 13:45 hand-held, against the hand-read CSV | tool reads +2.8 mmHg throughout, all of it from the zero (234.2 vs 236.6) |
+
+On the 13:45 video the tool's calibration strip puts every tick on a printed mark. A
+full-resolution close-up of the resting needle reads about 234.5, so the tool's zero looks
+right and the hand calibration was off. The 13:45 gauge CSV was therefore regenerated with
+the tool. Onsets move up by about 2 mmHg: regular beats 93 mmHg (was 91), sloped refill
+onset 75 mmHg (was 73).
+
+Two limits:
+- **Slow motion needs dense clock readings** where the speed ramps. Interpolating across a
+  ramp put one point of the 2026-10-09 check 6.6 mmHg off.
+- **Each run takes 4–9 minutes** for a 1–6 minute video.
+
 ---
 
 <a id="d39"></a>

@@ -150,6 +150,21 @@ sensor is fitted, film the cuff gauge and this screen together on a phone: every
 pairs a gauge reading with session time, so cuff pressure can be read back against the
 recording with no clock sync. Put videos in `data/video/` (not tracked by git). Details in D38.
 
+`gauge_video.py` reads the pressure off such a video. The first run writes a contact sheet of
+the on-screen clock; read a few values off it and run again with them:
+
+```
+cd host
+python gauge_video.py ../data/video/trial.mov --recording ../data/hr_wrist_X.csv
+python gauge_video.py ../data/video/trial.mov --recording ../data/hr_wrist_X.csv \
+    --clock "0.5=81.9,24.5=105.7,48.5=129.8,78.5=159.5"
+```
+
+It writes `<recording>_gauge.csv` (session time, mmHg) and `<recording>_gauge_check.png`, which
+shows the needle as read on six frames, the tick calibration, and the pressure trace. Look at it
+before trusting the numbers. A hand-held camera is fine; propped is better. Pressures are
+provisional until the gauge's span is checked against a reference.
+
 ## Layout
 
 ```
@@ -166,6 +181,7 @@ host/
   logger.py            recording + two-point pressure calibration
   analyze.py           offline analysis, figure, results.csv row
   synth.py             synthetic recordings with known ground truth
+  gauge_video.py       cuff pressure read from a phone video of the gauge (D38)
 tests/
   test_pipeline.py     SPEC section 6 analysis acceptance tests
   test_protocol.py     serial protocol against a mock firmware

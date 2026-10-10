@@ -1199,3 +1199,7 @@ Flat-baseline intersect 110.1 s → 99 mmHg; line-line intersect 107.9 s → 110
 independent pulse-return marker (first regular beats) fell at 108.8 s → 106 mmHg, closer to
 the sloped estimate. Two runs now show the falling baseline; this one puts a mmHg figure
 on the bias, and it is too large to leave in the default method.
+
+![Cuff trial 2026-10-09 20:35: cuff pressure from the gauge video, IR pulse, blood volume and its derivative, with return-of-flow markers](figures/cuff-trial-2-20261009-2035.png)
+*Cuff trial 2026-10-09 20:35 (`hr_wrist_20261009_203550`). Top to bottom: cuff pressure read from the gauge video (provisional, zero offset corrected), IR pulse with its amplitude, two-wavelength and IR-only ΔV·L with the occlusion trend and ramp fit, and d(ΔV·L)/dt. Dashed lines: dV/dt leaves its noise band (120 mmHg), refill onset with sloped baseline (110), regular beats resume (106), refill onset with flat baseline (99).*
+

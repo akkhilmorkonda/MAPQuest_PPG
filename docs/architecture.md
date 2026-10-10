@@ -398,6 +398,9 @@ flowchart LR
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
 | Blood-volume tab | **works on real replay** | still capture STABLE throughout; graded-run slip flagged live; not yet run live |
 
+![Cuff trial 2026-10-09 20:35: cuff pressure from the gauge video, IR pulse, blood volume and its derivative, with return-of-flow markers](figures/cuff-trial-2-20261009-2035.png)
+*Cuff trial 2026-10-09 20:35 (`hr_wrist_20261009_203550`). Top to bottom: cuff pressure read from the gauge video (provisional, zero offset corrected), IR pulse with its amplitude, two-wavelength and IR-only ΔV·L with the occlusion trend and ramp fit, and d(ΔV·L)/dt. Dashed lines: dV/dt leaves its noise band (120 mmHg), refill onset with sloped baseline (110), regular beats resume (106), refill onset with flat baseline (99).*
+
 ### Open issues
 
 | Issue | Impact |

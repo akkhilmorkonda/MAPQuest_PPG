@@ -976,6 +976,26 @@ M6 asks for, and good enough for bench trials. The HX710B remains the proper ans
 **Storage.** Videos are large and stay out of git (`data/video/`, `*.mp4`, `*.mov`). The
 extracted `_gauge.csv` readings are tracked, as hardware data (D29).
 
+**First use, 2026-10-09 (IMG_3996.mov, 1080p).** How the frames were read:
+
+- **Clock:** template OCR. Characters are located from the decimal point, because the label
+  shifts when ● REC appears. Digit templates come from 30 hand-read frames. Isolated
+  misreads (>0.35 s from a 15-sample median) are dropped, then the trace is lightly smoothed.
+  The phone filmed in **slow motion** — 16 s of video per 4 s of session time in the
+  middle, with speed ramps at the ends — which the clock absorbs automatically.
+- **Needle:** a needle-free background is the 92nd percentile of all frames. The needle is
+  where the frame is darker than that, high-passed to keep the thin needle and drop its soft
+  shadow. The pointer is found on a clear ring at 86–106 px from the pivot, which the pointer
+  crosses and the counterweight tail does not, then refined along its full length.
+- **Dial:** every major tick angle is measured, because the off-axis view stretches the right
+  half of the dial (10.6–12.2° per 10 mmHg against a nominal 11.25°). Spot-checked by eye
+  on 12 frames.
+- **Zero offset:** this gauge's needle rests at **236** on the dial, not in the zero box. Its
+  mechanism is out of calibration, probably from a knock. Pressure = (dial − 236.4) mod 320,
+  with the offset measured from the frames before inflation. After release it read 237.8, so
+  the offset held to 1.4 mmHg. **The span is unverified**, so every mmHg from this gauge is
+  provisional until it is checked against a reference (a water column: 136 mm H₂O = 10 mmHg).
+
 ---
 
 <a id="o1"></a>
@@ -1162,11 +1182,20 @@ session's resting drift.
 
 **Why it matters.** D10's ramp-intersection extrapolates the filling ramp back to a *flat*
 baseline — the mean of the reference window. With a falling baseline, the further that
-window sits before onset, the higher the assumed level and the earlier the computed onset.
-SPEC §8 holds the cuff for 10 s before a deflation that takes 20–30 s to reach systolic, so
-the bias could be several seconds — several mmHg. Here the onset was found by intersecting
+window sits before onset, the higher the assumed level and the **later** the computed onset —
+a rising ramp reaches a higher level later — so the reported cuff pressure reads **low**.
+(First written here as "earlier"; corrected 2026-10-09 when the 20:35 trial showed the
+opposite sign, as the geometry requires.) SPEC §8 holds the cuff for 10 s before a deflation
+that takes 20–30 s to reach systolic, so the bias could be several seconds — several mmHg. Here the onset was found by intersecting
 two *fitted lines* (the pre-onset trend and the ramp), which handles the slope.
 
 **Proposed** (not yet implemented): fit a line to the baseline immediately preceding the
 threshold crossing, not a level from a fixed early window, and intersect line with line.
 Validate on synthetic data with a declining occlusion baseline, then on this recording.
+
+**Second trial, 2026-10-09 20:35, now with pressure (D38).** Occlusion trend −0.29 µm/s.
+Flat-baseline intersect 110.1 s → 99 mmHg; line-line intersect 107.9 s → 110 mmHg. The
+2.2 s difference is **11 mmHg** at the 4.8 mmHg/s deflation rate of that moment. The
+independent pulse-return marker (first regular beats) fell at 108.8 s → 106 mmHg, closer to
+the sloped estimate. Two runs now show the falling baseline; this one puts a mmHg figure
+on the bias, and it is too large to leave in the default method.

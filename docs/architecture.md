@@ -392,9 +392,9 @@ flowchart LR
 | Slip detection | **working on hardware** | finds the one real slip; none on the clean capture |
 | Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
-| **Return of flow, real cuff** | **detected** | filling onset 198.0 s vs pulse return 198.6 s; no pressure sensor, so no mmHg |
+| **Return of flow, real cuff** | **detected, with mmHg (provisional)** | 20:35 trial: refill onset 110 mmHg (sloped baseline), pulse back 106 mmHg; flat-baseline D10 gives 99 (O5) |
 | Pressure calibration | never run | no HX710B |
-| Cuff pressure from video (D38) | **ready, not yet used** | session clock on screen; gauge + clock filmed together, read back offline |
+| Cuff pressure from video (D38) | **works** | 3,804 frames read; zero held to 1.4 mmHg across the trial; gauge span unverified |
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
 | Blood-volume tab | **works on real replay** | still capture STABLE throughout; graded-run slip flagged live; not yet run live |
 

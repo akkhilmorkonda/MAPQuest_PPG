@@ -346,7 +346,8 @@ class TkShell:
         self.l_detail.config(text=(
             f"absolute {st.abs_mmhg:.1f} mmHg   zero {z}   peak {st.peak:.0f} mmHg\n"
             f"oscillation {st.oscillation:.1f} mmHg p-p (last 3 s)   target deflation "
-            f"{lo:g}–{hi:g} mmHg/s" + (f"\n! {st.problem}" if st.problem else "")))
+            f"{lo:g}–{hi:g} mmHg/s" + (f"\n! {st.problem}" if st.problem else "")
+            + (f"\n! {st.warning}" if st.warning else "")))
 
     def run(self) -> None:
         self.root.after(100, self._loop)

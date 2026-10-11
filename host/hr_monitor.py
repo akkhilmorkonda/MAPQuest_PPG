@@ -367,7 +367,8 @@ def cuff_summary(cuff: PressureTracker | None) -> str:
         motion = f"rising {st.rate:.1f} mmHg/s"
     else:
         motion = "steady"
-    return f"{st.mmhg:6.1f} mmHg · {motion} · zero {st.zero_mmhg:.1f} abs"
+    line = f"{st.mmhg:6.1f} mmHg · {motion} · zero {st.zero_mmhg:.1f} abs"
+    return line + (f"\n               ! {st.warning}" if st.warning else "")
 
 
 def _fmt(v, spec="{:.1f}", unit=""):

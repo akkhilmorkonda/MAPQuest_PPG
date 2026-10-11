@@ -46,8 +46,20 @@ def test_parse_line():
 def test_status_problem():
     assert status_problem(0x40) is None
     assert "power" in status_problem(0x00)
-    assert "integrity" in status_problem(0x44)
     assert "saturated" in status_problem(0x41)
+    assert status_problem(0x44) is None          # integrity flag: warn, keep
+
+
+def test_integrity_flag_keeps_readings_and_warns():
+    """2026-10-11: every reading carried 0x44 yet tracked the cuff; keep them."""
+    tr = PressureTracker()
+    tr.start(0.0)
+    for i in range(300):
+        p = 0.0 if i < 250 else 100.0
+        tr.push(i * 10, counts_for(ATM + p), 0x44)
+    st = tr.state()
+    assert st.mmhg == pytest.approx(100.0, abs=0.05)
+    assert st.problem is None and "integrity" in st.warning
 
 
 def feed(tracker, pressures, fs=100.0, start_ms=5000):

@@ -39,13 +39,25 @@ def counts_to_mmhg(counts):
 
 
 def status_problem(status: int) -> str | None:
-    """Why a sample should not be trusted, or None."""
+    """Why a sample must be discarded, or None."""
     if not status & ST_POWERED:
         return "sensor reports no power"
-    if status & ST_INTEGRITY:
-        return "sensor memory integrity error"
     if status & ST_SATURATED:
         return "reading saturated"
+    return None
+
+
+def status_warning(status: int) -> str | None:
+    """A flag worth showing that does not, on the evidence, spoil the reading.
+
+    The memory-integrity bit (a checksum the sensor runs at power-up) was set
+    on every sample of the 2026-10-11 runs with the MPRLS sharing the bus with
+    the PPG, yet the readings tracked the cuff cleanly (0 -> 129 -> 7 mmHg,
+    ~1 mmHg noise). Discarding them blanked the display. Readings are kept
+    and the flag is shown; power-cycling the board is the first thing to try.
+    """
+    if status & ST_INTEGRITY:
+        return "sensor integrity flag set: readings kept; unplug USB to power-cycle"
     return None
 
 
@@ -70,6 +82,7 @@ class PressureState:
     peak: float            # highest cuff pressure since the last zero
     oscillation: float     # peak-to-peak of the 0.5-5 Hz band, 3 s ending 0.5 s ago, mmHg
     problem: str | None
+    warning: str | None = None   # a flag shown but not disqualifying
 
 
 class PressureTracker:
@@ -87,6 +100,7 @@ class PressureTracker:
         self.zero: float | None = None
         self.peak = 0.0
         self.problem: str | None = None
+        self.warning: str | None = None
         self._ms0: int | None = None
         self._t0 = 0.0
         self._sos = signal.butter(2, [self.OSC_BAND[0] / (fs / 2), self.OSC_BAND[1] / (fs / 2)],
@@ -109,6 +123,7 @@ class PressureTracker:
     def push_at(self, t: float, counts: int, status: int) -> None:
         """A reading at session time t (the combined PPG + pressure stream)."""
         self.problem = status_problem(status)
+        self.warning = status_warning(status)
         if self.problem:
             return
         self.t.append(t)
@@ -158,5 +173,5 @@ class PressureTracker:
         return PressureState(
             t=float(t[-1]), mmhg=float(rel[-1]), abs_mmhg=float(a[-1]), zero_mmhg=self.zero,
             rate=rate, peak=self.peak, oscillation=float(np.ptp(osc[win])) if win.sum() else 0.0,
-            problem=self.problem,
+            problem=self.problem, warning=self.warning,
         )

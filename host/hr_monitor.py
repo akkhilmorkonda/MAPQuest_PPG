@@ -27,7 +27,7 @@ Placement: a fingertip pulse is ~50x the wrist's. The wrist works but expect
 heart-rate "confirming" more often. Run --auto-tune whenever you move sites.
 
 **Cuff pressure** (D41), when the MPRLS is on the bus: shown in the toolbar on
-both tabs and as a purple trace on its own axis over blood volume. It is
+both tabs and as its own panel under blood volume, on the same time axis. It is
 zeroed on the room 2 s after connecting, so connect with the cuff valve open;
 Zero cuff (P) re-takes it.
 
@@ -556,9 +556,9 @@ class VolumeView:
         self.span_s = span_s
         self._ylims: dict[str, tuple | None] = {"dv": None, "pct": None, "rate": None}
         self._n_events = 0
-        gs = fig.add_gridspec(3, 2, height_ratios=[0.8, 1.7, 1.35],
-                              hspace=0.45, wspace=0.22,
-                              left=0.07, right=0.94, top=0.96, bottom=0.07)
+        gs = fig.add_gridspec(4, 2, height_ratios=[0.75, 1.45, 0.95, 1.2],
+                              hspace=0.5, wspace=0.22,
+                              left=0.07, right=0.98, top=0.96, bottom=0.06)
 
         ax = fig.add_subplot(gs[0, 0])
         ax.axis("off")
@@ -591,15 +591,29 @@ class VolumeView:
         ax.legend(loc="lower left", bbox_to_anchor=(0.0, 1.0), fontsize=8,
                   ncol=3, frameon=False)
         ax.tick_params(labelsize=8)
-        # Cuff pressure on its own right-hand axis (D41), hidden without a sensor.
-        self.ax_cuff = ax.twinx()
-        (self.l_cuff,) = self.ax_cuff.plot([], [], lw=1.3, color="#5b3fa8", alpha=0.9)
-        self.ax_cuff.set_ylabel("cuff [mmHg]", fontsize=9, color="#5b3fa8")
-        self.ax_cuff.tick_params(labelsize=8, colors="#5b3fa8")
-        self.ax_cuff.set_visible(False)
+
+        # Cuff pressure (D41): its own panel on the same time axis as blood
+        # volume, so refilling can be read straight down against the cuff.
+        ax = fig.add_subplot(gs[2, :])
+        self.ax_cuff = ax
+        (self.l_cuff,) = ax.plot([], [], lw=1.5, color="#5b3fa8")
+        ax.axhline(0, color="k", lw=0.6, alpha=0.5)
+        ax.set_ylabel("cuff pressure\n[mmHg]", fontsize=9)
+        ax.set_xlabel("elapsed (s)", fontsize=9)
+        ax.set_title("cuff pressure (MPRLS, zeroed on the room)", fontsize=8,
+                     loc="left", color="#555")
+        ax.grid(alpha=0.25, lw=0.5)
+        ax.tick_params(labelsize=8)
+        ax.set_ylim(-5, 40)
+        self.t_cuff = ax.text(0.99, 0.92, "", fontsize=11, fontweight="bold",
+                              color="#5b3fa8", ha="right", va="top",
+                              transform=ax.transAxes)
+        self.t_cuff_none = ax.text(0.5, 0.5, "no pressure sensor in this stream",
+                                   fontsize=10, color="#6b7280", ha="center",
+                                   va="center", transform=ax.transAxes)
         self._cuff_top = 40.0
 
-        ax = fig.add_subplot(gs[2, 0])
+        ax = fig.add_subplot(gs[3, 0])
         self.ax_pct = ax
         (self.l_pct_ir,) = ax.plot([], [], lw=1.1, color="#1f4e79", label="IR")
         (self.l_pct_red,) = ax.plot([], [], lw=1.1, color="#c43b2f", label="red")
@@ -613,7 +627,7 @@ class VolumeView:
         ax.legend(loc="upper left", fontsize=8, ncol=2)
         ax.tick_params(labelsize=8)
 
-        ax = fig.add_subplot(gs[2, 1])
+        ax = fig.add_subplot(gs[3, 1])
         self.ax_rate = ax
         (self.l_rate,) = ax.plot([], [], lw=1.1, color="#0b5d3b")
         self.h_hi = ax.axhline(np.nan, color="#1f6feb", lw=1.0, ls="--",
@@ -636,7 +650,7 @@ class VolumeView:
             kind = ("zero" if label.startswith("zero") else
                     "mark" if label.startswith("mark") else "interrupt")
             color = self.EVENT_COLORS.get(kind, "#c43b2f")
-            for ax in (self.ax_dv, self.ax_pct, self.ax_rate):
+            for ax in (self.ax_dv, self.ax_cuff, self.ax_pct, self.ax_rate):
                 ax.axvline(t, color=color, lw=1.0, alpha=0.7,
                            ls="-" if kind != "zero" else ":")
             self.ax_dv.text(t, 0.97, f" {label}", rotation=90, fontsize=7,
@@ -695,18 +709,24 @@ class VolumeView:
         self.l_pct_red.set_data(a["t"], a["pct_red"])
         self.l_rate.set_data(a["t"], a["rate"])
         cuff = core.cuff
-        if cuff is not None and cuff.zero is not None and len(cuff.t):
+        self.t_cuff_none.set_visible(cuff is None)
+        cst = cuff.state() if cuff is not None else None
+        if cst is not None and cst.zero_mmhg is not None:
             ct, crel, _ = cuff.arrays(self.span_s)
-            self.ax_cuff.set_visible(True)
             self.l_cuff.set_data(ct, crel)
             # Grow the axis with the cuff, never shrink it mid-deflation.
             peak = float(np.nanmax(crel)) if np.isfinite(crel).any() else 0.0
             self._cuff_top = max(self._cuff_top, 1.1 * peak)
             self.ax_cuff.set_ylim(-5, self._cuff_top)
+            arrow = ("↓" if cst.rate < -0.5 else "↑" if cst.rate > 0.5 else "")
+            rate = f"  {arrow} {abs(cst.rate):.1f} mmHg/s" if arrow else ""
+            self.t_cuff.set_text(f"{cst.mmhg:.0f} mmHg{rate}")
+        elif cst is not None:
+            self.t_cuff.set_text("zeroing — keep the valve open")
         self.h_hi.set_ydata([thr if thr is not None else np.nan] * 2)
         self.h_lo.set_ydata([lo_thr if lo_thr is not None else np.nan] * 2)
 
-        for ax in (self.ax_dv, self.ax_pct, self.ax_rate):
+        for ax in (self.ax_dv, self.ax_cuff, self.ax_pct, self.ax_rate):
             ax.set_xlim(t0, t_end)
         for key, ax, series, extra in (
             ("dv", self.ax_dv, (a["dv"], a["dv_ir"]), ()),

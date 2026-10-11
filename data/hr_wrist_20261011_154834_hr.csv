@@ -1,0 +1,4 @@
+t_s,hr_shown,source,quality,hr_beats,hr_spectral,spectral_conc,perfusion_pct,pulse_snr,rmssd_ms,hr_instant,avg_beats,avg_window_s,reason
+29,75.9,beats,LOW,75.9,68.7,0.42,0.0079,4.5,205,85.8,10,10,"intervals irregular"
+30,75.9,beats,GOOD,75.9,68.9,0.42,0.0081,5.0,207,63.2,10,10,"beats and spectrum agree"
+31,74.9,beats,GOOD,74.9,70.2,0.45,0.0078,4.6,201,71.6,10,10,"beats and spectrum agree"

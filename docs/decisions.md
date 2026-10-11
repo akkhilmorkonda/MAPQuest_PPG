@@ -49,6 +49,7 @@ experiment settles something.
 | [D37](#d37) | Recordings carry session_t0 so events align with raw rows | accepted — bug fix |
 | [D38](#d38) | Cuff pressure read from a phone video of the gauge beside an on-screen clock | accepted — **user's proposal** |
 | [D39](#d39) | Onset intersects the ramp with a sloped occlusion baseline; threshold needs net filling | accepted — resolves O5 |
+| [D40](#d40) | MPRLS pressure sensor, tested standalone before joining the PPG bus | accepted — bench test |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **reopened** — real filling ~3× slower than simulated |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **yes on first cuff run, but margin ~2×, not 22×** |
@@ -1117,6 +1118,38 @@ expected. On the 19:40 trial the pulse returned at 198.6 s.
 pulse switched on and a realistic 1.1 µm/s fill, no onset is found with either baseline.
 The ripple left in dV/dt (σ0 ≈ 0.55 µm/s) puts the threshold above the ramp. The existing
 pulses test passes only because it fills at 3 µm/s. Logged under O2.
+
+---
+
+<a id="d40"></a>
+## D40 — MPRLS pressure sensor, tested on its own first
+
+**Status:** accepted · 2026-10-11 · bench test, not yet integrated
+
+**Sensor.** Adafruit 3965: a Honeywell MPRLS0025PA00001A on a breakout with regulator and
+level shifting. It is I2C at 0x18, so it can share A4/A5 with the MAX30101 (0x57) without a
+conflict. It is factory-calibrated, temperature-compensated, and has a metal port for the
+cuff hose. That makes it simpler to wire and trust than the HX710B + MPS20N0040D pair in
+SPEC §2, which needs two more pins and a two-point calibration.
+
+**Caveat: absolute, 0–25 psi.** The cuff sits on top of ~760 mmHg of atmosphere and uses
+only about a quarter of the span. Accuracy is specified as a fraction of the full 25 psi.
+Zeroing on the room removes the offset, but the span still needs the water-column check
+before mmHg from it is trusted.
+
+**Test path, kept apart from the PPG.**
+- **Firmware:** `firmware/mprls_test/mprls_test.ino`, no libraries. It starts a conversion,
+  polls the status byte's busy bit, then reads out, so nothing blocks for the ~5 ms
+  conversion. Adafruit's library waits inside the call, which would starve the PPG FIFO
+  once the two share a loop; the combined firmware should keep this pattern, or use EOC.
+  It checks the I2C bus at boot, re-probes a missing sensor every second, and streams
+  `M,ms,counts,status` at 100 Hz.
+- **Host:** `host/mapquest/mprls.py` does the transfer function (A: 10–90 % of 2²⁴ counts
+  maps to 0–25 psi) and the status checks. It auto-zeroes 2 s after connect, and computes
+  the deflation rate (2 s fit) and the 0.5–5 Hz cuff oscillation.
+  `host/pressure_monitor.py` is the window.
+- **Pins:** the PPG is unplugged for the test, and the sensor uses the same four Nano pins.
+  D2/D3 stay reserved for the HX710B; D4 is free for EOC if it is wanted later.
 
 ---
 

@@ -401,6 +401,7 @@ flowchart LR
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
 | **Return of flow, real cuff** | **detected, with mmHg (provisional)** | 3 trials, 2 subjects. Subject A 2026-10-09: onset 109 mmHg, pulse back 106. Subject B 13:45: 75 / 93 (fast deflation). Subject B 15:18 (Omron gauge, 1 mmHg/s): 87 / 86, all markers within 2 mmHg |
 | Pressure calibration | never run | no HX710B |
+| MPRLS pressure sensor (D40) | **test firmware + monitor written, not yet run on hardware** | standalone; PPG unplugged for the test |
 | Cuff pressure from video (D38) | **packaged: `gauge_video.py`** | tripod and hand-held; matches hand readings to −0.1 mmHg median on 2026-10-09; light-on-dark gauges with `--invert`; spans unverified |
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
 | Blood-volume tab | **works on real replay** | still capture STABLE throughout; graded-run slip flagged live; not yet run live |

@@ -165,12 +165,33 @@ shows the needle as read on six frames, the tick calibration, and the pressure t
 before trusting the numbers. A hand-held camera is fine; propped is better. Pressures are
 provisional until the gauge's span is checked against a reference.
 
+## Cuff pressure sensor test (MPRLS)
+
+A standalone check that the Adafruit MPRLS (product 3965) tracks the cuff, before it joins
+the PPG on the I2C bus. Unplug the PPG and wire the sensor to the same four Nano pins:
+VIN to 3V3, GND to GND, SDA to A4, SCL to A5 (3Vo, RST and EOC unconnected). Tee its port
+into the cuff hose.
+
+Flash `firmware/mprls_test/mprls_test.ino`, then:
+
+```
+cd host
+python pressure_monitor.py            # or --port COM5; --demo needs no hardware
+```
+
+Connect with the cuff valve **open**: the zero is taken 2 s after connecting (Z re-takes
+it). The window shows cuff pressure, the deflation rate against the 2–3 mmHg/s target, and
+the cuff's heartbeat oscillations, which confirm the tubing and sensor respond. R records
+to `data/pressure_<stamp>.csv`. Details in D40.
+
 ## Layout
 
 ```
 firmware/mapquest_ppg/
   mapquest_ppg.ino     self-contained MAX30101 driver + SPEC 3.4 protocol
   config.h             all tunables; echoed into every recording header
+firmware/mprls_test/
+  mprls_test.ino       standalone MPRLS cuff-pressure test (D40)
 host/
   mapquest/
     io.py              serial protocol, metadata parsing, CSV load, calibration
@@ -182,6 +203,7 @@ host/
   analyze.py           offline analysis, figure, results.csv row
   synth.py             synthetic recordings with known ground truth
   gauge_video.py       cuff pressure read from a phone video of the gauge (D38)
+  pressure_monitor.py  live cuff pressure from the MPRLS test firmware (D40)
 tests/
   test_pipeline.py     SPEC section 6 analysis acceptance tests
   test_protocol.py     serial protocol against a mock firmware

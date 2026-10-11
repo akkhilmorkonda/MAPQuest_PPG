@@ -40,7 +40,9 @@ class FakeSerial:
                  sensor_ok=True, part_id=0x15,
                  pulse_frac=0.0015, bpm=68.0,
                  die_at=None, stall_at=None, reset_at=None,
-                 temp_c=28.5, temp_rise_per_sample=0.0, rate_limit=False):
+                 temp_c=28.5, temp_rise_per_sample=0.0, rate_limit=False,
+                 cuff=None):
+        self.cuff = cuff          # callable t_s -> cuff mmHg: an MPRLS on the bus (D41)
         self.port = port
         self.fs = fs
         self.ir_dc = ir_dc
@@ -96,8 +98,14 @@ class FakeSerial:
         self._emit(f"# ir_amp={self.ir_amp} red_amp={self.red_amp}")
         self._emit(f"# ir_amp_ma={self.ir_amp * 0.2:.1f} "
                    f"red_amp_ma={self.red_amp * 0.2:.1f}")
-        self._emit("# pressure=none")
-        self._emit("# columns=idx,t_us,ir,red")
+        if self.cuff is None:
+            self._emit("# pressure=none")
+            self._emit("# columns=idx,t_us,ir,red")
+        else:
+            self._emit("# pressure=mprls pressure_addr=0x18 pressure_range_psi=0-25 "
+                       "pressure_transfer=A pressure_output_min=1677722 "
+                       "pressure_output_max=15099494 pressure_rate_hz=100")
+            self._emit("# columns=idx,t_us,ir,red,p_idx,p_raw,p_status")
 
     def _dc_for(self, amp: int, base_amp: int, base_dc: int, dark: int) -> int:
         """DC scales with LED current above the dark floor, and saturates."""
@@ -117,6 +125,11 @@ class FakeSerial:
         ir += int(self._rng.normal(0, 40))
         red += int(self._rng.normal(0, 40))
         line = f"S,{self.idx},{self.t_us},{max(ir, 0)},{max(red, 0)}"
+        if self.cuff is not None:
+            from mapquest.mprls import MMHG_PER_PSI, OUTPUT_MAX, OUTPUT_MIN
+            absolute = 760.0 + self.cuff(self.idx / self.fs)
+            counts = int(OUTPUT_MIN + absolute * (OUTPUT_MAX - OUTPUT_MIN) / (25 * MMHG_PER_PSI))
+            line += f",{self.idx},{counts},64"
         self.idx += 1
         if self.drop_at is not None and self.idx == self.drop_at:
             self.idx += 7  # lose 7 samples
@@ -288,6 +301,21 @@ def test_info_parsed(fake):
     assert meta.resolution_bits == 18
     assert meta.has_pressure is False
     assert meta.raw["part_id"] == "0x15"
+
+
+def test_mprls_stream_carries_pressure(fake):
+    """D41: with the MPRLS on the bus every S line carries p_idx, p_raw, p_status."""
+    from mapquest.mprls import counts_to_mmhg
+    with open_device(fake, cuff=lambda t: 120.0) as dev:
+        meta = dev.info()
+        assert meta.has_pressure is True
+        assert meta.columns == ["idx", "t_us", "ir", "red", "p_idx", "p_raw", "p_status"]
+        assert meta.raw["pressure"] == "mprls"
+        fields, _ = next(iter(dev.stream()))
+        dev.stop()
+    assert len(fields) == 7
+    assert counts_to_mmhg(fields[5]) - 760.0 == pytest.approx(120.0, abs=0.01)
+    assert fields[6] == 64
 
 
 def test_dark_measurement(fake):
@@ -980,3 +1008,44 @@ def test_harmonics_never_rescue_a_weak_peak(fake, monkeypatch):
     code, out = run_bench(fake, ["--seconds", "1", "--no-dark"])
     line = next(ln for ln in out.splitlines() if "cardiac pulse detected" in ln)
     assert "ok" not in line, f"a 3.5 dB peak passed on harmonics alone: {line}"
+
+
+def test_monitor_tracks_and_records_cuff_pressure(fake, tmp_path, monkeypatch):
+    """D41 end to end: firmware stream -> hr_monitor -> cuff readout + recording."""
+    import queue
+    import time as _time
+    import hr_monitor as hm
+
+    monkeypatch.setattr(hm, "DATA_DIR", tmp_path)
+    fake["kwargs"] = dict(cuff=lambda t: 0.0 if t < 4.0 else 150.0, rate_limit=True)
+    src = hm.SerialSource(queue.Queue(), port="FAKE")
+    core = hm.MonitorCore(src, site="wrist")
+    src.start()
+    try:
+        deadline = _time.time() + 30
+        while _time.time() < deadline:
+            core.tick(views=("vol",))
+            st = core.cuff.state() if core.cuff is not None else None
+            if st is not None and st.zero_mmhg is not None and st.mmhg > 100 and core.vol.t_now > 6:
+                break
+            _time.sleep(0.05)
+        core.toggle_record()
+        t_rec = _time.time()
+        while _time.time() - t_rec < 1.5:
+            core.tick(views=("vol",))
+            _time.sleep(0.05)
+        core.toggle_record()
+    finally:
+        src.stop()
+    st = core.cuff.state()
+    assert st.zero_mmhg == pytest.approx(760.0, abs=0.05)     # auto-zero with the cuff open
+    assert st.mmhg == pytest.approx(150.0, abs=0.05)
+    assert "Cuff" in core.vol_view.t_info.get_text()
+    raw = next(p for p in tmp_path.glob("hr_*.csv")
+               if not p.name.endswith(("_hr.csv", "_vol.csv")))
+    lines = raw.read_text().splitlines()
+    assert any(ln.startswith("# cuff_zero_abs_mmhg=760") for ln in lines)
+    assert "idx,ir,red,p_idx,p_raw,p_status" in lines
+    vol = Path(str(raw)[:-4] + "_vol.csv").read_text().splitlines()
+    assert vol[0].endswith(",cuff_mmhg")
+    assert float(vol[-1].split(",")[-1]) == pytest.approx(150.0, abs=0.5)

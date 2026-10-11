@@ -152,3 +152,37 @@ def test_demo_cuff_profile():
     assert c(2) == 0 and c(12) == pytest.approx(170)
     assert c(40) == pytest.approx(116.0)           # deflating at 2.5 mmHg/s
     assert c(88) == 0
+
+
+def test_analyze_reads_mprls_recordings(tmp_path):
+    """D41: analyze.py turns MPRLS counts into cuff mmHg using the recorded zero."""
+    import argparse
+    import os
+    import subprocess
+    import synth
+
+    args = argparse.Namespace(
+        seconds=90.0, fs=100.0, map=92.0, hold_mmhg=150.0, hold_s=10.0, deflate_rate=2.0,
+        fill_rate=3.0, noise=40.0, drift=0.0, cardiac=False, cardiac_hz=1.2,
+        cardiac_frac=0.008, artificial_pulse=False, ap_frac=0.004, no_filling=False,
+        constant_volume=False, desaturate=False, desat_to=0.7, desat_od660=0.03,
+        p_fs=40.0, p_raw0=1.2e6, p_counts_per_mmhg=4200.0, seed=0)
+    t, ir, red, p, *_ = synth.build(args, np.random.default_rng(0))
+    path = tmp_path / "mprls_trial.csv"
+    with path.open("w") as fh:
+        fh.write("# firmware=mapquest-fw-0.3\n# fs=100.00\n")
+        fh.write(f"# dark_ir={synth.DARK_IR:.0f} dark_red={synth.DARK_RED:.0f}\n")
+        fh.write("# pressure=mprls pressure_addr=0x18\n")
+        fh.write(f"# cuff_zero_abs_mmhg={ATM:.3f}\n")
+        fh.write("# columns=idx,t_us,ir,red,p_idx,p_raw,p_status\n")
+        fh.write("idx,t_us,ir,red,p_idx,p_raw,p_status\n")
+        for i in range(len(t)):
+            fh.write(f"{i},{i * 10000},{ir[i]},{red[i]},{i},{counts_for(ATM + p[i])},64\n")
+    out = subprocess.run(
+        [sys.executable, str(ROOT / "host" / "analyze.py"), str(path),
+         "--no-show", "--no-results", "--save", str(tmp_path / "a.png")],
+        check=True, capture_output=True, text=True, cwd=ROOT / "host",
+        env={**os.environ, "MPLBACKEND": "Agg"})
+    assert "MPRLS, zero 760.0" in out.stdout
+    line = next(ln for ln in out.stdout.splitlines() if "ONSET PRESSURE" in ln)
+    assert float(line.split(":")[1].split()[0]) == pytest.approx(92.0, abs=1.0)

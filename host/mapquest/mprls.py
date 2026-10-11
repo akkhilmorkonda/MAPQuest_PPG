@@ -100,12 +100,17 @@ class PressureTracker:
         self.peak = 0.0
 
     def push(self, ms: int, counts: int, status: int) -> None:
+        """A reading stamped with the board's millis() (firmware/mprls_test)."""
+        if status_problem(status) is None and self._ms0 is None:
+            self._ms0 = ms
+        t = self._t0 + (ms - (self._ms0 if self._ms0 is not None else ms)) / 1000.0
+        self.push_at(t, counts, status)
+
+    def push_at(self, t: float, counts: int, status: int) -> None:
+        """A reading at session time t (the combined PPG + pressure stream)."""
         self.problem = status_problem(status)
         if self.problem:
             return
-        if self._ms0 is None:
-            self._ms0 = ms
-        t = self._t0 + (ms - self._ms0) / 1000.0
         self.t.append(t)
         self.abs.append(float(counts_to_mmhg(counts)))
         if self.zero is None and t - self._t0 >= self.AUTO_ZERO_S:

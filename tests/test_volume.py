@@ -315,7 +315,8 @@ def test_recording_carries_events_and_volume_log(tmp_path, monkeypatch):
     assert "# event" in text and "label=mark_1" in text
     assert "label=zero_(auto)" in text
     vol = next(tmp_path.glob("hr_*_vol.csv")).read_text().splitlines()
-    assert vol[0] == "t_s,dv_um,dv_ir_um,pct_ir,pct_red,rate_um_s,motion"
+    assert vol[0] == "t_s,dv_um,dv_ir_um,pct_ir,pct_red,rate_um_s,motion,cuff_mmhg"
+    assert vol[-1].endswith(",")          # no pressure sensor: cuff column empty
     assert len(vol) > 100
 
 

@@ -6,7 +6,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION "mapquest-fw-0.2"
+#define FIRMWARE_VERSION "mapquest-fw-0.3"
 
 // ---------------------------------------------------------------------------
 // MAX30101 (SPEC 3.1)
@@ -32,19 +32,22 @@ static const uint8_t DEFAULT_IR_AMP  = 0x1F;  // 6.2 mA
 static const uint8_t DEFAULT_RED_AMP = 0x1F;  // 6.2 mA
 
 // ---------------------------------------------------------------------------
-// Pressure sensor -- MPS20N0040D via HX710B (SPEC 3.2)
+// Cuff pressure -- Adafruit MPRLS (Honeywell MPRLS0025PA00001A), D41
 // ---------------------------------------------------------------------------
 
-// Not yet fitted. With this 0, the firmware omits the pressure fields from the
-// S lines and the host records PPG only. Set to 1 once the HX710B is wired.
-#define PRESSURE_ENABLED 0
+// Shares the I2C bus with the MAX30101 (0x18 vs 0x57). Replaces the HX710B +
+// MPS20N0040D of SPEC 3.2, which was never fitted. Detected at boot and on R:
+// when found, S lines carry p_idx,p_raw,p_status; when not, PPG only.
+#define PRESSURE_ENABLED 1
 
-static const uint8_t PIN_HX710B_SCK  = D2;
-static const uint8_t PIN_HX710B_DOUT = D3;
+static const uint8_t  MPRLS_ADDR        = 0x18;
+static const uint32_t PRESSURE_RATE_HZ  = 100;     // one conversion per PPG sample
+static const uint32_t MPRLS_TIMEOUT_US  = 20000;   // datasheet max conversion ~5 ms
 
-// 27 total clock pulses selects the differential input at 40 Hz.
-// 25 would select 10 Hz. See SPEC 3.2.
-static const uint8_t HX710B_PULSES = 27;
+// Transfer function A, 0-25 psi absolute. Echoed in the header; the host
+// converts counts to mmHg and zeroes on the room (host/mapquest/mprls.py).
+static const uint32_t MPRLS_OUTPUT_MIN  = 1677722;   // 10 % of 2^24
+static const uint32_t MPRLS_OUTPUT_MAX  = 15099494;  // 90 % of 2^24
 
 // ---------------------------------------------------------------------------
 // Host link

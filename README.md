@@ -17,7 +17,7 @@ Full requirements: [`docs/SPEC.md`](docs/SPEC.md). Channel choice: [`docs/led-se
 |---|---|
 | M0 Toolchain | firmware compiles for `arduino:esp32:nano_nora` |
 | M1 PPG streaming | code complete; **run `bench_check.py` to close it out** |
-| M2 Pressure | code written behind `PRESSURE_ENABLED`; **HX710B not yet owned** |
+| M2 Pressure | **MPRLS on the shared I2C bus** (D41); firmware 0.3 streams it with the PPG |
 | M3 Logger | complete; pressure path untested |
 | M4 Analysis | complete, validated against synthetic ground truth |
 | M5 Tests | **37/37 passing** — SPEC §6 analysis criteria + protocol/mock-firmware |
@@ -33,19 +33,21 @@ board. `bench_check.py` is the bridge: it runs the SPEC §3.5 acceptance criteri
 |---|---|
 | MCU | Arduino Nano ESP32 (ESP32-S3) |
 | PPG | SparkFun SEN-16474 — MAX30101 Qwiic breakout |
-| Pressure | MPS20N0040D + HX710B *(not yet fitted)* |
+| Pressure | Adafruit 3965 MPRLS ported breakout, 0–25 psi absolute, I2C 0x18 (D41) |
 
 ### Wiring (SPEC 2.2)
 
-| Nano ESP32 | MAX30101 | | Nano ESP32 | HX710B |
-|---|---|---|---|---|
-| `3V3` | `3V3` | | `3V3` | `VCC` |
-| `GND` | `GND` | | `GND` | `GND` |
-| `A4` | `SDA` | | `D3` | `OUT` |
-| `A5` | `SCL` | | `D2` | `SCK` |
+Both sensors share one I2C bus, wired in parallel on a breadboard:
 
-3.3 V logic throughout — **do not power the HX710B from 5 V**, it would drive 5 V into an ESP32
-GPIO. Calibrate at 3.3 V and don't reuse constants measured at 5 V.
+| Nano ESP32 | MAX30101 | MPRLS |
+|---|---|---|
+| `3V3` | `3V3` | `VIN` |
+| `GND` | `GND` | `GND` |
+| `A4` | `SDA` | `SDA` |
+| `A5` | `SCL` | `SCL` |
+
+MAX30101 `INT` and MPRLS `3Vo`, `RST`, `EOC` stay unconnected. The MPRLS port tees into the
+cuff hose. Without the MPRLS the firmware streams PPG only.
 
 ## Quick start
 
@@ -117,7 +119,7 @@ manoeuvre, so baseline drift cancels rather than faking a response.
 
 ```bash
 cd host
-python logger.py --calibrate                      # once, when the HX710B is fitted
+python logger.py --calibrate                      # HX710B only; the MPRLS needs no calibration run
 python logger.py --subject T01 --trial 1 --note "left arm, seated"
 python analyze.py ../data/<date>_T01_1.csv
 ```

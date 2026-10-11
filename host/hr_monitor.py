@@ -26,9 +26,15 @@ trace (marked) and re-zeroes; it is refused while recording.
 Placement: a fingertip pulse is ~50x the wrist's. The wrist works but expect
 heart-rate "confirming" more often. Run --auto-tune whenever you move sites.
 
+**Cuff pressure** (D41), when the MPRLS is on the bus: shown in the toolbar on
+both tabs and as a purple trace on its own axis over blood volume. It is
+zeroed on the room 2 s after connecting, so connect with the cuff valve open;
+Zero cuff (P) re-takes it.
+
 Buttons / keys: Pause (space) · Auto-tune LEDs (T) · Record (R) · Zero volume
-(Z) · Mark event (M). Record writes raw samples with events inline, a
-per-second heart-rate log, and a 10 Hz blood-volume log into data/.
+(Z) · Mark event (M) · Zero cuff (P). Record writes raw samples (with the cuff
+columns and zero) with events inline, a per-second heart-rate log, and a 10 Hz
+blood-volume log with cuff mmHg into data/.
 """
 
 from __future__ import annotations
@@ -48,6 +54,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mapquest.heartrate import QUALITY_COLORS, HeartRateEstimator  # noqa: E402
 from mapquest.volume import VolumeTracker  # noqa: E402
 from mapquest.io import Device, LinkLost, LinkStalled, find_port  # noqa: E402
+from mapquest.mprls import PressureTracker  # noqa: E402
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 FULL_SCALE = (1 << 18) - 1
@@ -290,7 +297,8 @@ class ReplaySource(threading.Thread):
             rows.append(parts)
         if not cols or not rows:
             raise ValueError(f"no samples in {path}")
-        keep = [c for c in ("ir", "red") if c in cols]
+        # Optical channels, plus cuff pressure when the recording carries it.
+        keep = [c for c in ("ir", "red", "p_idx", "p_raw", "p_status") if c in cols]
         if "ir" not in keep:
             raise ValueError(f"{path} has no ir column")
         arr = np.array([[float(r[cols.index(c)]) for c in keep] for r in rows])
@@ -336,6 +344,31 @@ class ReplaySource(threading.Thread):
 # Views. Each draws into a matplotlib Figure and knows nothing about Tk, so the
 # same code renders in the window and headless in the tests.
 # ---------------------------------------------------------------------------
+
+CUFF_RATE_TARGET = (2.0, 3.0)    # mmHg/s deflation, SPEC 8
+
+
+def cuff_summary(cuff: PressureTracker | None) -> str:
+    """One line on the cuff: pressure, what it is doing, the zero."""
+    if cuff is None:
+        return "no pressure sensor"
+    st = cuff.state()
+    if st is None:
+        return "waiting for readings"
+    if st.problem:
+        return f"! {st.problem}"
+    if st.zero_mmhg is None:
+        return f"zeroing (keep the valve open) · {st.abs_mmhg:.1f} mmHg absolute"
+    if st.rate < -0.5:
+        lo, hi = CUFF_RATE_TARGET
+        tag = "on target" if lo <= -st.rate <= hi else f"target {lo:g}-{hi:g}"
+        motion = f"deflating {-st.rate:.1f} mmHg/s ({tag})"
+    elif st.rate > 0.5:
+        motion = f"rising {st.rate:.1f} mmHg/s"
+    else:
+        motion = "steady"
+    return f"{st.mmhg:6.1f} mmHg · {motion} · zero {st.zero_mmhg:.1f} abs"
+
 
 def _fmt(v, spec="{:.1f}", unit=""):
     return "--" if v is None else spec.format(v) + unit
@@ -525,7 +558,7 @@ class VolumeView:
         self._n_events = 0
         gs = fig.add_gridspec(3, 2, height_ratios=[0.8, 1.7, 1.35],
                               hspace=0.45, wspace=0.22,
-                              left=0.07, right=0.98, top=0.96, bottom=0.07)
+                              left=0.07, right=0.94, top=0.96, bottom=0.07)
 
         ax = fig.add_subplot(gs[0, 0])
         ax.axis("off")
@@ -558,6 +591,13 @@ class VolumeView:
         ax.legend(loc="lower left", bbox_to_anchor=(0.0, 1.0), fontsize=8,
                   ncol=3, frameon=False)
         ax.tick_params(labelsize=8)
+        # Cuff pressure on its own right-hand axis (D41), hidden without a sensor.
+        self.ax_cuff = ax.twinx()
+        (self.l_cuff,) = self.ax_cuff.plot([], [], lw=1.3, color="#5b3fa8", alpha=0.9)
+        self.ax_cuff.set_ylabel("cuff [mmHg]", fontsize=9, color="#5b3fa8")
+        self.ax_cuff.tick_params(labelsize=8, colors="#5b3fa8")
+        self.ax_cuff.set_visible(False)
+        self._cuff_top = 40.0
 
         ax = fig.add_subplot(gs[2, 0])
         self.ax_pct = ax
@@ -636,8 +676,9 @@ class VolumeView:
             f"LED            IR {meta.get('ir_amp_ma', '?')} mA · red "
             f"{meta.get('red_amp_ma', '?')} mA"
             + ("   (locked: recording)" if core.recording else ""),
+            f"Cuff           {cuff_summary(core.cuff)}",
             f"Recording      {core.recording_label()}",
-            "Keys           Z zero · M mark · space pause · R record",
+            "Keys           Z zero · P zero cuff · M mark · space pause · R record",
         ]))
 
         self._draw_new_events(vol)
@@ -653,6 +694,15 @@ class VolumeView:
         self.l_pct_ir.set_data(a["t"], a["pct_ir"])
         self.l_pct_red.set_data(a["t"], a["pct_red"])
         self.l_rate.set_data(a["t"], a["rate"])
+        cuff = core.cuff
+        if cuff is not None and cuff.zero is not None and len(cuff.t):
+            ct, crel, _ = cuff.arrays(self.span_s)
+            self.ax_cuff.set_visible(True)
+            self.l_cuff.set_data(ct, crel)
+            # Grow the axis with the cuff, never shrink it mid-deflation.
+            peak = float(np.nanmax(crel)) if np.isfinite(crel).any() else 0.0
+            self._cuff_top = max(self._cuff_top, 1.1 * peak)
+            self.ax_cuff.set_ylim(-5, self._cuff_top)
         self.h_hi.set_ydata([thr if thr is not None else np.nan] * 2)
         self.h_lo.set_ydata([lo_thr if lo_thr is not None else np.nan] * 2)
 
@@ -713,6 +763,9 @@ class MonitorCore:
         self.paused = False
         self._rec: dict | None = None
         self.hr_window_s = float(hr_window_s)
+        # Cuff pressure (D41): present when the stream carries p_raw.
+        self.cuff: PressureTracker | None = None
+        self._p_last_idx: float | None = None
 
     # Convenience for tests and callers that only care about the readout.
     @property
@@ -762,6 +815,15 @@ class MonitorCore:
         if self.vol is not None:
             self.status = f"{self.vol.mark()} at {self.vol.t_now:.1f} s"
 
+    def zero_cuff(self) -> None:
+        """Re-take the cuff zero: the room's pressure, with the valve open."""
+        if self.cuff is None:
+            self.status = "no pressure sensor in this stream"
+            return
+        z = self.cuff.set_zero(1.0)
+        if z is not None:
+            self.status = f"cuff zeroed at {z:.1f} mmHg absolute — valve must be open"
+
     def toggle_record(self) -> None:
         if self._rec is None:
             self.start_recording()
@@ -798,18 +860,23 @@ class MonitorCore:
             if f"dark_{k}" not in raw:          # firmware header may already carry it
                 raw_fh.write(f"# dark_{k}={v:.0f}\n")
         raw_fh.write(f"# fs={self.meta['fs']:.2f}\n")
+        if self.cuff is not None and self.cuff.zero is not None:
+            # Atmospheric reading the cuff pressure is relative to. A later
+            # re-zero is written inline the same way; the last one wins.
+            raw_fh.write(f"# cuff_zero_abs_mmhg={self.cuff.zero:.3f}\n")
         raw_fh.write("idx," + ",".join(self._data_columns()) + "\n")
         hr_fh = Path(str(base) + "_hr.csv").open("w")
         hr_fh.write("t_s,hr_shown,source,quality,hr_beats,hr_spectral,"
                     "spectral_conc,perfusion_pct,pulse_snr,rmssd_ms,"
                     "hr_instant,avg_beats,avg_window_s,reason\n")
         vol_fh = Path(str(base) + "_vol.csv").open("w")
-        vol_fh.write("t_s,dv_um,dv_ir_um,pct_ir,pct_red,rate_um_s,motion\n")
+        vol_fh.write("t_s,dv_um,dv_ir_um,pct_ir,pct_red,rate_um_s,motion,cuff_mmhg\n")
         self._rec = {
             "raw": raw_fh, "hr": hr_fh, "vol": vol_fh, "idx": 0, "path": base,
             "hist": len(self.est.history) if self.est else 0,
             "vol_t": self.vol.t_now if self.vol else 0.0,
             "events": len(self.vol.events) if self.vol else 0,
+            "cuff_zero": self.cuff.zero if self.cuff is not None else None,
         }
         self.status = f"recording to {base.name}.csv (+ _hr, _vol)"
 
@@ -856,11 +923,17 @@ class MonitorCore:
         if self.vol is not None:
             a = self.vol.arrays()
             new = a["t"] > rec["vol_t"]
+            cuff_at = np.full(len(a["t"]), np.nan)
+            if self.cuff is not None and new.any():
+                ct, crel, _ = self.cuff.arrays()
+                if len(ct) > 1:
+                    cuff_at = np.interp(a["t"], ct, crel, left=np.nan, right=np.nan)
             for i in np.flatnonzero(new):
                 rec["vol"].write(",".join([
                     f"{a['t'][i]:.2f}", f(a["dv"][i]), f(a["dv_ir"][i]),
                     f(a["pct_ir"][i], "{:.4f}"), f(a["pct_red"][i], "{:.4f}"),
                     f(a["rate"][i], "{:.3f}"), str(int(a["motion"][i])),
+                    f(float(cuff_at[i]), "{:.1f}"),
                 ]) + "\n")
             if new.any():
                 rec["vol_t"] = float(a["t"][new][-1])
@@ -870,6 +943,10 @@ class MonitorCore:
             for t, label in self.vol.events[rec["events"]:]:
                 rec["raw"].write(f"# event t_s={t:.2f} label={label.replace(' ', '_')}\n")
             rec["events"] = len(self.vol.events)
+        if self.cuff is not None and self.cuff.zero != rec.get("cuff_zero"):
+            t_now = self.vol.t_now if self.vol is not None else 0.0
+            rec["raw"].write(f"# cuff_zero_abs_mmhg={self.cuff.zero:.3f} t_s={t_now:.2f}\n")
+            rec["cuff_zero"] = self.cuff.zero
 
     # -- update loop -------------------------------------------------------
 
@@ -889,6 +966,17 @@ class MonitorCore:
                     self.vol = VolumeTracker(payload["fs"], dark=payload.get("dark"))
                 else:
                     self.vol.dark = dict(payload.get("dark") or self.vol.dark)
+                if "p_raw" in payload["columns"]:
+                    if self.cuff is None or fs_changed:
+                        # Zero is taken 2 s after the first reading: connect
+                        # with the cuff valve open. It survives link resets,
+                        # since the room's pressure has not changed.
+                        self.cuff = PressureTracker(payload["fs"])
+                        self.cuff.start(self.vol.t_now)
+                        z = payload.get("raw", {}).get("cuff_zero_abs_mmhg")
+                        if z:                     # a replay brings its own zero
+                            self.cuff.zero = float(z)
+                    self._p_last_idx = None
             elif kind == "samples":
                 if self.est is None or not self.meta:
                     continue
@@ -897,6 +985,8 @@ class MonitorCore:
                 self.est.push(payload[:, cols.index(ch)])
                 red = payload[:, cols.index("red")] if "red" in cols else None
                 self.vol.push(payload[:, cols.index("ir")], red)
+                if self.cuff is not None and "p_raw" in cols:
+                    self._push_cuff(payload, cols)
                 if self._rec is not None:
                     self._record_samples(payload[:, [cols.index(c)
                                                      for c in self._data_columns()]])
@@ -909,6 +999,25 @@ class MonitorCore:
                     self.vol.interrupt(payload or "reset")
             elif kind == "eof":
                 self.eof = True
+
+    def _push_cuff(self, block: np.ndarray, cols: list[str]) -> None:
+        """Feed fresh pressure readings, at their PPG sample's session time.
+
+        Each S line carries the latest reading, held; p_idx says when it is
+        new. Sample times count back from the volume tracker's clock.
+        """
+        n = len(block)
+        t_end = self.vol.t_now
+        fs = self.meta["fs"]
+        i_idx, i_raw = cols.index("p_idx"), cols.index("p_raw")
+        i_st = cols.index("p_status") if "p_status" in cols else None
+        for j in range(n):
+            pidx = block[j, i_idx]
+            if pidx == self._p_last_idx:
+                continue
+            self._p_last_idx = pidx
+            status = int(block[j, i_st]) if i_st is not None else 0x40
+            self.cuff.push_at(t_end - (n - 1 - j) / fs, int(block[j, i_raw]), status)
 
     def tick(self, views=("hr", "vol")) -> None:
         self._drain()
@@ -949,7 +1058,8 @@ class TkShell:
         self.b_rec = ttk.Button(bar, text="Record (R)", command=core.toggle_record)
         self.b_zero = ttk.Button(bar, text="Zero volume (Z)", command=core.zero)
         self.b_mark = ttk.Button(bar, text="Mark event (M)", command=core.mark)
-        for b in (self.b_pause, self.b_tune, self.b_rec, self.b_zero, self.b_mark):
+        self.b_cuff = ttk.Button(bar, text="Zero cuff (P)", command=core.zero_cuff)
+        for b in (self.b_pause, self.b_tune, self.b_rec, self.b_zero, self.b_mark, self.b_cuff):
             b.pack(side="left", padx=3)
         ttk.Label(bar, text="   HR average:").pack(side="left")
         self.hr_window = tk.StringVar(value=f"{core.hr_window_s:g} s")
@@ -967,6 +1077,9 @@ class TkShell:
         self.l_rec.pack(side="right", padx=(4, 10))
         self.l_clock = tk.Label(bar, text="t = --", font=("Consolas", 26, "bold"))
         self.l_clock.pack(side="right", padx=8)
+        # Cuff pressure from the MPRLS (D41), on both tabs; blank without one.
+        self.l_cuff = tk.Label(bar, text="", font=("Consolas", 22, "bold"), fg="#5b3fa8")
+        self.l_cuff.pack(side="right", padx=12)
 
         self.nb = ttk.Notebook(root)
         self.nb.pack(side="top", fill="both", expand=True)
@@ -986,6 +1099,7 @@ class TkShell:
         root.bind("<r>", lambda _e: core.toggle_record())
         root.bind("<z>", lambda _e: core.zero())
         root.bind("<m>", lambda _e: core.mark())
+        root.bind("<p>", lambda _e: core.zero_cuff())
         root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def on_pause(self) -> None:
@@ -1013,7 +1127,21 @@ class TkShell:
         vol = self.core.vol
         self.l_clock.config(text="t = --" if vol is None else f"t = {vol.t_now:7.1f} s")
         self.l_rec.config(text="● REC" if self.core.recording else "")
+        self.l_cuff.config(text=self._cuff_text())
+        self.b_cuff.state(["!disabled"] if self.core.cuff is not None else ["disabled"])
         self.root.after(50, self._loop)
+
+    def _cuff_text(self) -> str:
+        cuff = self.core.cuff
+        st = cuff.state() if cuff is not None else None
+        if st is None:
+            return ""
+        if st.problem:
+            return "cuff: sensor error"
+        if st.zero_mmhg is None:
+            return "cuff: zeroing…"
+        arrow = "↓" if st.rate < -0.5 else "↑" if st.rate > 0.5 else " "
+        return f"cuff {st.mmhg:5.0f} mmHg {arrow}"
 
     def run(self) -> None:
         self.root.after(100, self._loop)

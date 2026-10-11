@@ -21,7 +21,7 @@ flowchart TD
 
     subgraph SENSORS["Sensors"]
         MAX["MAX30101 — SparkFun SEN-16474<br/>Red 660 nm + IR 880 nm<br/>green unused (D25)<br/>reflectance, I2C 0x57, 18-bit"]
-        HX["MPS20N0040D + HX710B<br/>0-300 mmHg, 24-bit<br/>NOT YET FITTED"]
+        HX["MPRLS — Adafruit 3965 (D41)<br/>0-25 psi absolute, 24-bit<br/>I2C 0x18, shares the bus"]
         WHOOP["Whoop<br/>independent heart-rate<br/>reference (D26)"]
     end
 
@@ -151,13 +151,13 @@ flowchart TD
     MOTION["Motion mask (D27)<br/><b>not yet wired into onset</b>"]
     MOTION -.-> ONSET
 
-    PRAW["Pressure raw<br/>HX710B, ~40 Hz"]
-    PCAL["Two-point calibration<br/>(raw - RAW0)·P_REF / (RAW_REF - RAW0)"]
-    PRES["Resample to PPG timebase<br/>interpolate on HX710B counter"]
+    PRAW["Pressure raw<br/>MPRLS counts, 100 Hz<br/>held onto each PPG sample"]
+    PCAL["Transfer function A → mmHg<br/>minus the room (cuff zero)"]
+    PRES["Resample to PPG timebase<br/>interpolate on p_idx"]
     PRAW --> PCAL --> PRES --> MAP
 
     VID["Phone video: gauge + on-screen clock<br/><b>gauge_video.py</b> (D38)<br/>align dial · read needle · zero offset<br/>→ &lt;recording&gt;_gauge.csv"]
-    VID -->|"interim, until the HX710B"| MAP
+    VID -->|"cross-check / gauge-only trials"| MAP
 
     IRONLY["IR-only fallback<br/>dOD880 / 6.13 cm^-1 × 1e4<br/>vulnerable to desaturation"]
     OD -.->|"--ir-only"| IRONLY
@@ -169,7 +169,7 @@ flowchart TD
     classDef deviation fill:#fff4e0,stroke:#e07b00
     classDef missing fill:#ffe6e6,stroke:#c43b2f,stroke-dasharray:4 3
     class REFINE deviation
-    class PRAW,PCAL,PRES,MOTION missing
+    class MOTION missing
 ```
 
 **Orange** = deliberate deviation from SPEC §5.1 (D10). The spec's threshold-crossing onset
@@ -400,8 +400,8 @@ flowchart LR
 | Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
 | **Return of flow, real cuff** | **detected, with mmHg (provisional)** | 3 trials, 2 subjects. Subject A 2026-10-09: onset 109 mmHg, pulse back 106. Subject B 13:45: 75 / 93 (fast deflation). Subject B 15:18 (Omron gauge, 1 mmHg/s): 87 / 86, all markers within 2 mmHg |
-| Pressure calibration | never run | no HX710B |
-| MPRLS pressure sensor (D40) | **test firmware + monitor written, not yet run on hardware** | standalone; PPG unplugged for the test |
+| Cuff pressure on the PPG stream (D41) | **firmware 0.3 + monitor + analyze.py; first live run pending** | MPRLS on the shared bus; span unverified |
+| MPRLS standalone test (D40) | **works on hardware with the cuff** | auto-zero and cuff tracking confirmed by the user |
 | Cuff pressure from video (D38) | **packaged: `gauge_video.py`** | tripod and hand-held; matches hand readings to −0.1 mmHg median on 2026-10-09; light-on-dark gauges with `--invert`; spans unverified |
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |
 | Blood-volume tab | **works on real replay** | still capture STABLE throughout; graded-run slip flagged live; not yet run live |
@@ -419,7 +419,7 @@ flowchart LR
 | Motion mask not wired into return-to-flow onset | a transient during deflation could be read as filling |
 | Serial stall with port still present — parked by user | costs retries; would ruin a real deflation mid-measurement |
 | ΔV·L is relative (unknown path length) | fine for D26; reopens if absolute volume is ever needed |
-| No HX710B | onset time is measured live; mmHg comes from a video of the gauge (D38), ±2–5 mmHg |
+| MPRLS span unverified | mmHg is offset-free after zeroing, but the gain needs the water-column or gauge cross-check |
 
 ### Resolved since last update
 

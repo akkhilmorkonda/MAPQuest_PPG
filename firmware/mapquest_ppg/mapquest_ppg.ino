@@ -1,21 +1,23 @@
 // MAPQuest — return-to-flow PPG logger firmware
 //
-// Target : Arduino Nano ESP32 (ESP32-S3)
-// Sensor : SparkFun SEN-16474 Photodetector Breakout - MAX30101 (Qwiic), I2C 0x57
+// Target  : Arduino Nano ESP32 (ESP32-S3)
+// Sensors : SparkFun SEN-16474 Photodetector Breakout - MAX30101 (Qwiic), I2C 0x57
+//           Adafruit 3965 MPRLS ported pressure breakout (cuff), I2C 0x18 (D41)
 //
 // Streams raw Red + IR counts at 100 Hz for the return-to-flow MAP pipeline
-// described in docs/SPEC.md. The firmware does no filtering and no
-// interpretation; all analysis happens on the host.
+// described in docs/SPEC.md, with the latest cuff-pressure reading attached
+// to every sample. The firmware does no filtering and no interpretation; all
+// analysis happens on the host.
 //
-// Wiring (SPEC 2.2) — 3.3 V logic both sides, no level shifting:
-//   breakout 3V3 -> 3V3        [HX710B VCC  -> 3V3 ]
-//   breakout GND -> GND        [HX710B GND  -> GND ]
-//   breakout SDA -> A4         [HX710B DOUT -> D3  ]
-//   breakout SCL -> A5         [HX710B SCK  -> D2  ]
-//   breakout INT -> unused
-// HX710B is optional; set PRESSURE_ENABLED in config.h once it is fitted.
+// Wiring — one I2C bus, both boards in parallel on a breadboard:
+//   3V3 -> + rail -> MAX30101 3V3, MPRLS VIN
+//   GND -> - rail -> MAX30101 GND, MPRLS GND
+//   A4 (SDA) ------> MAX30101 SDA, MPRLS SDA
+//   A5 (SCL) ------> MAX30101 SCL, MPRLS SCL
+//   MAX30101 INT, MPRLS 3Vo / RST / EOC -> unused
+// The MPRLS is optional: without it the stream is PPG only.
 //
-// No external libraries required — the MAX30101 driver is inline.
+// No external libraries required — both drivers are inline.
 
 #include <WiFi.h>
 #include <Wire.h>
@@ -79,8 +81,17 @@ static char     g_cmd[32];
 static uint8_t  g_cmd_len = 0;
 
 #if PRESSURE_ENABLED
-static int32_t  g_p_raw = 0;
-static uint32_t g_p_idx = 0;
+// Latest MPRLS reading, sample-and-hold onto each PPG sample. p_idx counts
+// completed conversions so the host can tell a fresh reading from a held one.
+static bool     g_p_ok        = false;   // MPRLS found at bring-up
+static bool     g_p_columns   = false;   // header announced p_* columns
+static uint32_t g_p_raw       = 0;
+static uint8_t  g_p_status    = 0;
+static uint32_t g_p_idx       = 0;
+static uint32_t g_p_next_us   = 0;
+static uint32_t g_p_start_us  = 0;
+static bool     g_p_busy      = false;   // conversion in flight
+static uint32_t g_p_timeouts  = 0;
 #endif
 
 // ---------------------------------------------------------------------------
@@ -185,44 +196,79 @@ static bool configureSensor() {
 }
 
 // ---------------------------------------------------------------------------
-// HX710B pressure (SPEC 3.2) — compiled out until the sensor is fitted
+// MPRLS cuff pressure (D41)
 // ---------------------------------------------------------------------------
 
 #if PRESSURE_ENABLED
-static portMUX_TYPE g_hx_mux = portMUX_INITIALIZER_UNLOCKED;
+// Status byte (Honeywell MPR datasheet): bit 6 powered, bit 5 busy,
+// bit 2 memory integrity error, bit 0 math saturation.
+static const uint8_t MPRLS_ST_BUSY = 0x20;
 
-static bool hx710bReady() {
-  return digitalRead(PIN_HX710B_DOUT) == LOW;
+static bool mprlsProbe() {
+  Wire.beginTransmission(MPRLS_ADDR);
+  return Wire.endTransmission() == 0;
 }
 
-// SCK must not stay HIGH longer than 60 us or the HX710B powers down, so the
-// whole 24-bit shift runs inside a critical section where no interrupt can
-// stretch a pulse (SPEC 3.2).
-static bool hx710bRead(int32_t &out) {
-  if (!hx710bReady()) return false;
-
-  uint32_t raw = 0;
-  portENTER_CRITICAL(&g_hx_mux);
-  for (uint8_t i = 0; i < HX710B_PULSES; i++) {
-    digitalWrite(PIN_HX710B_SCK, HIGH);
-    delayMicroseconds(1);
-    if (i < 24) raw = (raw << 1) | (uint32_t)digitalRead(PIN_HX710B_DOUT);
-    digitalWrite(PIN_HX710B_SCK, LOW);
-    delayMicroseconds(1);
-  }
-  portEXIT_CRITICAL(&g_hx_mux);
-
-  // Sign-extend the 24-bit two's complement value.
-  if (raw & 0x800000UL) raw |= 0xFF000000UL;
-  out = (int32_t)raw;
-  return true;
+static bool mprlsStart() {
+  Wire.beginTransmission(MPRLS_ADDR);
+  Wire.write(0xAA);
+  Wire.write(0x00);
+  Wire.write(0x00);
+  return Wire.endTransmission() == 0;
 }
 
+static void pressureLost(const char *why) {
+  if (g_p_ok) Serial.printf("E,pressure sensor lost: %s — send R to retry\n", why);
+  g_p_ok = false;
+  g_p_busy = false;
+  g_p_status = 0;          // host reads status 0 as "no power": samples rejected
+}
+
+// A conversion takes ~5 ms. Rather than wait for it (Adafruit's library
+// blocks inside the call), start one, come back to poll the busy bit, and
+// read out when it clears. Each visit costs one short I2C transaction, so
+// the MAX30101 FIFO (320 ms deep at 100 Hz) is never at risk.
 static void servicePressure() {
-  int32_t v;
-  if (hx710bRead(v)) {
-    g_p_raw = v;
-    g_p_idx++;
+  if (!g_p_ok) return;
+  const uint32_t now = micros();
+
+  if (!g_p_busy) {
+    if ((int32_t)(now - g_p_next_us) < 0) return;
+    g_p_next_us += 1000000UL / PRESSURE_RATE_HZ;
+    if ((int32_t)(now - g_p_next_us) > 0) g_p_next_us = now;   // fell behind
+    if (!mprlsStart()) { pressureLost("no ACK on start"); return; }
+    g_p_start_us = now;
+    g_p_busy = true;
+    return;
+  }
+
+  if (now - g_p_start_us < 1000) return;      // not worth polling before ~1 ms
+  if (Wire.requestFrom(MPRLS_ADDR, (uint8_t)1) != 1) { pressureLost("no reply"); return; }
+  const uint8_t st = Wire.read();
+  if (st & MPRLS_ST_BUSY) {
+    if (now - g_p_start_us > MPRLS_TIMEOUT_US) {
+      g_p_timeouts++;
+      g_p_busy = false;
+      Serial.printf("E,pressure conversion timeout (%lu so far)\n", (unsigned long)g_p_timeouts);
+    }
+    return;
+  }
+  if (Wire.requestFrom(MPRLS_ADDR, (uint8_t)4) != 4) { pressureLost("short read"); return; }
+  g_p_status = Wire.read();
+  uint32_t c = (uint32_t)Wire.read() << 16;
+  c |= (uint32_t)Wire.read() << 8;
+  c |= (uint32_t)Wire.read();
+  g_p_raw = c;
+  g_p_idx++;
+  g_p_busy = false;
+}
+
+static void bringUpPressure() {
+  g_p_busy = false;
+  g_p_ok = mprlsProbe();
+  g_p_next_us = micros();
+  if (!g_p_ok) {
+    Serial.println(F("# no pressure sensor at 0x18 — streaming PPG only"));
   }
 }
 #endif  // PRESSURE_ENABLED
@@ -284,17 +330,24 @@ static void printInfo() {
                   (unsigned long)g_dark_ir, (unsigned long)g_dark_red);
   }
 #if PRESSURE_ENABLED
-  Serial.println(F("# pressure=hx710b fields=p_idx,p_raw"));
+  // The columns are fixed when the header is printed (START prints it), so a
+  // sensor that appears later is picked up on the next START, never mid-stream.
+  g_p_columns = g_p_ok;
+  if (g_p_ok) {
+    Serial.printf("# pressure=mprls pressure_addr=0x%02X pressure_range_psi=0-25 "
+                  "pressure_transfer=A pressure_output_min=%lu pressure_output_max=%lu "
+                  "pressure_rate_hz=%lu\n",
+                  MPRLS_ADDR, (unsigned long)MPRLS_OUTPUT_MIN,
+                  (unsigned long)MPRLS_OUTPUT_MAX, (unsigned long)PRESSURE_RATE_HZ);
+    Serial.println(F("# columns=idx,t_us,ir,red,p_idx,p_raw,p_status"));
+  } else {
+    Serial.println(F("# pressure=none"));
+    Serial.println(F("# columns=idx,t_us,ir,red"));
+  }
 #else
   Serial.println(F("# pressure=none"));
+  Serial.println(F("# columns=idx,t_us,ir,red"));
 #endif
-  Serial.printf("# columns=%s\n",
-#if PRESSURE_ENABLED
-                "idx,t_us,ir,red,p_idx,p_raw"
-#else
-                "idx,t_us,ir,red"
-#endif
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -405,17 +458,22 @@ static void drainFifo() {
       const uint32_t ir  = ((i0 << 16) | (i1 << 8) | i2) & 0x03FFFF;
 
 #if PRESSURE_ENABLED
-      Serial.printf("S,%lu,%lu,%lu,%lu,%lu,%ld\n",
-                    (unsigned long)g_sample_idx++, (unsigned long)t_us,
-                    (unsigned long)ir, (unsigned long)red,
-                    (unsigned long)g_p_idx, (long)g_p_raw);
-#else
+      if (g_p_columns) {
+        Serial.printf("S,%lu,%lu,%lu,%lu,%lu,%lu,%u\n",
+                      (unsigned long)g_sample_idx++, (unsigned long)t_us,
+                      (unsigned long)ir, (unsigned long)red,
+                      (unsigned long)g_p_idx, (unsigned long)g_p_raw, g_p_status);
+        continue;
+      }
+#endif
       Serial.printf("S,%lu,%lu,%lu,%lu\n",
                     (unsigned long)g_sample_idx++, (unsigned long)t_us,
                     (unsigned long)ir, (unsigned long)red);
-#endif
     }
     nSamples -= n;
+#if PRESSURE_ENABLED
+    servicePressure();     // keep conversions moving through a long drain
+#endif
   }
 }
 
@@ -485,6 +543,9 @@ static void handleCommand(char *line) {
     if (bringUpSensor()) {
       Serial.println(F("# sensor re-initialised"));
     }
+#if PRESSURE_ENABLED
+    bringUpPressure();
+#endif
     printInfo();
 
   } else if (strcmp(line, "TEMP") == 0) {
@@ -529,13 +590,10 @@ void setup() {
   Wire.begin();
   Wire.setClock(400000);
 
-#if PRESSURE_ENABLED
-  pinMode(PIN_HX710B_SCK, OUTPUT);
-  pinMode(PIN_HX710B_DOUT, INPUT);
-  digitalWrite(PIN_HX710B_SCK, LOW);
-#endif
-
   bringUpSensor();
+#if PRESSURE_ENABLED
+  bringUpPressure();
+#endif
 
   printInfo();
   if (g_sensor_ok) {

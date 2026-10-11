@@ -50,6 +50,7 @@ experiment settles something.
 | [D38](#d38) | Cuff pressure read from a phone video of the gauge beside an on-screen clock | accepted — **user's proposal** |
 | [D39](#d39) | Onset intersects the ramp with a sloped occlusion baseline; threshold needs net filling | accepted — resolves O5 |
 | [D40](#d40) | MPRLS pressure sensor, tested standalone before joining the PPG bus | accepted — bench test |
+| [D41](#d41) | MPRLS joins the PPG stream; replaces the HX710B plan | accepted |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **reopened** — real filling ~3× slower than simulated |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **yes on first cuff run, but margin ~2×, not 22×** |
@@ -1150,6 +1151,45 @@ before mmHg from it is trusted.
   `host/pressure_monitor.py` is the window.
 - **Pins:** the PPG is unplugged for the test, and the sensor uses the same four Nano pins.
   D2/D3 stay reserved for the HX710B; D4 is free for EOC if it is wanted later.
+
+---
+
+<a id="d41"></a>
+## D41 — The MPRLS joins the PPG stream and replaces the HX710B plan
+
+**Status:** accepted · 2026-10-11 · supersedes the HX710B + MPS20N0040D of SPEC §2–3.2
+
+**Decision.** `mapquest_ppg` (firmware 0.3) drives the MPRLS on the same I2C bus as the
+MAX30101. The HX710B code is gone: that sensor was never bought, and the MPRLS was
+confirmed working with the cuff on its own (D40).
+
+**Firmware.**
+- **Non-blocking:** each conversion is started, its busy bit polled, and it is read out
+  when done (the D40 pattern), at 100 Hz. The loop also services it between FIFO chunks,
+  so a conversion never holds up the MAX30101 FIFO (320 ms deep at 100 Hz).
+- **Stream format:** every S line gains `p_idx,p_raw,p_status`. The latest reading is held
+  onto each PPG sample, and `p_idx` counts conversions so the host can tell a fresh reading
+  from a held one.
+- **Header:** `# pressure=mprls …`, with the transfer-function constants.
+- **Sensor found or lost:** it is probed at boot and on `R`. The columns are fixed when
+  START prints the header: without the sensor the stream is PPG only, and a sensor lost
+  mid-stream sends status 0, which the host rejects.
+
+**Host.**
+- **`hr_monitor.py`:**
+  - feeds fresh readings into a `PressureTracker` at their sample's session time;
+  - auto-zeroes 2 s after connecting (Zero cuff, P, re-takes it);
+  - shows cuff pressure in the toolbar and on its own axis over blood volume, with the
+    deflation rate against the 2–3 mmHg/s target.
+- **Recordings** carry the raw `p_*` columns, a `# cuff_zero_abs_mmhg=` line (repeated on
+  re-zero), and `cuff_mmhg` in the 10 Hz `_vol` log. Replays show the cuff too.
+- **`analyze.py`** reads `pressure=mprls` recordings. It converts with transfer function A
+  and subtracts the recorded zero, or the first 2 s if none was recorded. Tested: 92.0 mmHg
+  recovered on a synthetic trial.
+
+**Still open.** The span (gain) has not been checked against a reference. Use the
+water-column check, or the Omron gauge teed onto the same hose, before reporting mmHg as
+more than provisional.
 
 ---
 

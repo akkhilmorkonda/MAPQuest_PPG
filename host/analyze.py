@@ -25,6 +25,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mapquest.io import check_continuity, load_calibration, load_csv  # noqa: E402
+from mapquest.mprls import counts_to_mmhg  # noqa: E402
 from mapquest.pipeline import (  # noqa: E402
     STAGES,
     PipelineConfig,
@@ -209,6 +210,20 @@ def main() -> int:
             raw0 = float(meta.raw["p_raw0"])
             cpm = float(meta.raw["p_counts_per_mmhg"])
             pressure_mmhg = (p_resampled - raw0) / cpm
+        elif meta.raw.get("pressure") == "mprls":
+            # Factory-calibrated, absolute (D41): counts -> mmHg, minus the
+            # room's pressure. hr_monitor records the zero it used; otherwise
+            # take the first 2 s, which assumes the valve was open then.
+            absolute = counts_to_mmhg(p_resampled)
+            zero = meta.raw.get("cuff_zero_abs_mmhg")
+            if zero:
+                zero = float(zero)
+                print(f"Pressure  : MPRLS, zero {zero:.1f} mmHg absolute (recorded)")
+            else:
+                zero = float(np.median(absolute[t <= t[0] + 2.0]))
+                print(f"Pressure  : MPRLS, zero {zero:.1f} mmHg absolute "
+                      "(first 2 s — valve assumed open)")
+            pressure_mmhg = absolute - zero
         elif cal:
             pressure_mmhg = calibrate_pressure(
                 p_resampled, cal["RAW0"], cal["RAW_REF"], cal["P_REF"]

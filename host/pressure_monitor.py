@@ -294,6 +294,21 @@ class TkShell:
         root.bind("<r>", lambda _e: core.toggle_record())
         root.bind("<z>", lambda _e: core.zero())
         root.protocol("WM_DELETE_WINDOW", self.on_close)
+        root.report_callback_exception = self._callback_error
+
+    def _callback_error(self, exc_type, exc, tb) -> None:
+        """A button or key handler raised: keep the window up and say what broke.
+
+        Tk's default prints to stderr, which is None under pythonw (double-click
+        launch), and the failure can then take the whole window down.
+        """
+        import traceback
+
+        where = traceback.extract_tb(tb)[-1] if tb else None
+        loc = f" ({Path(where.filename).name}:{where.lineno})" if where else ""
+        self.core.status = f"error: {exc_type.__name__}: {exc}{loc}"
+        if sys.stderr is not None:
+            traceback.print_exception(exc_type, exc, tb)
 
     def _loop(self) -> None:
         if self._closing:

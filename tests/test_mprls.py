@@ -186,6 +186,7 @@ def test_analyze_reads_mprls_recordings(tmp_path):
         fh.write(f"# dark_ir={synth.DARK_IR:.0f} dark_red={synth.DARK_RED:.0f}\n")
         fh.write("# pressure=mprls pressure_addr=0x18\n")
         fh.write(f"# cuff_zero_abs_mmhg={ATM:.3f}\n")
+        fh.write("# ref_systolic_mmhg=120\n# ref_diastolic_mmhg=78\n# cuff_to_sensor_cm=25\n")
         fh.write("# columns=idx,t_us,ir,red,p_idx,p_raw,p_status\n")
         fh.write("idx,t_us,ir,red,p_idx,p_raw,p_status\n")
         for i in range(len(t)):
@@ -196,5 +197,7 @@ def test_analyze_reads_mprls_recordings(tmp_path):
         check=True, capture_output=True, text=True, cwd=ROOT / "host",
         env={**os.environ, "MPLBACKEND": "Agg"})
     assert "MPRLS, zero 760.0" in out.stdout
+    assert "Reference BP      : 120/78 mmHg (MAP 92)" in out.stdout
+    assert "Cuff to sensor    : 25 cm" in out.stdout
     line = next(ln for ln in out.stdout.splitlines() if "ONSET PRESSURE" in ln)
     assert float(line.split(":")[1].split()[0]) == pytest.approx(92.0, abs=1.0)

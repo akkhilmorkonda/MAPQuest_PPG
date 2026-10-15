@@ -30,3 +30,6 @@ data/video/*
 *.mov
 *.MOV
 *.MP4
+
+# Per-machine convenience: last trial info typed into hr_monitor (D42).
+host/.last_trial_info.json

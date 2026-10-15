@@ -31,6 +31,13 @@ both tabs and as its own panel under blood volume, on the same time axis. It is
 zeroed on the room 2 s after connecting, so connect with the cuff valve open;
 Zero cuff (P) re-takes it.
 
+**Trial info** (D42): before each recorded run, type the subject's reference
+blood pressure (systolic / diastolic, from a BP monitor) and the distance from
+the end of the cuff to the sensor in cm. Record checks them and writes them
+into the recording header; they are locked while recording and remembered for
+the next run. Systolic, MAP and diastolic show as dashed lines on the cuff
+panel.
+
 Buttons / keys: Pause (space) · Auto-tune LEDs (T) · Record (R) · Zero volume
 (Z) · Mark event (M) · Zero cuff (P). Record writes raw samples (with the cuff
 columns and zero) with events inline, a per-second heart-rate log, and a 10 Hz
@@ -347,6 +354,73 @@ class ReplaySource(threading.Thread):
 
 CUFF_RATE_TARGET = (2.0, 3.0)    # mmHg/s deflation, SPEC 8
 
+# Per-trial reference values, typed in before Record and written into the
+# recording header: the subject's blood pressure from a reference monitor, and
+# how far the PPG sensor sits from the end of the cuff (D42).
+TRIAL_FILE = Path(__file__).resolve().parent / ".last_trial_info.json"
+TRIAL_LIMITS = {"systolic": (50.0, 260.0), "diastolic": (20.0, 180.0), "distance": (0.0, 100.0)}
+
+
+def parse_trial_info(systolic: str, diastolic: str, distance: str):
+    """(info, error, warning) from the three trial fields as typed.
+
+    Blank fields are allowed (a recording that is not a cuff trial); a field
+    that is filled in must be a number in range, and systolic > diastolic.
+    """
+    info: dict = {}
+    for key, text in (("systolic", systolic), ("diastolic", diastolic), ("distance", distance)):
+        text = (text or "").strip()
+        if not text:
+            continue
+        try:
+            v = float(text)
+        except ValueError:
+            return {}, f"{key} must be a number (got '{text}')", None
+        lo, hi = TRIAL_LIMITS[key]
+        if not lo <= v <= hi:
+            unit = "cm" if key == "distance" else "mmHg"
+            return {}, f"{key} {v:g} {unit} is outside {lo:g}-{hi:g} {unit}", None
+        info[key] = v
+    if "systolic" in info and "diastolic" in info:
+        if info["systolic"] <= info["diastolic"]:
+            return {}, "systolic must be higher than diastolic", None
+        info["map"] = info["diastolic"] + (info["systolic"] - info["diastolic"]) / 3.0
+    missing = [k for k in ("systolic", "diastolic", "distance") if k not in info]
+    warning = f"recording without {', '.join(missing)}" if missing else None
+    return info, None, warning
+
+
+def trial_header_lines(info: dict) -> list[str]:
+    """Header lines for a recording; 'trial_info=none' when nothing was entered."""
+    if not info:
+        return ["# trial_info=none"]
+    lines = []
+    if "systolic" in info:
+        lines.append(f"# ref_systolic_mmhg={info['systolic']:g}")
+    if "diastolic" in info:
+        lines.append(f"# ref_diastolic_mmhg={info['diastolic']:g}")
+    if "map" in info:
+        lines.append(f"# ref_map_mmhg={info['map']:.1f}  (diastolic + pulse pressure / 3)")
+    if "distance" in info:
+        lines.append(f"# cuff_to_sensor_cm={info['distance']:g}")
+    return lines
+
+
+def load_trial_info() -> dict:
+    try:
+        import json
+        return {k: float(v) for k, v in json.loads(TRIAL_FILE.read_text()).items()}
+    except Exception:
+        return {}
+
+
+def save_trial_info(info: dict) -> None:
+    try:
+        import json
+        TRIAL_FILE.write_text(json.dumps(info))
+    except Exception:
+        pass   # a convenience only; never block a recording over it
+
 
 def cuff_summary(cuff: PressureTracker | None) -> str:
     """One line on the cuff: pressure, what it is doing, the zero."""
@@ -613,6 +687,17 @@ class VolumeView:
                                    fontsize=10, color="#6b7280", ha="center",
                                    va="center", transform=ax.transAxes)
         self._cuff_top = 40.0
+        # Reference BP from the trial fields (D42): where flow should come back.
+        self.ref_lines = {}
+        for key, color, label in (("systolic", "#c43b2f", "ref systolic"),
+                                  ("map", "#d08700", "ref MAP"),
+                                  ("diastolic", "#1f6feb", "ref diastolic")):
+            line = ax.axhline(np.nan, color=color, lw=1.0, ls="--", alpha=0.8)
+            right = key == "map"          # MAP label at the other end: they sit close
+            text = ax.text(0.995 if right else 0.005, np.nan, "", fontsize=8, color=color,
+                           va="bottom", ha="right" if right else "left",
+                           transform=ax.get_yaxis_transform())
+            self.ref_lines[key] = (line, text, label)
 
         ax = fig.add_subplot(gs[3, 0])
         self.ax_pct = ax
@@ -711,6 +796,13 @@ class VolumeView:
         self.l_rate.set_data(a["t"], a["rate"])
         cuff = core.cuff
         self.t_cuff_none.set_visible(cuff is None)
+        for key, (line, text, label) in self.ref_lines.items():
+            v = core.trial.get(key) if cuff is not None else None
+            line.set_ydata([np.nan if v is None else v] * 2)
+            text.set_y(np.nan if v is None else v)
+            text.set_text("" if v is None else f"{label} {v:.0f}")
+            if v is not None:
+                self._cuff_top = max(self._cuff_top, 1.1 * v)
         cst = cuff.state() if cuff is not None else None
         if cst is not None and cst.zero_mmhg is not None:
             ct, crel, _ = cuff.arrays(self.span_s)
@@ -787,6 +879,8 @@ class MonitorCore:
         # Cuff pressure (D41): present when the stream carries p_raw.
         self.cuff: PressureTracker | None = None
         self._p_last_idx: float | None = None
+        # Reference BP and cuff-to-sensor distance for the next recording (D42).
+        self.trial: dict = load_trial_info()
 
     # Convenience for tests and callers that only care about the readout.
     @property
@@ -845,6 +939,16 @@ class MonitorCore:
         if z is not None:
             self.status = f"cuff zeroed at {z:.1f} mmHg absolute — valve must be open"
 
+    def set_trial_info(self, systolic: str, diastolic: str, distance: str) -> str | None:
+        """Take the trial fields as typed. Returns an error, or None if accepted."""
+        info, error, warning = parse_trial_info(systolic, diastolic, distance)
+        if error:
+            return error
+        self.trial = info
+        save_trial_info(info)
+        self._trial_warning = warning
+        return None
+
     def toggle_record(self) -> None:
         if self._rec is None:
             self.start_recording()
@@ -868,6 +972,8 @@ class MonitorCore:
         raw_fh.write("# source=hr_monitor\n")
         raw_fh.write(f"# recorded_at={datetime.now().isoformat(timespec='seconds')}\n")
         raw_fh.write(f"# site={self.site}\n# hr_channel={self.channel}\n")
+        for line in trial_header_lines(self.trial):      # reference BP, distance (D42)
+            raw_fh.write(line + "\n")
         # Session time of raw row 0. Event lines and the _hr/_vol logs carry
         # session time (seconds since the monitor started) while raw rows
         # count from zero per recording; without this the 2026-10-09 cuff run
@@ -900,6 +1006,9 @@ class MonitorCore:
             "cuff_zero": self.cuff.zero if self.cuff is not None else None,
         }
         self.status = f"recording to {base.name}.csv (+ _hr, _vol)"
+        warning = getattr(self, "_trial_warning", None)
+        if warning or not self.trial:
+            self.status += f" — ! {warning or 'no trial info entered'}"
 
     def stop_recording(self) -> None:
         if self._rec is None:
@@ -1076,7 +1185,7 @@ class TkShell:
         bar.pack(side="top", fill="x", padx=6, pady=4)
         self.b_pause = ttk.Button(bar, text="Pause (space)", command=self.on_pause)
         self.b_tune = ttk.Button(bar, text="Auto-tune LEDs (T)", command=core.tune)
-        self.b_rec = ttk.Button(bar, text="Record (R)", command=core.toggle_record)
+        self.b_rec = ttk.Button(bar, text="Record (R)", command=self.on_record)
         self.b_zero = ttk.Button(bar, text="Zero volume (Z)", command=core.zero)
         self.b_mark = ttk.Button(bar, text="Mark event (M)", command=core.mark)
         self.b_cuff = ttk.Button(bar, text="Zero cuff (P)", command=core.zero_cuff)
@@ -1102,6 +1211,32 @@ class TkShell:
         self.l_cuff = tk.Label(bar, text="", font=("Consolas", 22, "bold"), fg="#5b3fa8")
         self.l_cuff.pack(side="right", padx=12)
 
+        # Trial info (D42): typed in before each recorded run, written into the
+        # recording header, locked while recording, remembered between runs.
+        trial = ttk.Frame(root)
+        trial.pack(side="top", fill="x", padx=8, pady=(0, 4))
+        ttk.Label(trial, text="Trial info —  reference BP:").pack(side="left")
+        t = core.trial
+        fmt = lambda k: f"{t[k]:g}" if k in t else ""
+        self.v_sys = tk.StringVar(value=fmt("systolic"))
+        self.v_dia = tk.StringVar(value=fmt("diastolic"))
+        self.v_dist = tk.StringVar(value=fmt("distance"))
+        self.e_sys = ttk.Entry(trial, textvariable=self.v_sys, width=6, justify="right")
+        self.e_sys.pack(side="left", padx=(6, 2))
+        ttk.Label(trial, text="/").pack(side="left")
+        self.e_dia = ttk.Entry(trial, textvariable=self.v_dia, width=6, justify="right")
+        self.e_dia.pack(side="left", padx=2)
+        ttk.Label(trial, text="mmHg (systolic / diastolic)").pack(side="left", padx=(2, 4))
+        self.l_map = ttk.Label(trial, text="", width=14)
+        self.l_map.pack(side="left", padx=(0, 18))
+        ttk.Label(trial, text="end of cuff → sensor:").pack(side="left")
+        self.e_dist = ttk.Entry(trial, textvariable=self.v_dist, width=6, justify="right")
+        self.e_dist.pack(side="left", padx=(6, 2))
+        ttk.Label(trial, text="cm").pack(side="left")
+        for v in (self.v_sys, self.v_dia):
+            v.trace_add("write", lambda *_: self._show_map())
+        self._show_map()
+
         self.nb = ttk.Notebook(root)
         self.nb.pack(side="top", fill="both", expand=True)
         f_hr, f_vol = ttk.Frame(self.nb), ttk.Frame(self.nb)
@@ -1115,13 +1250,34 @@ class TkShell:
         self.l_status = ttk.Label(root, anchor="w", padding=(8, 2))
         self.l_status.pack(side="bottom", fill="x")
 
-        root.bind("<space>", lambda _e: self.on_pause())
-        root.bind("<t>", lambda _e: core.tune())
-        root.bind("<r>", lambda _e: core.toggle_record())
-        root.bind("<z>", lambda _e: core.zero())
-        root.bind("<m>", lambda _e: core.mark())
-        root.bind("<p>", lambda _e: core.zero_cuff())
+        # Single-key shortcuts, ignored while typing in a trial field.
+        def key(fn):
+            return lambda e: None if e.widget.winfo_class() in ("TEntry", "Entry") else fn()
+
+        root.bind("<space>", key(self.on_pause))
+        root.bind("<t>", key(core.tune))
+        root.bind("<r>", key(self.on_record))
+        root.bind("<z>", key(core.zero))
+        root.bind("<m>", key(core.mark))
+        root.bind("<p>", key(core.zero_cuff))
+        root.bind("<Return>", lambda _e: root.focus_set())   # leave a field with Enter
         root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def _show_map(self) -> None:
+        info, _err, _w = parse_trial_info(self.v_sys.get(), self.v_dia.get(), "")
+        self.l_map.config(text=f"→ MAP {info['map']:.0f}" if "map" in info else "")
+
+    def on_record(self) -> None:
+        """Record: check and store the trial fields first; stop: just stop."""
+        if not self.core.recording:
+            err = self.core.set_trial_info(self.v_sys.get(), self.v_dia.get(), self.v_dist.get())
+            if err:
+                self.core.status = f"not recording — trial info: {err}"
+                return
+        self.core.toggle_record()
+        state = ["disabled"] if self.core.recording else ["!disabled"]
+        for e in (self.e_sys, self.e_dia, self.e_dist):
+            e.state(state)
 
     def on_pause(self) -> None:
         self.core.toggle_pause()

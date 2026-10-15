@@ -291,6 +291,17 @@ def main() -> int:
         if pressure_mmhg is not None:
             onset_pressure = float(np.interp(d.onset_time, t, pressure_mmhg))
             print(f"  ONSET PRESSURE    : {onset_pressure:.1f} mmHg")
+            # Reference BP typed in before the run (D42): a pulsatile subject's
+            # onset should sit near systolic; a non-pulsatile one's near MAP.
+            ref = {k: float(meta.raw[f"ref_{k}_mmhg"]) for k in ("systolic", "diastolic", "map")
+                   if meta.raw.get(f"ref_{k}_mmhg")}
+            if "systolic" in ref and "diastolic" in ref:
+                m = ref.get("map", ref["diastolic"] + (ref["systolic"] - ref["diastolic"]) / 3)
+                print(f"  Reference BP      : {ref['systolic']:.0f}/{ref['diastolic']:.0f} mmHg "
+                      f"(MAP {m:.0f}); onset - systolic {onset_pressure - ref['systolic']:+.1f}, "
+                      f"onset - MAP {onset_pressure - m:+.1f} mmHg")
+            if meta.raw.get("cuff_to_sensor_cm"):
+                print(f"  Cuff to sensor    : {float(meta.raw['cuff_to_sensor_cm']):g} cm")
 
         # Always show the other estimator so the difference stays visible.
         other_t = (d.threshold_time if args.onset_method == "intersect"

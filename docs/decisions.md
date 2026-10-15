@@ -51,6 +51,7 @@ experiment settles something.
 | [D39](#d39) | Onset intersects the ramp with a sloped occlusion baseline; threshold needs net filling | accepted — resolves O5 |
 | [D40](#d40) | MPRLS pressure sensor, tested standalone before joining the PPG bus | accepted — bench test |
 | [D41](#d41) | MPRLS joins the PPG stream; replaces the HX710B plan | accepted |
+| [D42](#d42) | Reference BP and cuff-to-sensor distance recorded with every trial | accepted |
 | [O1](#o1) | Red channel drift — cause and mitigation | **resolved** |
 | [O2](#o2) | `synth.py` noise defaults vs hardware | **reopened** — real filling ~3× slower than simulated |
 | [O3](#o3) | Is the onset noise floor low enough to work? | **yes on first cuff run, but margin ~2×, not 22×** |
@@ -1190,6 +1191,38 @@ confirmed working with the cuff on its own (D40).
 **Still open.** The span (gain) has not been checked against a reference. Use the
 water-column check, or the Omron gauge teed onto the same hose, before reporting mmHg as
 more than provisional.
+
+---
+
+<a id="d42"></a>
+## D42 — Reference BP and cuff-to-sensor distance recorded with every trial
+
+**Status:** accepted · 2026-10-15
+
+**Why.** Four MPRLS trials on 2026-10-11 put return of flow anywhere from 78 to 124 mmHg.
+Without a reference reading there is no telling whether the subject's pressure changed or
+the measurement did. A home BP monitor's systolic/diastolic, taken just before each run,
+answers that and also checks the MPRLS span. The distance from the cuff's edge to the
+sensor sets how much tissue lies between them, which plausibly changes how fast refilling
+reaches the sensor. It is recorded so it can be studied rather than guessed at.
+
+**What.**
+- **Fields:** a "Trial info" row in `hr_monitor.py` with reference systolic, diastolic,
+  and cuff end → sensor in cm. The MAP is shown as diastolic + pulse pressure / 3.
+- **Checks on Record:** numbers in range (systolic 50–260, diastolic 20–180 mmHg,
+  distance 0–100 cm) and systolic > diastolic. Bad values block the recording with a
+  message; blank fields are allowed (not every recording is a trial) but flagged in the
+  status line.
+- **Recorded:** `# ref_systolic_mmhg=`, `# ref_diastolic_mmhg=`, `# ref_map_mmhg=` and
+  `# cuff_to_sensor_cm=` go into the raw recording header, or `# trial_info=none`.
+- **Locked while recording,** so the header always matches. The last values are kept in
+  `host/.last_trial_info.json` (gitignored) and filled in on the next start.
+- **Live:** systolic, MAP and diastolic are drawn as dashed lines on the cuff panel.
+- **`analyze.py`** prints the onset against them: onset − systolic and onset − MAP.
+
+**Not done.** The MAP shown is the usual one-third rule. An automatic BP monitor measures
+MAP directly (the oscillation peak) and many display it; if yours does, that number is the
+better reference.
 
 ---
 

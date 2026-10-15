@@ -417,3 +417,55 @@ def test_recording_header_aligns_rows_with_session_time(tmp_path, monkeypatch):
     t_ev = float(ev.split("t_s=")[1].split()[0])
     assert abs(t_ev - state["mark_t"]) < 0.2
     assert sum(ln.startswith("# dark_ir=") for ln in lines) == 1
+
+
+# ---------------------------------------------------------------------------
+# Trial info: reference BP and cuff-to-sensor distance (D42)
+# ---------------------------------------------------------------------------
+
+def test_parse_trial_info_rules():
+    import hr_monitor as hm
+    info, err, warn = hm.parse_trial_info("120", "80", "25")
+    assert err is None and warn is None
+    assert info["systolic"] == 120 and info["diastolic"] == 80 and info["distance"] == 25
+    assert info["map"] == pytest.approx(93.33, abs=0.01)
+    assert hm.parse_trial_info("", "", "")[0] == {}               # blank: allowed
+    assert "distance" in hm.parse_trial_info("120", "80", "")[2]  # partial: warned
+    assert "number" in hm.parse_trial_info("12o", "80", "25")[1]
+    assert "outside" in hm.parse_trial_info("320", "80", "25")[1]
+    assert "higher" in hm.parse_trial_info("80", "90", "25")[1]
+
+
+def test_trial_header_lines():
+    import hr_monitor as hm
+    lines = hm.trial_header_lines(hm.parse_trial_info("118", "76", "22.5")[0])
+    assert "# ref_systolic_mmhg=118" in lines and "# ref_diastolic_mmhg=76" in lines
+    assert any(l.startswith("# ref_map_mmhg=90.0") for l in lines)
+    assert "# cuff_to_sensor_cm=22.5" in lines
+    assert hm.trial_header_lines({}) == ["# trial_info=none"]
+
+
+def test_recording_carries_trial_info(tmp_path, monkeypatch):
+    import hr_monitor as hm
+    monkeypatch.setattr(hm, "TRIAL_FILE", tmp_path / "last.json")
+    _t, ir, red, _ = synth_run(seconds=12)
+    path = tmp_path / "trial.csv"
+    _write_capture(path, ir, red)
+    core = _core(path, tmp_path, monkeypatch)
+    assert core.set_trial_info("abc", "80", "20") is not None      # rejected
+    assert core.set_trial_info("121", "79", "24") is None
+    state = {"rec": False}
+
+    def during(c):
+        if c.vol and c.vol.t_now > 4 and not state["rec"]:
+            c.toggle_record()
+            state["rec"] = True
+
+    _until_eof(core, during)
+    core.stop_recording()
+    raw = next(p for p in tmp_path.glob("hr_*.csv")
+               if not p.name.endswith(("_hr.csv", "_vol.csv")))
+    text = raw.read_text()
+    assert "# ref_systolic_mmhg=121" in text and "# cuff_to_sensor_cm=24" in text
+    assert hm.load_trial_info() == {"systolic": 121.0, "diastolic": 79.0, "distance": 24.0,
+                                    "map": pytest.approx(93.0, abs=0.01)}

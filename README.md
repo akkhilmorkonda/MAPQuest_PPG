@@ -147,6 +147,13 @@ with a FILLING / DRAINING / STABLE readout. **Z** zeroes the baseline, **M** dro
 marker. One LED tuning serves both tabs; re-tuning breaks and re-zeroes the volume trace and
 is refused while recording. Details in D34.
 
+**Trial info.** Before each recorded cuff run, fill in the row under the toolbar: your
+reference blood pressure (systolic / diastolic, from a BP monitor) and the distance from the end
+of the cuff to the sensor in cm. Record checks the values (bad ones block the recording with a
+message, blank ones are allowed with a warning) and writes them into the recording header;
+`analyze.py` then reports the onset against them. The fields lock while recording and are
+remembered for the next run. Details in D42.
+
 The toolbar shows a large **session clock** (and ● REC while recording). Until the pressure
 sensor is fitted, film the cuff gauge and this screen together on a phone: every frame then
 pairs a gauge reading with session time, so cuff pressure can be read back against the

@@ -1217,6 +1217,11 @@ reaches the sensor. It is recorded so it can be studied rather than guessed at.
   `# cuff_to_sensor_cm=` go into the raw recording header, or `# trial_info=none`.
 - **Locked while recording,** so the header always matches. The last values are kept in
   `host/.last_trial_info.json` (gitignored) and filled in on the next start.
+- **Run ID:** labels the recording, as `# run_id=` in the header and appended to the
+  filename (`hr_wrist_<stamp>_A-03.csv`, `_hr`, `_vol`). Letters, digits, `-`, `_` and
+  `.` are kept and anything else becomes `-`, so it is safe in a filename and parses as
+  a single header token. An ID ending in a number steps on when recording stops
+  (A-03 → A-04).
 - **Live:** systolic, MAP and diastolic are drawn as dashed lines on the cuff panel.
 - **`analyze.py`** prints the onset against them: onset − systolic and onset − MAP.
 

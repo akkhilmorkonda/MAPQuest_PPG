@@ -147,8 +147,9 @@ with a FILLING / DRAINING / STABLE readout. **Z** zeroes the baseline, **M** dro
 marker. One LED tuning serves both tabs; re-tuning breaks and re-zeroes the volume trace and
 is refused while recording. Details in D34.
 
-**Trial info.** Before each recorded cuff run, fill in the row under the toolbar: your
-reference blood pressure (systolic / diastolic, from a BP monitor) and the distance from the end
+**Trial info.** Before each recorded cuff run, fill in the row under the toolbar: a run ID
+(labels the files, e.g. `hr_wrist_20261015_150212_A-03.csv`, and steps to A-04 when you
+stop), your reference blood pressure (systolic / diastolic, from a BP monitor) and the distance from the end
 of the cuff to the sensor in cm. Record checks the values (bad ones block the recording with a
 message, blank ones are allowed with a warning) and writes them into the recording header;
 `analyze.py` then reports the onset against them. The fields lock while recording and are

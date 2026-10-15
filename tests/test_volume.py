@@ -469,3 +469,40 @@ def test_recording_carries_trial_info(tmp_path, monkeypatch):
     assert "# ref_systolic_mmhg=121" in text and "# cuff_to_sensor_cm=24" in text
     assert hm.load_trial_info() == {"systolic": 121.0, "diastolic": 79.0, "distance": 24.0,
                                     "map": pytest.approx(93.0, abs=0.01)}
+
+
+def test_run_id_cleaning_and_increment():
+    import hr_monitor as hm
+    assert hm.clean_run_id("  A-03 left arm ") == "A-03-left-arm"
+    assert hm.clean_run_id("trial/7?") == "trial-7"
+    assert hm.clean_run_id("") == ""
+    assert hm.clean_run_id("run_hr") == "run_hr-run"         # would look like the HR log
+    assert hm.next_run_id("A-03") == "A-04"
+    assert hm.next_run_id("A-09") == "A-10"
+    assert hm.next_run_id("trial99") == "trial100"
+    assert hm.next_run_id("baseline") == "baseline"
+
+
+def test_run_id_labels_the_recording_and_steps_on(tmp_path, monkeypatch):
+    import hr_monitor as hm
+    monkeypatch.setattr(hm, "TRIAL_FILE", tmp_path / "last.json")
+    _t, ir, red, _ = synth_run(seconds=12)
+    path = tmp_path / "rid.csv"
+    _write_capture(path, ir, red)
+    core = _core(path, tmp_path, monkeypatch)
+    assert core.set_trial_info("120", "80", "25", run_id="B 07") is None
+    state = {"rec": False}
+
+    def during(c):
+        if c.vol and c.vol.t_now > 4 and not state["rec"]:
+            c.toggle_record()
+            state["rec"] = True
+
+    _until_eof(core, during)
+    core.stop_recording()
+    files = sorted(p.name for p in tmp_path.glob("hr_*_B-07*.csv"))
+    assert len(files) == 3 and any(f.endswith("_B-07_hr.csv") for f in files)
+    raw = next(tmp_path.glob("hr_*_B-07.csv"))
+    assert "# run_id=B-07" in raw.read_text()
+    assert core.trial["run_id"] == "B-08"                       # ready for the next run
+    assert hm.load_trial_info()["run_id"] == "B-08"

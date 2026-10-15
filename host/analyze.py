@@ -184,6 +184,8 @@ def main() -> int:
         ap.error(f"recording has no IR channel; found {list(channels)}")
 
     print(f"File      : {args.csv}")
+    if meta.raw.get("run_id"):
+        print(f"Run ID    : {meta.raw['run_id']}")
     print(f"Config    : {meta.describe()}")
     print(f"Duration  : {t[-1]:.1f} s, {len(t):,} samples")
 

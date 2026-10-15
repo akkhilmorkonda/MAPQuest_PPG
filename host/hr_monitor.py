@@ -31,7 +31,8 @@ both tabs and as its own panel under blood volume, on the same time axis. It is
 zeroed on the room 2 s after connecting, so connect with the cuff valve open;
 Zero cuff (P) re-takes it.
 
-**Trial info** (D42): before each recorded run, type the subject's reference
+**Trial info** (D42): before each recorded run, type a run ID (it labels the
+recording's files and steps on, A-03 -> A-04, when you stop) and the subject's reference
 blood pressure (systolic / diastolic, from a BP monitor) and the distance from
 the end of the cuff to the sensor in cm. Record checks them and writes them
 into the recording header; they are locked while recording and remembered for
@@ -392,9 +393,9 @@ def parse_trial_info(systolic: str, diastolic: str, distance: str):
 
 def trial_header_lines(info: dict) -> list[str]:
     """Header lines for a recording; 'trial_info=none' when nothing was entered."""
-    if not info:
-        return ["# trial_info=none"]
-    lines = []
+    lines = [f"# run_id={info['run_id']}"] if info.get("run_id") else []
+    if not any(k in info for k in ("systolic", "diastolic", "distance")):
+        return lines + ["# trial_info=none"]
     if "systolic" in info:
         lines.append(f"# ref_systolic_mmhg={info['systolic']:g}")
     if "diastolic" in info:
@@ -406,10 +407,39 @@ def trial_header_lines(info: dict) -> list[str]:
     return lines
 
 
+RUN_ID_MAX = 32
+# Endings the run ID must not produce, or its file would look like a log.
+_RESERVED_ENDINGS = ("_hr", "_vol", "_gauge", "_cuff", "_check", "_clock_sheet")
+
+
+def clean_run_id(text: str) -> str:
+    """Run ID as it goes into the header and the filename (D42).
+
+    Letters, digits, '-', '_' and '.' are kept; anything else (spaces
+    included) becomes '-'. Blank is allowed.
+    """
+    import re
+    rid = re.sub(r"[^A-Za-z0-9._-]+", "-", (text or "").strip()).strip("-._")[:RUN_ID_MAX]
+    if rid.lower().endswith(_RESERVED_ENDINGS):
+        rid += "-run"
+    return rid
+
+
+def next_run_id(rid: str) -> str:
+    """A-03 -> A-04, trial9 -> trial10; unchanged without a trailing number."""
+    import re
+    m = re.search(r"(\d+)$", rid or "")
+    if not m:
+        return rid
+    n = m.group(1)
+    return rid[:m.start()] + str(int(n) + 1).zfill(len(n))
+
+
 def load_trial_info() -> dict:
     try:
         import json
-        return {k: float(v) for k, v in json.loads(TRIAL_FILE.read_text()).items()}
+        raw = json.loads(TRIAL_FILE.read_text())
+        return {k: (str(v) if k == "run_id" else float(v)) for k, v in raw.items()}
     except Exception:
         return {}
 
@@ -939,11 +969,15 @@ class MonitorCore:
         if z is not None:
             self.status = f"cuff zeroed at {z:.1f} mmHg absolute — valve must be open"
 
-    def set_trial_info(self, systolic: str, diastolic: str, distance: str) -> str | None:
+    def set_trial_info(self, systolic: str, diastolic: str, distance: str,
+                       run_id: str = "") -> str | None:
         """Take the trial fields as typed. Returns an error, or None if accepted."""
         info, error, warning = parse_trial_info(systolic, diastolic, distance)
         if error:
             return error
+        rid = clean_run_id(run_id)
+        if rid:
+            info["run_id"] = rid
         self.trial = info
         save_trial_info(info)
         self._trial_warning = warning
@@ -967,7 +1001,8 @@ class MonitorCore:
             return
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base = DATA_DIR / f"hr_{self.site}_{stamp}"
+        rid = self.trial.get("run_id")
+        base = DATA_DIR / (f"hr_{self.site}_{stamp}" + (f"_{rid}" if rid else ""))
         raw_fh = base.with_suffix(".csv").open("w")
         raw_fh.write("# source=hr_monitor\n")
         raw_fh.write(f"# recorded_at={datetime.now().isoformat(timespec='seconds')}\n")
@@ -1020,6 +1055,11 @@ class MonitorCore:
                 pass
         self.status = f"saved {self._rec['path'].name}.csv, _hr.csv, _vol.csv"
         self._rec = None
+        # Suggest the next run's ID: A-03 -> A-04 (D42).
+        rid = self.trial.get("run_id")
+        if rid and next_run_id(rid) != rid:
+            self.trial["run_id"] = next_run_id(rid)
+            save_trial_info(self.trial)
 
     def _record_samples(self, block: np.ndarray) -> None:
         fh = self._rec["raw"]
@@ -1215,9 +1255,13 @@ class TkShell:
         # recording header, locked while recording, remembered between runs.
         trial = ttk.Frame(root)
         trial.pack(side="top", fill="x", padx=8, pady=(0, 4))
-        ttk.Label(trial, text="Trial info —  reference BP:").pack(side="left")
         t = core.trial
         fmt = lambda k: f"{t[k]:g}" if k in t else ""
+        ttk.Label(trial, text="Trial info —  run ID:").pack(side="left")
+        self.v_rid = tk.StringVar(value=t.get("run_id", ""))
+        self.e_rid = ttk.Entry(trial, textvariable=self.v_rid, width=14)
+        self.e_rid.pack(side="left", padx=(6, 18))
+        ttk.Label(trial, text="reference BP:").pack(side="left")
         self.v_sys = tk.StringVar(value=fmt("systolic"))
         self.v_dia = tk.StringVar(value=fmt("diastolic"))
         self.v_dist = tk.StringVar(value=fmt("distance"))
@@ -1270,13 +1314,17 @@ class TkShell:
     def on_record(self) -> None:
         """Record: check and store the trial fields first; stop: just stop."""
         if not self.core.recording:
-            err = self.core.set_trial_info(self.v_sys.get(), self.v_dia.get(), self.v_dist.get())
+            err = self.core.set_trial_info(self.v_sys.get(), self.v_dia.get(),
+                                           self.v_dist.get(), self.v_rid.get())
             if err:
                 self.core.status = f"not recording — trial info: {err}"
                 return
+            self.v_rid.set(self.core.trial.get("run_id", ""))   # show it as cleaned
         self.core.toggle_record()
+        if not self.core.recording:
+            self.v_rid.set(self.core.trial.get("run_id", ""))   # next run's ID
         state = ["disabled"] if self.core.recording else ["!disabled"]
-        for e in (self.e_sys, self.e_dia, self.e_dist):
+        for e in (self.e_rid, self.e_sys, self.e_dia, self.e_dist):
             e.state(state)
 
     def on_pause(self) -> None:

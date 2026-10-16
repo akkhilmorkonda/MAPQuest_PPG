@@ -506,3 +506,54 @@ def test_run_id_labels_the_recording_and_steps_on(tmp_path, monkeypatch):
     assert "# run_id=B-07" in raw.read_text()
     assert core.trial["run_id"] == "B-08"                       # ready for the next run
     assert hm.load_trial_info()["run_id"] == "B-08"
+
+
+def test_run_id_with_dots_keeps_every_file_together(tmp_path, monkeypatch):
+    """2026-10-16: run ID 10.16.26 saved the raw file as ..._10.16.csv."""
+    import hr_monitor as hm
+    monkeypatch.setattr(hm, "TRIAL_FILE", tmp_path / "last.json")
+    _t, ir, red, _ = synth_run(seconds=10)
+    path = tmp_path / "dots.csv"
+    _write_capture(path, ir, red)
+    core = _core(path, tmp_path, monkeypatch)
+    core.set_trial_info("", "", "", run_id="10.16.26")
+    state = {"rec": False}
+
+    def during(c):
+        if c.vol and c.vol.t_now > 3 and not state["rec"]:
+            c.toggle_record()
+            state["rec"] = True
+
+    _until_eof(core, during)
+    core.stop_recording()
+    names = sorted(p.name for p in tmp_path.glob("hr_*"))
+    assert [n.split("10.16.26")[1] for n in names] == [".csv", "_hr.csv", "_vol.csv"]
+
+
+def test_hr_log_uses_session_time_after_a_reset(tmp_path, monkeypatch):
+    """A reset restarts the estimator's clock; the log must stay on session time."""
+    _t, ir, red, _ = synth_run(seconds=40)
+    path = tmp_path / "reset.csv"
+    _write_capture(path, ir, red)
+    core = _core(path, tmp_path, monkeypatch)
+    state = {"reset": False, "rec": False, "rec_t": None}
+
+    def during(c):
+        if c.vol and c.vol.t_now > 8 and not state["reset"]:
+            c.q.put(("reset", "LED re-tuned"))
+            state["reset"] = True
+        if c.vol and c.vol.t_now > 15 and not state["rec"]:
+            state["rec_t"] = c.vol.t_now
+            c.toggle_record()
+            state["rec"] = True
+        if c.vol and c.vol.t_now > 25 and state["rec"] and not state.get("reset2"):
+            c.q.put(("reset", "LED re-tuned"))          # a reset mid-recording
+            state["reset2"] = True
+
+    _until_eof(core, during)
+    core.stop_recording()
+    log = next(tmp_path.glob("hr_*_hr.csv")).read_text().splitlines()[1:]
+    t = [float(r.split(",")[0]) for r in log]
+    assert abs(t[0] - state["rec_t"]) < 1.5                    # starts on session time
+    assert t[-1] > 34                                           # keeps logging after reset
+    assert all(b > a for a, b in zip(t, t[1:]))

@@ -1003,7 +1003,9 @@ class MonitorCore:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         rid = self.trial.get("run_id")
         base = DATA_DIR / (f"hr_{self.site}_{stamp}" + (f"_{rid}" if rid else ""))
-        raw_fh = base.with_suffix(".csv").open("w")
+        # Not base.with_suffix(): a run ID with dots ("10.16.26") would lose
+        # its last part as if it were an extension (2026-10-16).
+        raw_fh = Path(str(base) + ".csv").open("w")
         raw_fh.write("# source=hr_monitor\n")
         raw_fh.write(f"# recorded_at={datetime.now().isoformat(timespec='seconds')}\n")
         raw_fh.write(f"# site={self.site}\n# hr_channel={self.channel}\n")
@@ -1078,9 +1080,16 @@ class MonitorCore:
                 else fmt.format(v)
 
         if self.est is not None:
+            # The estimator keeps its own clock, restarted by every reset (LED
+            # tune, link reset), so rows are shifted onto session time; and a
+            # reset empties its history, so restart from the top (2026-10-16:
+            # a pre-recording tune left the log 25 s behind session time).
+            off = (self.vol.t_now - self.est.t_now) if self.vol is not None else 0.0
+            if len(self.est.history) < rec["hist"]:
+                rec["hist"] = 0
             for h in self.est.history[rec["hist"]:]:
                 rec["hr"].write(",".join([
-                    f"{h.t:.0f}", f(h.hr_display, "{:.1f}"), h.hr_source or "",
+                    f"{h.t + off:.1f}", f(h.hr_display, "{:.1f}"), h.hr_source or "",
                     h.quality, f(h.hr_beats, "{:.1f}"), f(h.hr_spectral, "{:.1f}"),
                     f(h.spectral_conc), f"{h.perfusion_pct:.4f}",
                     f"{h.pulse_snr:.1f}", f(h.rmssd_ms, "{:.0f}"),

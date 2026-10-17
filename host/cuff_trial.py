@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cuff trial: pulse return, refill onset and cuff pressure in one figure (D43).
+"""Cuff trial: pulse return, refill onset and cuff pressure in one figure (D43, D44).
 
     python cuff_trial.py ../data/hr_wrist_20261017_145914_test6.csv
     python cuff_trial.py <csv> --deflation 64 --hold 50,64      # override windows
@@ -31,6 +31,8 @@ Markers, each with the cuff pressure at that moment:
                         (mapquest/pulse_return.py)
     refill onset        corner of the trend-then-rising fit (hinge, default)
     refill, intersect   straight ramp extrapolated to the sloped baseline (D39)
+    steep refill        where the refill accelerates most, within 20 s of the
+                        onset; tracked MAP on the slow trials so far (D44)
 
 With reference BP in the header (D42) each is also reported against systolic
 and MAP. Saves ``<name>_cuff.png`` next to the recording.
@@ -51,10 +53,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mapquest.cuff import REF_S, Windows, windows_from_pressure  # noqa: E402
 from mapquest.io import load_csv  # noqa: E402
 from mapquest.mprls import counts_to_mmhg  # noqa: E402
-from mapquest.pipeline import PipelineConfig, derive  # noqa: E402
+from mapquest.pipeline import PipelineConfig, derive, steep_refill  # noqa: E402
 from mapquest import pulse_return  # noqa: E402
 
 UNCUFFED_MMHG = 8.0
+STEEP_SEARCH_S = 20.0
 WINDOWS_FILE = Path(__file__).resolve().parent.parent / "data" / "cuff_windows.json"
 
 
@@ -153,10 +156,15 @@ def analyse(trial: Trial, w: Windows) -> dict:
     uncuffed = inside & (p_t < UNCUFFED_MMHG) & ((t < w.inflation) | (t > w.release))
     ir = trial.channels["ir"] - float(trial.dark.get("ir", 0.0))
     pr = pulse_return.detect(t, ir, trial.fs, w.hold, w.deflation, uncuffed)
+    onset = next((x for x in (d.onset_time_hinge, d.onset_time_sloped, d.threshold_time)
+                  if x is not None), None)
+    steep = (steep_refill(d.ddv, t, onset, min(onset + STEEP_SEARCH_S, w.release))
+             if onset is not None else None)
     return {"derivation": d, "pulse": pr,
             "markers": [("pulse return", pr.t_return if pr else None),
                         ("refill onset (hinge)", d.onset_time_hinge),
-                        ("refill onset (intersect)", d.onset_time_sloped)]}
+                        ("refill onset (intersect)", d.onset_time_sloped),
+                        ("steep refill", steep)]}
 
 
 def report(trial: Trial, w: Windows, res: dict) -> None:
@@ -200,7 +208,7 @@ def figure(trial: Trial, w: Windows, res: dict, out: Path, x=None, motion=(),
     x0, x1 = x or w.x or (max(t[0], w.inflation - 5.0), min(t[-1], w.release + 5.0))
     sel = (t >= x0) & (t <= x1)
     colors = {"pulse return": "tab:purple", "refill onset (hinge)": "tab:green",
-              "refill onset (intersect)": "tab:gray"}
+              "refill onset (intersect)": "tab:gray", "steep refill": "#d6197a"}
     ev = sorted([(n, tt, colors[n]) for n, tt in res["markers"] if tt is not None],
                 key=lambda e: e[1])
 

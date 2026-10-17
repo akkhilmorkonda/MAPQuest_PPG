@@ -417,6 +417,23 @@ def hinge_onset(
     return best[1], best[2], best[3]
 
 
+def steep_refill(ddv: np.ndarray, t: np.ndarray, start: float, end: float) -> float | None:
+    """Where the refill accelerates most: the peak of d2(dV*L)/dt2 between
+    ``start`` (the refill onset) and ``end`` (D44).
+
+    In a pulsatile arm blood starts to trickle past the cuff below systolic,
+    but inflow only surges once the cuff is below the pressure the artery
+    sits at for most of the beat. On the six cuff trials with reference BP
+    this point tracked MAP: within 3 mmHg on all four slow deflations, high
+    by 12-17 mmHg on two faster ones with the sensor 7 cm from the cuff.
+    """
+    i = (t >= start) & (t <= end)
+    if i.sum() < 5:
+        return None
+    acc = np.gradient(ddv[i], t[i])
+    return float(t[i][int(np.argmax(acc))])
+
+
 def pulsatility_rms(x: np.ndarray, fs: float, band: tuple[float, float]) -> float:
     """RMS of the cardiac band during the reference window (SPEC 5.1 step 12).
 

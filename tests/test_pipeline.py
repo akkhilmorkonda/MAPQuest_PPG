@@ -353,3 +353,16 @@ def test_hinge_with_pulses_on_curved_fill():
     assert abs(err) <= 2.5, f"hinge error {err:+.2f} mmHg with pulses"
     sloped = float(np.interp(d.onset_time_sloped, t, p)) - args.map
     assert abs(sloped) > 3 * abs(err)
+
+
+def test_steep_refill_finds_the_surge():
+    """D44: a slow trickle from 20 s, then a surge from 35 s."""
+    from scipy.ndimage import gaussian_filter1d
+    from mapquest.pipeline import steep_refill
+    fs = 100.0
+    t = np.arange(0, 60, 1 / fs)
+    dv = 0.4 * np.clip(t - 20, 0, None) + 2.6 * np.clip(t - 35, 0, None)
+    dv = gaussian_filter1d(dv, 0.8 * fs)
+    ddv = np.gradient(dv, t)
+    assert abs(steep_refill(ddv, t, 20.0, 40.0) - 35.0) < 0.3
+    assert steep_refill(ddv, t, 20.0, 20.01) is None

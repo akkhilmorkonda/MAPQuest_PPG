@@ -1339,6 +1339,51 @@ synthetic data and four reference trials, not tuned further.
 
 ---
 
+## D44 — "Steep refill" marker: where the refill accelerates most
+
+**Status:** provisional · 2026-10-17
+
+**Why.** On test25–27 the blood-volume refill came in two stages: a gentle rise starting
+near systolic, then a surge. The surge began within 3 mmHg of the reference MAP each
+time. In a pulsatile arm that is what you would expect. Blood starts to trickle past the
+cuff once it is below systolic, but inflow only surges once the cuff is below the
+pressure the artery sits at for most of the beat.
+
+**What.** `pipeline.steep_refill`: the peak of d²(ΔV·L)/dt² between the refill onset
+(hinge, else intersect, else threshold crossing) and 20 s later, or the cuff release if
+that comes first. `cuff_trial.py` reports it as a fourth marker against systolic and MAP,
+and draws it in magenta.
+
+**Evidence: the six runs with reference BP** (`docs/figures/map-markers-6-runs.png`,
+`docs/figures/steep-refill-vs-map.png`):
+
+| Run | Sensor | Mean deflation | Steep refill | Ref MAP | Error |
+|---|---|---|---|---|---|
+| 10.16.26 | 7 cm | 2.1 mmHg/s | 109.2 | 92.3 | +16.9 |
+| test3 | 7 cm | 2.8 | 87.7 | 88.3 | −0.6 |
+| test4 | 7 cm | 4.0 | 109.7 | 98.0 | +11.7 |
+| test25 | 3 cm | 1.9 | 87.8 | 87.0 | +0.8 |
+| test26 | 3 cm | 2.1 | 88.9 | 86.0 | +2.9 |
+| test27 | 3 cm | 1.9 | 91.8 | 92.7 | −0.9 |
+
+Across all six: r = +0.82 against MAP, error +5.1 ± 7.4 mmHg. That beats every other
+marker (cuff oscillation maximum +6.0 ± 10.0, intersect +11.6 ± 6.0, pulse return
++15.1 ± 8.9, hinge +17.3 ± 7.8). At 3 cm: +0.9 ± 1.9. test6 (3 cm, not in the six)
+reads 84.4 against 87.
+
+**Why provisional.**
+- The definition was chosen after seeing test25–27, so those runs fit it partly by
+  construction. The 7 cm runs are the only independent check, and only one of three
+  agreed.
+- The 7 cm runs differ from the 3 cm ones in sensor distance, day and deflation speed
+  all at once. Slow runs at 7 cm would separate those.
+- The reference MAPs span only 86–98 mmHg, and they come from the one-third rule, not
+  a measurement.
+- On the older trials without reference BP, a few values (66–71 mmHg on 2026-10-09,
+  10-10 13:45 and 10-11 22:06) look more like a late surge than MAP.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 

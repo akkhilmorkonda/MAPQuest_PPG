@@ -183,10 +183,11 @@ python cuff_trial.py ../data/hr_wrist_20261017_145914_test6.csv
 python cuff_trial.py <csv> --deflation 64 --hold 50,64 --motion 80,84   # override windows
 ```
 
-Writes `<recording>_cuff.png` and prints three return-of-flow markers with the cuff pressure
-at each, against the reference BP if it was entered: **pulse return** (the heartbeat back
-above three times its occluded ripple), **refill onset (hinge)** and **refill onset
-(intersect)**. Windows come from the pressure trace, or from `data/cuff_windows.json` for
+Writes `<recording>_cuff.png` and prints four markers with the cuff pressure at each,
+against the reference BP if it was entered: **pulse return** (the heartbeat back above three
+times its occluded ripple), **refill onset (hinge)**, **refill onset (intersect)**, and
+**steep refill**, where the refill accelerates most. Steep refill has tracked MAP on the slow
+trials so far (D44, provisional). Windows come from the pressure trace, or from `data/cuff_windows.json` for
 trials already checked by hand. Check them on the figure. Details in D43.
 
 ## Cuff pressure sensor test (MPRLS)

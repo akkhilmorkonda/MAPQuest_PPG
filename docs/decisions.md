@@ -1172,7 +1172,10 @@ confirmed working with the cuff on its own (D40).
   onto each PPG sample, and `p_idx` counts conversions so the host can tell a fresh reading
   from a held one.
 - **Header:** `# pressure=mprls …`, with the transfer-function constants.
-- **Sensor found or lost:** it is probed at boot and on `R`. The columns are fixed when
+- **Sensor found or lost:** it is probed at boot and on `R`, and again on INFO and START
+  whenever it is missing (firmware 0.3.1). On 2026-10-17 one missed probe at boot left a
+  whole session PPG-only until `R`. The monitor re-maps its columns if START's header
+  differs from INFO's. The columns are fixed when
   START prints the header: without the sensor the stream is PPG only, and a sensor lost
   mid-stream sends status 0, which the host rejects.
 

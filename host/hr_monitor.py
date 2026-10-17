@@ -133,6 +133,7 @@ class SerialSource(threading.Thread):
                 self._quit.wait(2.0)
 
     def _send_meta(self, dev: Device, port: str) -> None:
+        self._sent_columns = list(dev.meta.columns)
         raw = dict(dev.meta.raw)
         self.out.put(("meta", {
             "fs": dev.meta.fs,
@@ -177,6 +178,14 @@ class SerialSource(threading.Thread):
             gen = dev.stream(stall_timeout=self.stall_timeout)
             try:
                 for fields, _line in gen:
+                    # START re-prints the header. If the columns changed since
+                    # INFO (a pressure sensor found or lost in between), the
+                    # core must re-map them before it reads these samples.
+                    if list(dev.meta.columns) != getattr(self, "_sent_columns", None):
+                        if block:
+                            self.out.put(("samples", np.asarray(block, dtype=float)))
+                            block = []
+                        self._send_meta(dev, port)
                     block.append(fields)
                     now = time.time()
                     if now - last >= 0.04:
@@ -1172,6 +1181,10 @@ class MonitorCore:
             elif kind == "status":
                 self.status = payload
             elif kind == "reset":
+                # Write out heart-rate rows made since the last tick first: the
+                # reset empties the estimator's history.
+                if self._rec is not None:
+                    self._record_logs()
                 if self.est is not None:
                     self.est.reset()
                 if self.vol is not None:

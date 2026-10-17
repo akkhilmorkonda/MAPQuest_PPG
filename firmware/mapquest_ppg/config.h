@@ -6,7 +6,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION "mapquest-fw-0.3"
+#define FIRMWARE_VERSION "mapquest-fw-0.3.1"
 
 // ---------------------------------------------------------------------------
 // MAX30101 (SPEC 3.1)

@@ -517,6 +517,11 @@ static void handleCommand(char *line) {
       return;
     }
     g_sample_idx = 0;
+#if PRESSURE_ENABLED
+    // A missed probe at boot (loose jumper, slow power-up) used to leave the
+    // whole session PPG-only (2026-10-17). Look again whenever it is missing.
+    if (!g_p_ok) bringUpPressure();
+#endif
     clearFifo();
     printInfo();
     Serial.println(F("# streaming=1"));
@@ -527,6 +532,9 @@ static void handleCommand(char *line) {
     Serial.println(F("# streaming=0"));
 
   } else if (strcmp(line, "INFO") == 0) {
+#if PRESSURE_ENABLED
+    if (!g_p_ok && !g_streaming) bringUpPressure();   // same as START: look again
+#endif
     printInfo();
 
   } else if (strcmp(line, "DARK") == 0) {

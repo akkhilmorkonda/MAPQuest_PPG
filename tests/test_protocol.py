@@ -41,8 +41,9 @@ class FakeSerial:
                  pulse_frac=0.0015, bpm=68.0,
                  die_at=None, stall_at=None, reset_at=None,
                  temp_c=28.5, temp_rise_per_sample=0.0, rate_limit=False,
-                 cuff=None):
+                 cuff=None, cuff_late=False):
         self.cuff = cuff          # callable t_s -> cuff mmHg: an MPRLS on the bus (D41)
+        self.cuff_late = cuff_late  # MPRLS missed at INFO, found at START (2026-10-17)
         self.port = port
         self.fs = fs
         self.ir_dc = ir_dc
@@ -98,7 +99,7 @@ class FakeSerial:
         self._emit(f"# ir_amp={self.ir_amp} red_amp={self.red_amp}")
         self._emit(f"# ir_amp_ma={self.ir_amp * 0.2:.1f} "
                    f"red_amp_ma={self.red_amp * 0.2:.1f}")
-        if self.cuff is None:
+        if self.cuff is None or (self.cuff_late and not self.streaming):
             self._emit("# pressure=none")
             self._emit("# columns=idx,t_us,ir,red")
         else:
@@ -1049,3 +1050,30 @@ def test_monitor_tracks_and_records_cuff_pressure(fake, tmp_path, monkeypatch):
     vol = Path(str(raw)[:-4] + "_vol.csv").read_text().splitlines()
     assert vol[0].endswith(",cuff_mmhg")
     assert float(vol[-1].split(",")[-1]) == pytest.approx(150.0, abs=0.5)
+
+
+def test_monitor_picks_up_a_pressure_sensor_found_at_start(fake, tmp_path, monkeypatch):
+    """2026-10-17: INFO said pressure=none, START found the MPRLS. The monitor
+    must re-map columns from the START header, not keep INFO's."""
+    import queue
+    import time as _time
+    import hr_monitor as hm
+
+    monkeypatch.setattr(hm, "DATA_DIR", tmp_path)
+    fake["kwargs"] = dict(cuff=lambda t: 0.0 if t < 3.0 else 120.0, cuff_late=True,
+                          rate_limit=True)
+    src = hm.SerialSource(queue.Queue(), port="FAKE")
+    core = hm.MonitorCore(src, site="wrist")
+    src.start()
+    try:
+        deadline = _time.time() + 30
+        while _time.time() < deadline:
+            core.tick(views=("vol",))
+            st = core.cuff.state() if core.cuff is not None else None
+            if st is not None and st.zero_mmhg is not None and st.mmhg > 100:
+                break
+            _time.sleep(0.05)
+    finally:
+        src.stop()
+    assert "p_raw" in core.meta["columns"]
+    assert core.cuff.state().mmhg == pytest.approx(120.0, abs=0.1)

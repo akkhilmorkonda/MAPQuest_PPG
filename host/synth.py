@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mapquest.pipeline import COEFF_IR_880, COEFF_RED_660  # noqa: E402
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+FILL_RAMP_S = 5.0   # gradient fill: seconds after onset to reach fill_rate
 
 # Haemoglobin extinction difference (Hb - HbO2) at each wavelength, cm^-1/M,
 # from the Prahl/OMLC tables the SPEC references. The SIGN FLIP between them
@@ -64,8 +65,15 @@ def build(args, rng: np.random.Generator):
     dv_true = np.zeros(n)
     if below.any() and not args.no_filling:
         start = int(np.argmax(below))
-        ramp = (t - t[start]) * args.fill_rate
-        dv_true = np.where(below, np.maximum(ramp, 0.0), 0.0)
+        dt = np.maximum(t - t[start], 0.0)
+        if getattr(args, "fill_shape", "linear") == "gradient":
+            # Inflow grows with (MAP - cuff), which grows linearly as the cuff
+            # bleeds down: volume rises as a parabola from a soft start (D43).
+            # fill_rate is the slope reached FILL_RAMP_S after onset.
+            ramp = 0.5 * (args.fill_rate / FILL_RAMP_S) * dt ** 2
+        else:
+            ramp = dt * args.fill_rate
+        dv_true = np.where(below, ramp, 0.0)
     if args.constant_volume:
         dv_true = np.zeros(n)
 
@@ -161,6 +169,9 @@ def main() -> int:
     ap.add_argument("--deflate-rate", type=float, default=2.0, help="mmHg/s")
     ap.add_argument("--fill-rate", type=float, default=3.0,
                     help="dV*L ramp slope, um/s, once filling starts")
+    ap.add_argument("--fill-shape", choices=("linear", "gradient"), default="linear",
+                    help="linear: a sharp corner; gradient: inflow grows as the cuff falls, "
+                         "a parabola that reaches --fill-rate 5 s after onset (D43)")
     ap.add_argument("--noise", type=float, default=40.0, help="count std dev")
     ap.add_argument("--drift", type=float, default=0.0, help="fractional slow drift")
     ap.add_argument("--cardiac", action="store_true")

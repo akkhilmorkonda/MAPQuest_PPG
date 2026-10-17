@@ -141,7 +141,7 @@ flowchart TD
     D1["<b>5. Derivative</b><br/>Savitzky-Golay, 2.0 s window<br/>one HeartMate-3 pulse period"]
     NOISE["<b>6. Noise floor</b><br/>mu0, sigma0 over the<br/>reference window"]
     ONSET["<b>7. Onset seed</b><br/>sustained excursion above<br/>max(mu0, 0) + 3·sigma0 (D39)"]
-    REFINE["<b>7b. Ramp intersection</b><br/>ramp line meets the<br/>sloped occlusion trend (D39)"]
+    REFINE["<b>7b. Hinge onset</b> (D43)<br/>corner of trend + a·(t−t0)^p, p = 1 or 2<br/>intersect with the sloped trend<br/>still reported (D39)"]
     MAP["<b>8. Result</b><br/>cuff pressure at onset"]
 
     RAW --> DARK --> OD --> DV --> LP --> D1
@@ -166,6 +166,10 @@ flowchart TD
     PULS["Pulsatility RMS<br/>0.5-5 Hz during reference<br/><i>flag only: pulsatile subject<br/>reads near systolic, not MAP</i>"]
     OD -.-> PULS
 
+    PRET["<b>Pulse return</b> (D43)<br/>heart band f0 ±15% above<br/>3× its occluded floor, 3 s"]
+    RAW -.->|"IR"| PRET
+    PRET -.->|"second marker"| MAP
+
     classDef deviation fill:#fff4e0,stroke:#e07b00
     classDef missing fill:#ffe6e6,stroke:#c43b2f,stroke-dasharray:4 3
     class REFINE deviation
@@ -179,7 +183,10 @@ intersect` fits the established ramp and extrapolates back, landing within ±0.2
 it meets a line fitted to the occlusion trend, not a flat level, because real blood volume drains
 under occlusion (O5). On the 20:35 trial the flat level read 11–53 mmHg low depending on the
 reference window; the sloped one is stable to 0.4 mmHg. The threshold is floored at
-0 + 3σ0 so that a slowing drain cannot trigger it.
+0 + 3σ0 so that a slowing drain cannot trigger it. Since D43 the reported onset is the corner
+of a "trend, then rising" fit with a sharp (p = 1) or soft (p = 2) start. On sharp synthetic
+ramps it matches the intersect to about 0.5 mmHg. On soft starts, which slow deflation
+produces, it removes a 4–5 mmHg low bias.
 
 **Red dashed** = not yet built or not yet fitted. The motion mask exists and is used by the
 provocation analysis, but onset detection does not consult it yet — so a motion transient
@@ -400,7 +407,8 @@ flowchart LR
 | Whoop HR cross-check | built, **reading not captured** | run's log lost before D32; Whoop value unknown |
 | Return-to-flow pipeline | synthetic only | ±0.2 mmHg on synthetic ground truth |
 | **Return of flow, real cuff** | **detected, with mmHg (provisional)** | 3 trials, 2 subjects. Subject A 2026-10-09: onset 109 mmHg, pulse back 106. Subject B 13:45: 75 / 93 (fast deflation). Subject B 15:18 (Omron gauge, 1 mmHg/s): 87 / 86, all markers within 2 mmHg |
-| Cuff pressure on the PPG stream (D41) | **firmware 0.3 + monitor + analyze.py; first live run pending** | MPRLS on the shared bus; span unverified |
+| Cuff pressure on the PPG stream (D41) | **working on hardware (firmware 0.3.1)** | 10 trials recorded 2026-10-11 to 10-17; span unverified |
+| Return-of-flow markers (D43) | **hinge onset + pulse return; `cuff_trial.py`** | soft refill starts read 2–10 mmHg higher than the straight-ramp intersect; test4/test6 still ~15 below reference systolic with every marker |
 | MPRLS standalone test (D40) | **works on hardware with the cuff** | auto-zero and cuff tracking confirmed by the user |
 | Cuff pressure from video (D38) | **packaged: `gauge_video.py`** | tripod and hand-held; matches hand readings to −0.1 mmHg median on 2026-10-09; light-on-dark gauges with `--invert`; spans unverified |
 | Heart-rate tab | **works on real wrist replay** | 44/44 s shown, median 79 bpm; not yet run live or against the Whoop |

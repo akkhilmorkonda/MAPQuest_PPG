@@ -88,7 +88,7 @@ class PipelineConfig:
     hold_s: float = 2.0
     """Excursion must be sustained this long to count as onset."""
 
-    onset_method: str = "intersect"
+    onset_method: str = "hinge"
     """``"threshold"`` is SPEC 5.1 step 10 verbatim: the first sample of a
     sustained excursion above mu0 + k*sigma0.
 
@@ -105,7 +105,14 @@ class PipelineConfig:
     the ramp's slope and offset rather than the location of its corner, corner
     smearing cancels. This is the default because it is the one that meets the
     acceptance criterion; pass ``--onset-method threshold`` for the literal
-    SPEC behaviour."""
+    SPEC behaviour.
+
+    ``"hinge"`` (the default since D43) fits "trend, then rising" in one go
+    and takes the corner. On a sharp ramp it agrees with the intersect; when
+    filling starts softly -- slow deflation past a weak pulse, as in the cuff
+    trials -- a straight ramp fitted to the curve meets the baseline late, so
+    the intersect reads low (by 4-5 mmHg on synthetic curved fills, against
+    +/-0.5 for the hinge). The intersect is still computed and reported."""
 
     fit_s: float = 5.0
     """Length of the established-ramp segment fitted by the intersect method."""
@@ -183,11 +190,18 @@ class Derivation:
     onset_time_sloped: float | None = None
     """Both baselines are always computed, so the difference stays visible.
     `onset_time_intersect` is whichever config.baseline selects."""
+    onset_time_hinge: float | None = None
+    hinge_power: float | None = None
+    """1 = sharp corner, 2 = soft (parabolic) start; chosen by fit (D43)."""
+    hinge_fit: tuple | None = None
+    """(b0, b1, a, ws): y = b0 + b1*(t-ws) + a*max(0, t-t0)**p, for plotting."""
 
     @property
     def onset_time(self) -> float | None:
         if self.config.onset_method == "intersect":
             return self.onset_time_intersect
+        if self.config.onset_method == "hinge":
+            return self.onset_time_hinge
         return None if self.threshold_index is None else float(self.t[self.threshold_index])
 
     @property
@@ -348,6 +362,61 @@ def ramp_intersection(
     return float(onset_t), float(slope), (float(slope), float(intercept))
 
 
+def hinge_onset(
+    dv_lp: np.ndarray,
+    t: np.ndarray,
+    ref_slice: slice,
+    crossing_index: int,
+    before_s: float = 12.0,
+    after_s: float = 6.0,
+    powers: tuple[float, ...] = (1.0, 2.0),
+    step_s: float = 0.05,
+    decimate: int = 5,
+):
+    """Onset as the corner of a "trend, then rising" fit (D43).
+
+    Model: y = b0 + b1*(t - ws) + a*max(0, t - t0)**p, with a > 0. The trend
+    term is the occlusion baseline (sloped, as D39); the hinge term is the
+    filling. p = 1 is a sharp corner -- the same geometry as the ramp
+    intersection. p = 2 is the soft start physics predicts when inflow grows
+    with how far the cuff has fallen below the opening pressure; a straight
+    ramp fitted to that curve meets the baseline late, reading low (16.5 mmHg
+    low on 2026-10-17 test6 by the reference). t0 and p are chosen by least
+    squares over the window around the threshold crossing.
+
+    The 0.3 Hz zero-phase low-pass smooths the corner symmetrically, which
+    leaves the least-squares corner of a sharp hinge where it was.
+
+    Only the two ends, p = 1 and p = 2, are offered. An intermediate p = 1.5
+    trades corner position against curvature: on a sharp synthetic ramp it
+    won the fit about a third of the time and read up to 2 mmHg high.
+
+    Returns (t0, p, (b0, b1, a, ws)) or None.
+    """
+    seed = float(t[crossing_index])
+    ws = max(float(t[ref_slice.start]), seed - before_s)
+    we = min(float(t[-1]), seed + after_s)
+    w = (t >= ws) & (t <= we)
+    tw = t[w][::decimate]
+    yw = dv_lp[w][::decimate]
+    if tw.size < 20:
+        return None
+    best = None
+    for p in powers:
+        for t0 in np.arange(ws + 2.0, seed + 1.0, step_s):
+            h = np.clip(tw - t0, 0.0, None) ** p
+            X = np.column_stack([np.ones_like(tw), tw - ws, h])
+            coef, *_ = np.linalg.lstsq(X, yw, rcond=None)
+            if coef[2] <= 0:
+                continue
+            sse = float(np.sum((X @ coef - yw) ** 2))
+            if best is None or sse < best[0]:
+                best = (sse, float(t0), float(p), tuple(float(c) for c in coef) + (ws,))
+    if best is None:
+        return None
+    return best[1], best[2], best[3]
+
+
 def pulsatility_rms(x: np.ndarray, fs: float, band: tuple[float, float]) -> float:
     """RMS of the cardiac band during the reference window (SPEC 5.1 step 12).
 
@@ -461,6 +530,13 @@ def derive(
         else:
             raise ValueError(f"unknown baseline {cfg.baseline!r}")
 
+    # -- 10. Corner of a trend-then-rising fit (D43) -----------------------
+    onset_hinge = hinge_power = hinge_fit = None
+    if threshold_index is not None:
+        hg = hinge_onset(dv_lp, t, ref, threshold_index)
+        if hg is not None:
+            onset_hinge, hinge_power, hinge_fit = hg
+
     return Derivation(
         fs=fs, t=t, raw=raw, dark_sub=dark_sub, d_od=d_od,
         dv=dv, dv_lp=dv_lp, ddv=ddv,
@@ -471,6 +547,7 @@ def derive(
         ramp_slope=slope, ramp_fit=ramp_fit,
         baseline_fit=base_fit, baseline_span=base_span,
         onset_time_flat=onset_flat, onset_time_sloped=onset_sloped,
+        onset_time_hinge=onset_hinge, hinge_power=hinge_power, hinge_fit=hinge_fit,
     )
 
 

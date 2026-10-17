@@ -175,6 +175,20 @@ shows the needle as read on six frames, the tick calibration, and the pressure t
 before trusting the numbers. A hand-held camera is fine; propped is better. Pressures are
 provisional until the gauge's span is checked against a reference.
 
+### Cuff trial figure
+
+```
+cd host
+python cuff_trial.py ../data/hr_wrist_20261017_145914_test6.csv
+python cuff_trial.py <csv> --deflation 64 --hold 50,64 --motion 80,84   # override windows
+```
+
+Writes `<recording>_cuff.png` and prints three return-of-flow markers with the cuff pressure
+at each, against the reference BP if it was entered: **pulse return** (the heartbeat back
+above three times its occluded ripple), **refill onset (hinge)** and **refill onset
+(intersect)**. Windows come from the pressure trace, or from `data/cuff_windows.json` for
+trials already checked by hand. Check them on the figure. Details in D43.
+
 ## Cuff pressure sensor test (MPRLS)
 
 A standalone check that the Adafruit MPRLS (product 3965) tracks the cuff, before it joins
@@ -206,11 +220,14 @@ host/
   mapquest/
     io.py              serial protocol, metadata parsing, CSV load, calibration
     pipeline.py        raw -> dOD -> dV*L -> low-pass -> dV/dt -> onset
+    pulse_return.py    heartbeat back above its occluded floor (D43)
+    cuff.py            trial windows from the cuff pressure trace (D43)
   bench_check.py       SPEC 3.5 hardware acceptance checks, LED auto-tune
   provocation.py       arm-raise blood-volume response test
   hr_monitor.py        live PPG monitor: heart-rate + blood-volume tabs
   logger.py            recording + two-point pressure calibration
   analyze.py           offline analysis, figure, results.csv row
+  cuff_trial.py        cuff trial figure: pulse return, refill onset, pressure (D43)
   synth.py             synthetic recordings with known ground truth
   gauge_video.py       cuff pressure read from a phone video of the gauge (D38)
   pressure_monitor.py  live cuff pressure from the MPRLS test firmware (D40)
@@ -218,6 +235,8 @@ tests/
   test_pipeline.py     SPEC section 6 analysis acceptance tests
   test_protocol.py     serial protocol against a mock firmware
   test_provocation.py  arm-raise response analysis
+  test_pulse_return.py pulse-return detector on synthetic pulses
+  test_cuff_trial.py   cuff trial windows and an end-to-end recorded trial
 data/                  recordings (tracked, D29); data/video/ phone videos (ignored)
 docs/
   SPEC.md              the requirements
@@ -243,8 +262,11 @@ works at all.
 
 ## Two things to know before trusting a number
 
-**Onset method.** `analyze.py` defaults to `--onset-method intersect`, which is *not* SPEC §5.1
-step 10 verbatim. The spec's threshold-crossing method reads **~2.6 mmHg high**, because the 0.3 Hz
+**Onset method.** `analyze.py` defaults to `--onset-method hinge` (D43): a fit of "occlusion
+trend, then rising" whose corner is the onset. It agrees with the intersect described below on
+a sharp ramp, and also handles a refill that starts softly, which a straight ramp fit reads
+4–5 mmHg low. `--onset-method intersect` is the previous default, which is *not* SPEC §5.1
+step 10 verbatim either. The spec's threshold-crossing method reads **~2.6 mmHg high**, because the 0.3 Hz
 zero-phase low-pass and the 2 s Savitzky–Golay window are both symmetric kernels and smear the
 ramp's corner backwards in time — so the derivative starts climbing before filling actually began.
 That misses the spec's own ±1 mmHg acceptance criterion. The `intersect` method fits the

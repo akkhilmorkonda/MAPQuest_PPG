@@ -1234,6 +1234,108 @@ better reference.
 
 ---
 
+## D43 — Refill onset as a hinge (handles a soft start); pulse return from the heart band
+
+**Status:** accepted · 2026-10-17
+
+**Why.** Two weaknesses showed up in the reference-BP trials (D42).
+
+1. *A curved refill read late.* With slow deflation and a weak pulse, blood volume does not
+   turn a sharp corner: inflow grows as the cuff falls further below the opening pressure,
+   so the refill starts soft and steepens. The intersect (D10/D39) fits a straight line to
+   the established ramp, 2–7 s after the threshold crossing, and extrapolates it back. On a
+   curve that line meets the baseline late, so the pressure reads low. On synthetic fills
+   that start parabolically (`synth.py --fill-shape gradient`) the sloped intersect read
+   4–5 mmHg low at 1–2 µm/s, and 18 mmHg low with a 0.5 Hz artificial pulse on top.
+2. *"First beat-sized bump" fired early.* Under full occlusion the PPG still shows a faint
+   ripple at heart rate (transmitted pulsation). On test4 it was there at a cuff of 120–124,
+   with no flow. A detector that looks for small rhythmic beats finds the ripple first.
+
+**What — hinge onset (`pipeline.hinge_onset`, now the default `onset_method`).**
+- Model: `y = b0 + b1·(t − ws) + a·max(0, t − t0)^p`, with a > 0, fitted by least squares
+  to the low-passed ΔV·L from 12 s before the threshold crossing to 6 s after it (never
+  before the reference window). The trend term is the sloped occlusion baseline; t0 is
+  scanned on a 0.05 s grid, and the best (t0, p) is the onset.
+- **p is 1 or 2, nothing between.** p = 1 is the sharp corner the intersect assumes; p = 2
+  is a soft start. With p = 1.5 also allowed, the fit chose it on a third of sharp synthetic
+  ramps and read up to 2 mmHg high, because the extra curvature lets the corner move.
+- Synthetic results (error against true onset, mmHg, 3 MAPs × 2 seeds):
+
+  | Case | Sloped intersect | Hinge |
+  |---|---|---|
+  | linear fill, 3 µm/s | −0.1 (max 0.1) | +0.5 (max 0.7) |
+  | linear fill, 1.1 µm/s | −0.1 | +0.0 (max 0.4) |
+  | linear, slowing drain | +0.3 | +0.3 |
+  | linear, cardiac + artificial pulse | −0.1 | −0.2 |
+  | curved fill, 1.1 µm/s | −4.4 | +0.1 (max 0.4) |
+  | curved fill, 2 µm/s | −4.0 | +0.0 |
+  | curved fill, slowing drain | −5.1 | +0.9 (max 1.6) |
+  | curved fill + both pulses | −18 | −1.1 to −2.1 |
+
+  On sharp ramps the hinge gives up about half a millimetre of mercury; on curved ones it
+  removes a 4–18 mmHg bias. All the SPEC 6 tests pass with it as the default.
+- The intersect (sloped and flat) and the threshold crossing are still computed;
+  `analyze.py` prints all of them, the refill shape (p), and draws the hinge fit.
+
+**What — pulse return (`mapquest/pulse_return.py`).**
+- Pulse: −log(IR) band-passed 0.5–4 Hz, % of DC.
+- Heart rate f0: Welch spectrum over the uncuffed stretches (before inflation, after
+  release), or over the deflation if neither is long enough (test6 had 2 s).
+- Heart-band amplitude: the pulse band-passed to f0 ± 15 %, as a moving RMS over two
+  beats; the rest of the 0.5–4 Hz band likewise is the off-band amplitude.
+- Floor: median heart-band amplitude over the occluded hold. **Return:** the first time
+  after deflation starts that the heart band is above 3× the floor *and* above the
+  off-band amplitude, for 3 s. The ripple sets the floor instead of triggering the
+  detector. Movement is broadband, so it lifts the off-band amplitude too and is rejected.
+- Timing: a sudden return reads up to 1.3 s early (the narrow filter rings both ways);
+  a pulse that grows back slowly reads late (+0.7 s over 8 s of growth, +3 s if the
+  ripple floor is three times higher). About −3 to +1.5 mmHg at 2 mmHg/s.
+
+**What — `host/cuff_trial.py`.** The trial figure moved into the repo from a scratch
+script: cuff pressure with reference BP lines, the pulse with its heart-band amplitude
+and threshold, ΔV·L with the hinge fit and the straight-ramp lines, and dV/dt. Windows
+are found automatically from the pressure trace (hold from peak + 3 s, deflation 20 mmHg
+below the peak but at least 8 s after it). Those are a starting point: on 18:10, 22:06
+and 15:18 they gave onsets 12–36 mmHg away from the hand-checked windows. The
+hand-checked windows used for past trials are kept in `data/cuff_windows.json`, and
+command-line options override both.
+
+**What — `analyze.py` deflation start.** It used to take the first sample where pressure
+fell faster than 0.5 mmHg/s. On the MPRLS trace that is a noise tick in the first second
+of the recording, so the onset search began before the cuff was even inflated (test6:
+"threshold crossed at t = 0.02 s", no onset). It now uses the same rule as
+`cuff_trial.py` (`mapquest/cuff.py`). The answer still depends on the windows. On test6
+the automatic ones give a hinge onset of 101 mmHg and the hand-checked ones 95, so
+`--t-occ0/--t-occ1/--deflation-start` remain worth setting by eye.
+
+**Results on the recorded trials** (cuff mmHg at each marker; hand-checked windows):
+
+| Trial | Ref BP | Pulse return | Hinge (p) | Sloped intersect |
+|---|---|---|---|---|
+| 10.16.26 | 117/80 | 120.7 (+3.7) | 121.5 (+4.5) (2) | 110.7 (−6.3) |
+| test3 | 115/75 | 105.4 (−9.6) | 112.3 (−2.7) (2) | 107.2 (−7.8) |
+| test4 | 124/85 | 117.8 (−6.2) | 109.3 (−14.7) (1) | 109.6 (−14.4) |
+| test6 | 111/75 | 94.8 (−16.2) | 95.3 (−15.7) (1) | 94.5 (−16.5) |
+| test2 (fast) | 115/75 | 103.7 | 116.1 (2) | 102.1 |
+| 2026-10-11 18:10 | — | 116.5 | 109.6 (2) | 106.9 |
+| 2026-10-11 17:22 | — | 106.0 | 103.8 (2) | 94.2 |
+| 2026-10-11 22:06 | — | 83.9 | 88.9 (2) | 79.6 |
+| 2026-10-09 20:35 | — | 109.8 | 108.2 (1) | 109.4 |
+| 2026-10-10 15:18 | — | 87.2 | 87.2 (1) | 87.3 |
+
+Bracketed numbers are against reference systolic. Where the refill was soft (p = 2) the
+hinge moved the onset 2–10 mmHg higher, towards systolic. Where it was sharp, all three
+agree. test4 and test6 still read 15 mmHg below the reference with every marker. That
+gap is in the signal, not the corner-finding: both pulse and volume came back late on
+those runs. The reference reading was taken before the run with a separate monitor, so it
+carries its own error and the subject's pressure can drift in between.
+
+**Not done.** p is chosen by fit alone, with no penalty; on a noisy refill it could flip
+between 1 and 2 from run to run. The pulse-return threshold (3× floor, 3 s) was set on
+synthetic data and four reference trials, not tuned further.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 

@@ -24,6 +24,7 @@ import numpy as np
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from mapquest.cuff import windows_from_pressure  # noqa: E402
 from mapquest.io import check_continuity, load_calibration, load_csv  # noqa: E402
 from mapquest.mprls import counts_to_mmhg  # noqa: E402
 from mapquest.pipeline import (  # noqa: E402
@@ -106,6 +107,13 @@ def plot_result(d, pressure_mmhg, meta, title, all_stages: bool,
             ax.plot(tr, rs * tr + ri, color="#0a7d2c", lw=1.0, ls="--",
                     label=f"ramp fit {rs:+.2f} um/s")
             ax.legend(loc="upper left", fontsize=7)
+        if key == "dv_lp" and d.hinge_fit is not None and d.onset_time_hinge is not None:
+            b0, b1, a, ws = d.hinge_fit
+            th = np.linspace(ws, d.onset_time_hinge + 6.0, 200)
+            yh = b0 + b1 * (th - ws) + a * np.clip(th - d.onset_time_hinge, 0, None) ** d.hinge_power
+            ax.plot(th, yh, color="#e07b00", lw=1.2,
+                    label=f"hinge fit (p = {d.hinge_power:g})")
+            ax.legend(loc="upper left", fontsize=7)
         if key == "ddv":
             floored = d.config.floor_mu0 and d.mu0 < 0
             ax.axhline(d.threshold, color="#e07b00", lw=1.0, ls="--",
@@ -157,11 +165,13 @@ def main() -> int:
                     help="single-wavelength fallback instead of the two-wavelength solve")
     ap.add_argument("--k", type=float, default=3.0, help="onset threshold in sigma")
     ap.add_argument("--hold", type=float, default=2.0, help="sustain time for onset, s")
-    ap.add_argument("--onset-method", choices=("intersect", "threshold"),
-                    default="intersect",
-                    help="'threshold' is SPEC 5.1 verbatim but reads ~2.6 mmHg high "
-                         "due to symmetric-filter corner smearing; 'intersect' "
-                         "extrapolates the fitted ramp back to baseline (default)")
+    ap.add_argument("--onset-method", choices=("hinge", "intersect", "threshold"),
+                    default="hinge",
+                    help="'hinge' takes the corner of a trend-then-rising fit, which "
+                         "also handles a soft (curved) start (default, D43); 'intersect' "
+                         "extrapolates a straight ramp fit back to baseline (D10/D39); "
+                         "'threshold' is SPEC 5.1 verbatim but reads ~2.6 mmHg high "
+                         "due to symmetric-filter corner smearing")
     ap.add_argument("--baseline", choices=("sloped", "flat"), default="sloped",
                     help="what the intersect method meets: 'sloped' fits the occlusion "
                          "trend just before onset (default, D39); 'flat' is the "
@@ -235,14 +245,12 @@ def main() -> int:
                   "run `python logger.py --calibrate` to report onset in mmHg")
 
     # If the deflation start was not given, infer it from the pressure trace:
-    # the last sample at the plateau before pressure starts falling.
+    # 20 mmHg below the peak, at least 8 s after it (D43).
     deflation_start = args.deflation_start
     if deflation_start is None and pressure_mmhg is not None:
-        dp = np.gradient(pressure_mmhg, t)
-        falling = dp < -0.5
-        if falling.any():
-            deflation_start = float(t[int(np.argmax(falling))])
-            print(f"Deflation : detected at t = {deflation_start:.2f} s")
+        deflation_start = windows_from_pressure(t, pressure_mmhg).deflation
+        print(f"Deflation : detected at t = {deflation_start:.2f} s "
+              f"({float(np.interp(deflation_start, t, pressure_mmhg)):.0f} mmHg)")
 
     cfg = PipelineConfig(
         lowpass_hz=args.lowpass,
@@ -305,23 +313,26 @@ def main() -> int:
             if meta.raw.get("cuff_to_sensor_cm"):
                 print(f"  Cuff to sensor    : {float(meta.raw['cuff_to_sensor_cm']):g} cm")
 
-        # Always show the other estimator so the difference stays visible.
-        other_t = (d.threshold_time if args.onset_method == "intersect"
-                   else d.onset_time_intersect)
-        other_name = "threshold" if args.onset_method == "intersect" else "intersect"
-        if other_t is not None:
+        if args.onset_method == "hinge" and d.hinge_power is not None:
+            shape = "sharp corner" if d.hinge_power == 1.0 else "soft start"
+            print(f"  Refill shape      : p = {d.hinge_power:g} ({shape})")
+
+        # Always show the other estimators so the difference stays visible.
+        other_b = "flat" if args.baseline == "sloped" else "sloped"
+        others = [("hinge", d.onset_time_hinge),
+                  (f"intersect ({args.baseline})", d.onset_time_intersect),
+                  (f"intersect ({other_b})",
+                   d.onset_time_flat if other_b == "flat" else d.onset_time_sloped),
+                  ("threshold", d.threshold_time)]
+        reported = {"hinge": "hinge", "intersect": f"intersect ({args.baseline})",
+                    "threshold": "threshold"}[args.onset_method]
+        for other_name, other_t in others:
+            if other_name == reported or other_t is None:
+                continue
             line = f"  (for comparison)  : {other_name} = {other_t:.2f} s"
             if pressure_mmhg is not None:
                 line += f", {float(np.interp(other_t, t, pressure_mmhg)):.1f} mmHg"
             print(line)
-        if args.onset_method == "intersect":
-            other_b = "flat" if args.baseline == "sloped" else "sloped"
-            ob_t = d.onset_time_flat if other_b == "flat" else d.onset_time_sloped
-            if ob_t is not None:
-                line = f"  (for comparison)  : {other_b} baseline = {ob_t:.2f} s"
-                if pressure_mmhg is not None:
-                    line += f", {float(np.interp(ob_t, t, pressure_mmhg)):.1f} mmHg"
-                print(line)
         if np.isfinite(d.ramp_slope):
             print(f"  Fitted ramp slope : {d.ramp_slope:.3f} um/s")
         if d.baseline_fit is not None:

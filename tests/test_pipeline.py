@@ -58,7 +58,7 @@ def make(**overrides):
 
     cfg = PipelineConfig(
         ir_only=overrides.get("_ir_only", False),
-        onset_method=overrides.get("_onset_method", "intersect"),
+        onset_method=overrides.get("_onset_method", "hinge"),
         baseline=overrides.get("_baseline", "sloped"),
         floor_mu0=overrides.get("_floor_mu0", True),
     )
@@ -193,7 +193,7 @@ def test_threshold_method_is_biased_early():
     backwards. If this ever stops holding, the intersect default should be
     revisited.
     """
-    d, t, p, _, args = make()
+    d, t, p, _, args = make(_onset_method="intersect")
     assert d.threshold_time is not None
     thr_err = float(np.interp(d.threshold_time, t, p)) - args.map
     int_err = onset_mmhg(d, t, p) - args.map
@@ -211,7 +211,7 @@ SLOWING_DRAIN = dict(drain_rate=-1.4, drain_tau=18.0, fill_rate=1.1)
 
 
 def test_sloped_baseline_with_constant_drain():
-    d, t, p, _, args = make(drain_rate=-0.29, fill_rate=1.1)
+    d, t, p, _, args = make(drain_rate=-0.29, fill_rate=1.1, _onset_method="intersect")
     err = onset_mmhg(d, t, p) - args.map
     assert abs(err) <= 1.0, f"sloped-baseline error {err:+.2f} mmHg under a constant drain"
 
@@ -219,7 +219,7 @@ def test_sloped_baseline_with_constant_drain():
 @pytest.mark.parametrize("map_true", [70.0, 90.0, 105.0])
 def test_sloped_baseline_with_slowing_drain(map_true):
     """A curving drain: the line fitted just before onset is still close enough."""
-    d, t, p, _, args = make(map=map_true, **SLOWING_DRAIN)
+    d, t, p, _, args = make(map=map_true, _onset_method="intersect", **SLOWING_DRAIN)
     err = onset_mmhg(d, t, p) - map_true
     assert abs(err) <= 1.0, f"MAP {map_true}: sloped-baseline error {err:+.2f} mmHg"
 
@@ -227,7 +227,7 @@ def test_sloped_baseline_with_slowing_drain(map_true):
 def test_flat_baseline_reads_low_under_drain():
     """Characterises the bias D39 removes: a rising ramp meets a level left
     behind by a falling baseline late, so the pressure reads low."""
-    d, t, p, _, args = make(_baseline="flat", **SLOWING_DRAIN)
+    d, t, p, _, args = make(_baseline="flat", _onset_method="intersect", **SLOWING_DRAIN)
     err = onset_mmhg(d, t, p) - args.map
     assert err < -5.0, f"expected the flat baseline to read well low, got {err:+.2f} mmHg"
     assert d.onset_time_flat == d.onset_time
@@ -314,3 +314,42 @@ def test_cli_roundtrip(tmp_path):
     line = next(ln for ln in out.stdout.splitlines() if "ONSET PRESSURE" in ln)
     value = float(line.split(":")[1].strip().split()[0])
     assert abs(value - 95.0) <= 1.0, f"CLI reported {value} mmHg for a 95 mmHg truth"
+
+
+# ---------------------------------------------------------------------------
+# D43: soft (curved) start of filling -- the hinge onset
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("map_true", [70.0, 90.0, 105.0])
+def test_hinge_on_curved_fill(map_true):
+    """Inflow that grows as the cuff falls: the hinge finds the start, the
+    straight-ramp intersect reads low."""
+    d, t, p, _, args = make(map=map_true, fill_rate=1.1, fill_shape="gradient")
+    err = onset_mmhg(d, t, p) - map_true
+    assert abs(err) <= 1.0, f"MAP {map_true}: hinge error {err:+.2f} mmHg on a curved fill"
+    assert d.hinge_power == 2.0
+    sloped = float(np.interp(d.onset_time_sloped, t, p)) - map_true
+    assert sloped < -3.0, f"expected the straight-ramp intersect to read low, got {sloped:+.2f}"
+
+
+def test_hinge_on_sharp_fill_picks_a_corner():
+    d, t, p, _, args = make()
+    assert d.hinge_power == 1.0
+    assert abs(onset_mmhg(d, t, p) - args.map) <= 1.0
+
+
+def test_hinge_on_curved_fill_with_slowing_drain():
+    d, t, p, _, args = make(fill_shape="gradient", **SLOWING_DRAIN)
+    err = onset_mmhg(d, t, p) - args.map
+    assert abs(err) <= 2.0, f"hinge error {err:+.2f} mmHg on a curved fill over a drain"
+
+
+def test_hinge_with_pulses_on_curved_fill():
+    d, t, p, _, args = make(fill_rate=1.1, fill_shape="gradient", cardiac=True,
+                            artificial_pulse=True)
+    err = onset_mmhg(d, t, p) - args.map
+    # A slow, soft start under a 0.5 Hz artificial pulse is the hardest case:
+    # the hinge reads 1-2 mmHg low; the straight-ramp intersect ~18 mmHg low.
+    assert abs(err) <= 2.5, f"hinge error {err:+.2f} mmHg with pulses"
+    sloped = float(np.interp(d.onset_time_sloped, t, p)) - args.map
+    assert abs(sloped) > 3 * abs(err)

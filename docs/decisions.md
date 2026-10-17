@@ -1280,7 +1280,10 @@ better reference.
 **What — pulse return (`mapquest/pulse_return.py`).**
 - Pulse: −log(IR) band-passed 0.5–4 Hz, % of DC.
 - Heart rate f0: Welch spectrum over the uncuffed stretches (before inflation, after
-  release), or over the deflation if neither is long enough (test6 had 2 s).
+  release) together with the deflation. At first the deflation was only a fallback. On
+  test27 the 7 s before inflation said 90 bpm while the deflation pulse was 75, so the
+  heart band sat beside the pulse and no return was found. Including the deflation
+  moved pulse return by at most 2 mmHg on the earlier trials (table updated).
 - Heart-band amplitude: the pulse band-passed to f0 ± 15 %, as a moving RMS over two
   beats; the rest of the 0.5–4 Hz band likewise is the off-band amplitude.
 - Floor: median heart-band amplitude over the occluded hold. **Return:** the first time
@@ -1312,16 +1315,16 @@ the automatic ones give a hinge onset of 101 mmHg and the hand-checked ones 95, 
 
 | Trial | Ref BP | Pulse return | Hinge (p) | Sloped intersect |
 |---|---|---|---|---|
-| 10.16.26 | 117/80 | 120.7 (+3.7) | 121.5 (+4.5) (2) | 110.7 (−6.3) |
+| 10.16.26 | 117/80 | 122.1 (+5.1) | 121.5 (+4.5) (2) | 110.7 (−6.3) |
 | test3 | 115/75 | 105.4 (−9.6) | 112.3 (−2.7) (2) | 107.2 (−7.8) |
-| test4 | 124/85 | 117.8 (−6.2) | 109.3 (−14.7) (1) | 109.6 (−14.4) |
+| test4 | 124/85 | 116.1 (−7.9) | 109.3 (−14.7) (1) | 109.6 (−14.4) |
 | test6 | 111/75 | 94.8 (−16.2) | 95.3 (−15.7) (1) | 94.5 (−16.5) |
 | test2 (fast) | 115/75 | 103.7 | 116.1 (2) | 102.1 |
-| 2026-10-11 18:10 | — | 116.5 | 109.6 (2) | 106.9 |
+| 2026-10-11 18:10 | — | 118.4 | 109.6 (2) | 106.9 |
 | 2026-10-11 17:22 | — | 106.0 | 103.8 (2) | 94.2 |
 | 2026-10-11 22:06 | — | 83.9 | 88.9 (2) | 79.6 |
 | 2026-10-09 20:35 | — | 109.8 | 108.2 (1) | 109.4 |
-| 2026-10-10 15:18 | — | 87.2 | 87.2 (1) | 87.3 |
+| 2026-10-10 15:18 | — | 85.5 | 87.2 (1) | 87.3 |
 
 Bracketed numbers are against reference systolic. Where the refill was soft (p = 2) the
 hinge moved the onset 2–10 mmHg higher, towards systolic. Where it was sharp, all three

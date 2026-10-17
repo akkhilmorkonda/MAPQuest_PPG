@@ -12,10 +12,12 @@ So the floor is measured on the occluded signal, early in the hold, and the
 return is the first sustained rise well above it:
 
 1. Pulse signal: -log(IR) band-passed 0.5-4 Hz, % of DC, systole positive.
-2. Heart rate f0 from Welch over uncuffed data (before inflation, after
-   release). A short pre-inflation window alone can lock onto a harmonic or
-   a sub-harmonic (test6 gave 42 bpm); using both sides is more robust.
-   With no usable uncuffed stretch, the deflation itself is used.
+2. Heart rate f0 from Welch over the uncuffed data (before inflation, after
+   release) AND the deflation, length-weighted. The deflation is where the
+   heart band has to sit, and it is usually the longest stretch. A short
+   pre-inflation window alone can be wrong: test6 gave 42 bpm, and test27
+   gave 90 bpm from 7 s before inflation while the deflation pulse was 75,
+   which put the band beside the pulse and missed its return entirely.
 3. Heart-band envelope: the pulse band-passed to f0 +/-15 %, as a moving RMS
    over about two beats. The off-band envelope is the rest of the 0.5-4 Hz
    pulse, the same way; motion is broadband and lifts both.
@@ -108,12 +110,7 @@ def detect(
     f0_hz : skip the estimate and use this heart rate
     """
     pulse = pulse_signal(ir, fs)
-    f0 = f0_hz or heart_rate(pulse, fs, uncuffed)
-    if f0 is None:
-        # No cuff-off stretch long enough (test6 had 2 s before inflation and
-        # stopped at 20 mmHg). Fall back to the deflation, where the pulse is
-        # back for most of the time.
-        f0 = heart_rate(pulse, fs, t >= search_from)
+    f0 = f0_hz or heart_rate(pulse, fs, uncuffed | (t >= search_from))
     if f0 is None:
         return None
     nyq = fs / 2.0

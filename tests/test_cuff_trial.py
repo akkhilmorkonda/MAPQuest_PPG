@@ -71,3 +71,16 @@ def test_end_to_end_on_a_recorded_trial(tmp_path, capsys):
         # All three markers sit between the reference diastolic and systolic
         # on this trial; a wild value means something upstream broke.
         assert 75 < trial.pressure(tt) < 111, (name, trial.pressure(tt))
+
+
+def test_dump_is_the_final_fast_fall_only():
+    """An automated monitor bleeds in quick steps, then dumps (test47). Only the
+    unbroken fall into release is the dump; the steps are not."""
+    t_p = np.arange(0, 60, 0.01)
+    steps = 150 - 4 * np.floor(np.clip(t_p - 15, 0, None))   # 4 mmHg steps each second
+    p = np.where(t_p < 10, 15 * t_p, np.where(t_p < 15, 150, steps))
+    p = np.where(t_p >= 35, np.maximum(70 - 60 * (t_p - 35), 0), p)
+    tr = cuff_trial.Trial(Path("s.csv"), {}, 100.0, t_p, {}, {}, t_p, p, "test")
+    w = cuff_trial.auto_windows(tr)
+    assert w.dump == pytest.approx(35.0, abs=0.6)
+    assert w.release > w.dump

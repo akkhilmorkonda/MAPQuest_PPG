@@ -1413,6 +1413,26 @@ With the flag off nothing changes: the D42 workflow is unchanged.
 timestamp name with `# trial_info=pending`. The data is complete. Add the reference
 values to the header by hand (the same keys as D42) to use it as a trial.
 
+**First automated run (test47, 2026-10-18): the monitor's own cycle is too fast for
+these markers.**
+- **The cycle.** The monitor inflated to 151 mmHg over 12 s. It then bled down in steps
+  of about 4 mmHg every second (4.0 mmHg/s on average, twice the D42 trials' rate), and
+  dumped the cuff at 68 mmHg once it had its reading.
+- **Too little time above systolic.** The cuff was above the reference systolic for
+  9 s in total, inflation included. That leaves no settled hold for the pulse floor or
+  the reference window.
+- **A small refill.** The volume rose about 9 µm, against 50–90 µm on the slow manual
+  runs.
+- **Results.** Pulse return was never found. A refill onset appears at 118–122 mmHg
+  (reference systolic 122), but only for some window choices. Steep refill fell right
+  after the onset, so no surge was seen.
+- **Upside.** The reference reading now comes from the same deflation, which is better
+  than a reading taken before the run.
+- **Fix found along the way.** The steep-refill search used to run into the cuff dump,
+  the steepest volume change in the record. It now stops where the dump begins
+  (`Windows.dump`: the unbroken fall faster than 10 mmHg/s that ends at the release).
+  No earlier run changed.
+
 ---
 
 <a id="o1"></a>

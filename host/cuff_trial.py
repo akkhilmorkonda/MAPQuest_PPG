@@ -158,7 +158,8 @@ def analyse(trial: Trial, w: Windows) -> dict:
     pr = pulse_return.detect(t, ir, trial.fs, w.hold, w.deflation, uncuffed)
     onset = next((x for x in (d.onset_time_hinge, d.onset_time_sloped, d.threshold_time)
                   if x is not None), None)
-    steep = (steep_refill(d.ddv, t, onset, min(onset + STEEP_SEARCH_S, w.release))
+    end = min(onset + STEEP_SEARCH_S, w.dump or w.release) if onset is not None else None
+    steep = (steep_refill(d.ddv, t, onset, end)
              if onset is not None else None)
     return {"derivation": d, "pulse": pr,
             "markers": [("pulse return", pr.t_return if pr else None),

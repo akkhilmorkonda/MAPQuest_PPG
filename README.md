@@ -155,6 +155,12 @@ message, blank ones are allowed with a warning) and writes them into the recordi
 `analyze.py` then reports the onset against them. The fields lock while recording and are
 remembered for the next run. Details in D42.
 
+With an automated cuff, whose reading only arrives at the end, start the monitor with
+`--trial-info-after` (or tick "enter after run"). Record, let the monitor run its cycle and
+press Stop. Then type in its systolic and diastolic, the distance and the run ID, and press
+**Save run (R)**. The values go into the header and the run ID into the file names, just as
+if they had been entered first. **Discard run** deletes a failed run. Details in D45.
+
 The toolbar shows a large **session clock** (and ● REC while recording). Until the pressure
 sensor is fitted, film the cuff gauge and this screen together on a phone: every frame then
 pairs a gauge reading with session time, so cuff pressure can be read back against the

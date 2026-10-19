@@ -416,6 +416,10 @@ def trial_header_lines(info: dict) -> list[str]:
     return lines
 
 
+# Where the trial header goes in a recording whose trial info comes after
+# the run (D45); replaced on save.
+PENDING_LINE = "# trial_info=pending\n"
+
 RUN_ID_MAX = 32
 # Endings the run ID must not produce, or its file would look like a log.
 _RESERVED_ENDINGS = ("_hr", "_vol", "_gauge", "_cuff", "_check", "_clock_sheet")
@@ -895,7 +899,8 @@ class VolumeView:
 class MonitorCore:
     def __init__(self, source, channel: str = "ir", site: str = "finger",
                  window_s: float = 8.0, span_s: float = 300.0,
-                 hr_fig=None, vol_fig=None, hr_window_s: float = 10.0) -> None:
+                 hr_fig=None, vol_fig=None, hr_window_s: float = 10.0,
+                 trial_after: bool = False) -> None:
         from matplotlib.figure import Figure
 
         self.source = source
@@ -920,6 +925,11 @@ class MonitorCore:
         self._p_last_idx: float | None = None
         # Reference BP and cuff-to-sensor distance for the next recording (D42).
         self.trial: dict = load_trial_info()
+        # D45: with trial_after, the trial fields are filled in after the run
+        # (the automated monitor's reading arrives at the end), and a stopped
+        # recording waits in _pending until it is saved with them.
+        self.trial_after = bool(trial_after)
+        self._pending: dict | None = None
 
     # Convenience for tests and callers that only care about the readout.
     @property
@@ -929,6 +939,11 @@ class MonitorCore:
     @property
     def recording(self) -> bool:
         return self._rec is not None
+
+    @property
+    def pending(self) -> bool:
+        """A stopped run waiting for its trial info (D45)."""
+        return self._pending is not None
 
     def recording_label(self) -> str:
         return "off" if self._rec is None else f"ON → {self._rec['path'].name}"
@@ -998,6 +1013,47 @@ class MonitorCore:
         else:
             self.stop_recording()
 
+    def save_pending(self, systolic: str, diastolic: str, distance: str,
+                     run_id: str = "") -> str | None:
+        """Write the trial info into a stopped run and give it its final name.
+
+        Returns an error (the run stays pending), or None once saved (D45).
+        """
+        if self._pending is None:
+            return "no run waiting to be saved"
+        error = self.set_trial_info(systolic, diastolic, distance, run_id)
+        if error:
+            return error
+        base = self._pending["path"]
+        rid = self.trial.get("run_id")
+        new = Path(str(base) + f"_{rid}") if rid else base
+        files = [(Path(str(base) + ext), Path(str(new) + ext))
+                 for ext in (".csv", "_hr.csv", "_vol.csv")]
+        if new != base and any(dst.exists() for _src, dst in files):
+            return f"{new.name}.csv already exists — change the run ID"
+        raw = files[0][0]
+        lines = trial_header_lines(self.trial) + ["# trial_info_entered=after_run"]
+        raw.write_text(raw.read_text().replace(PENDING_LINE, "\n".join(lines) + "\n", 1))
+        for src, dst in files:
+            if src != dst and src.exists():
+                src.rename(dst)
+        self._pending = None
+        self.status = f"saved {new.name}.csv, _hr.csv, _vol.csv"
+        if rid and next_run_id(rid) != rid:
+            self.trial["run_id"] = next_run_id(rid)
+            save_trial_info(self.trial)
+        return None
+
+    def discard_pending(self) -> None:
+        """Delete a stopped run that was never saved (D45)."""
+        if self._pending is None:
+            return
+        base = self._pending["path"]
+        for ext in (".csv", "_hr.csv", "_vol.csv"):
+            Path(str(base) + ext).unlink(missing_ok=True)
+        self._pending = None
+        self.status = f"discarded {base.name}"
+
     # -- recording -------------------------------------------------------
 
     def _data_columns(self) -> list[str]:
@@ -1008,9 +1064,14 @@ class MonitorCore:
         if not self.meta:
             self.status = "nothing to record yet"
             return
+        if self._pending is not None:
+            self.status = "save or discard the last run before recording another"
+            return
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        rid = self.trial.get("run_id")
+        # Trial info after the run (D45): no run ID in the name yet, and a
+        # placeholder line where the trial header will go.
+        rid = None if self.trial_after else self.trial.get("run_id")
         base = DATA_DIR / (f"hr_{self.site}_{stamp}" + (f"_{rid}" if rid else ""))
         # Not base.with_suffix(): a run ID with dots ("10.16.26") would lose
         # its last part as if it were an extension (2026-10-16).
@@ -1018,7 +1079,9 @@ class MonitorCore:
         raw_fh.write("# source=hr_monitor\n")
         raw_fh.write(f"# recorded_at={datetime.now().isoformat(timespec='seconds')}\n")
         raw_fh.write(f"# site={self.site}\n# hr_channel={self.channel}\n")
-        for line in trial_header_lines(self.trial):      # reference BP, distance (D42)
+        trial_lines = ([PENDING_LINE.strip()] if self.trial_after
+                       else trial_header_lines(self.trial))
+        for line in trial_lines:                          # reference BP, distance (D42)
             raw_fh.write(line + "\n")
         # Session time of raw row 0. Event lines and the _hr/_vol logs carry
         # session time (seconds since the monitor started) while raw rows
@@ -1053,7 +1116,9 @@ class MonitorCore:
         }
         self.status = f"recording to {base.name}.csv (+ _hr, _vol)"
         warning = getattr(self, "_trial_warning", None)
-        if warning or not self.trial:
+        if self.trial_after:
+            self.status += " — trial info is entered after the run"
+        elif warning or not self.trial:
             self.status += f" — ! {warning or 'no trial info entered'}"
 
     def stop_recording(self) -> None:
@@ -1064,6 +1129,12 @@ class MonitorCore:
                 self._rec[k].close()
             except Exception:
                 pass
+        if self.trial_after:
+            self._pending = {"path": self._rec["path"]}
+            self._rec = None
+            self.status = ("run stopped — enter reference BP, distance and run ID, "
+                           "then Save run (R) or Discard")
+            return
         self.status = f"saved {self._rec['path'].name}.csv, _hr.csv, _vol.csv"
         self._rec = None
         # Suggest the next run's ID: A-03 -> A-04 (D42).
@@ -1299,6 +1370,13 @@ class TkShell:
         self.e_dist = ttk.Entry(trial, textvariable=self.v_dist, width=6, justify="right")
         self.e_dist.pack(side="left", padx=(6, 2))
         ttk.Label(trial, text="cm").pack(side="left")
+        # D45: fill the fields in after the run, before saving it.
+        self.v_after = tk.BooleanVar(value=core.trial_after)
+        self.c_after = ttk.Checkbutton(trial, text="enter after run", variable=self.v_after,
+                                       command=self._set_after)
+        self.c_after.pack(side="left", padx=(18, 4))
+        self.b_discard = ttk.Button(trial, text="Discard run", command=self.on_discard)
+        self.b_discard.pack(side="left", padx=4)
         for v in (self.v_sys, self.v_dia):
             v.trace_add("write", lambda *_: self._show_map())
         self._show_map()
@@ -1333,21 +1411,51 @@ class TkShell:
         info, _err, _w = parse_trial_info(self.v_sys.get(), self.v_dia.get(), "")
         self.l_map.config(text=f"→ MAP {info['map']:.0f}" if "map" in info else "")
 
+    def _set_after(self) -> None:
+        if self.core.recording or self.core.pending:
+            self.v_after.set(self.core.trial_after)    # not mid-run
+            return
+        self.core.trial_after = bool(self.v_after.get())
+
     def on_record(self) -> None:
-        """Record: check and store the trial fields first; stop: just stop."""
-        if not self.core.recording:
-            err = self.core.set_trial_info(self.v_sys.get(), self.v_dia.get(),
-                                           self.v_dist.get(), self.v_rid.get())
+        """Record: check and store the trial fields first; stop: just stop.
+
+        With "enter after run" (D45) the fields are checked when the stopped
+        run is saved instead, and stay editable throughout."""
+        core = self.core
+        if core.pending:
+            err = core.save_pending(self.v_sys.get(), self.v_dia.get(),
+                                    self.v_dist.get(), self.v_rid.get())
             if err:
-                self.core.status = f"not recording — trial info: {err}"
+                core.status = f"not saved — {err}"
                 return
-            self.v_rid.set(self.core.trial.get("run_id", ""))   # show it as cleaned
-        self.core.toggle_record()
-        if not self.core.recording:
-            self.v_rid.set(self.core.trial.get("run_id", ""))   # next run's ID
-        state = ["disabled"] if self.core.recording else ["!disabled"]
+            self.v_rid.set(core.trial.get("run_id", ""))   # next run's ID
+            self._lock_fields()
+            return
+        if not core.recording and not core.trial_after:
+            err = core.set_trial_info(self.v_sys.get(), self.v_dia.get(),
+                                      self.v_dist.get(), self.v_rid.get())
+            if err:
+                core.status = f"not recording — trial info: {err}"
+                return
+            self.v_rid.set(core.trial.get("run_id", ""))   # show it as cleaned
+        core.toggle_record()
+        if not core.recording and not core.pending:
+            self.v_rid.set(core.trial.get("run_id", ""))   # next run's ID
+        self._lock_fields()
+
+    def _lock_fields(self) -> None:
+        locked = self.core.recording and not self.core.trial_after
         for e in (self.e_rid, self.e_sys, self.e_dia, self.e_dist):
-            e.state(state)
+            e.state(["disabled"] if locked else ["!disabled"])
+
+    def on_discard(self) -> None:
+        from tkinter import messagebox
+        if not self.core.pending:
+            return
+        name = self.core._pending["path"].name
+        if messagebox.askyesno("Discard run", f"Delete {name} (.csv, _hr, _vol)?"):
+            self.core.discard_pending()
 
     def on_pause(self) -> None:
         self.core.toggle_pause()
@@ -1366,14 +1474,19 @@ class TkShell:
         except Exception as exc:  # keep the window alive; show what broke
             self.core.status = f"display error: {exc}"
         self.b_pause.config(text="Resume (space)" if self.core.paused else "Pause (space)")
-        self.b_rec.config(text="Stop rec (R)" if self.core.recording else "Record (R)")
+        self.b_rec.config(text="Stop rec (R)" if self.core.recording
+                          else "Save run (R)" if self.core.pending else "Record (R)")
+        self.b_discard.state(["!disabled"] if self.core.pending else ["disabled"])
+        self.c_after.state(["disabled"] if (self.core.recording or self.core.pending)
+                           else ["!disabled"])
         can_tune = (getattr(self.core.source, "kind", "") == "serial"
                     and not self.core.recording)
         self.b_tune.state(["!disabled"] if can_tune else ["disabled"])
         self.l_status.config(text=self.core.status)
         vol = self.core.vol
         self.l_clock.config(text="t = --" if vol is None else f"t = {vol.t_now:7.1f} s")
-        self.l_rec.config(text="● REC" if self.core.recording else "")
+        self.l_rec.config(text="● REC" if self.core.recording
+                          else "UNSAVED" if self.core.pending else "")
         self.l_cuff.config(text=self._cuff_text())
         self.b_cuff.state(["!disabled"] if self.core.cuff is not None else ["disabled"])
         self.root.after(50, self._loop)
@@ -1427,6 +1540,9 @@ def main() -> int:
                          "(also adjustable in the window)")
     ap.add_argument("--span", type=float, default=300.0,
                     help="seconds of blood-volume history shown")
+    ap.add_argument("--trial-info-after", action="store_true",
+                    help="enter reference BP, distance and run ID after the run, "
+                         "before saving it (automated cuff, D45); also a checkbox")
     ap.add_argument("--replay", type=Path, metavar="CSV",
                     help="play a saved capture instead of using the board")
     ap.add_argument("--speed", type=float, default=1.0,
@@ -1442,7 +1558,7 @@ def main() -> int:
                               auto_tune=args.auto_tune)
     core = MonitorCore(source, channel=args.channel, site=args.site,
                        window_s=args.window, span_s=args.span,
-                       hr_window_s=args.hr_window)
+                       hr_window_s=args.hr_window, trial_after=args.trial_info_after)
     source.start()
     TkShell(core).run()
     source.stop()

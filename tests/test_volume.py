@@ -557,3 +557,74 @@ def test_hr_log_uses_session_time_after_a_reset(tmp_path, monkeypatch):
     assert abs(t[0] - state["rec_t"]) < 1.5                    # starts on session time
     assert t[-1] > 34                                           # keeps logging after reset
     assert all(b > a for a, b in zip(t, t[1:]))
+
+
+# ---------------------------------------------------------------------------
+# Trial info entered after the run (D45): automated cuff, reading at the end
+# ---------------------------------------------------------------------------
+
+def _record_pending(tmp_path, monkeypatch, name):
+    import hr_monitor as hm
+    monkeypatch.setattr(hm, "TRIAL_FILE", tmp_path / "last.json")
+    _t, ir, red, _ = synth_run(seconds=10)
+    path = tmp_path / name
+    _write_capture(path, ir, red)
+    core = _core(path, tmp_path, monkeypatch)
+    core.trial_after = True
+    state = {"rec": False}
+
+    def during(c):
+        # As soon as data flows: at 60x replay a later start can miss the run.
+        if c.meta and not state["rec"]:
+            c.toggle_record()
+            state["rec"] = True
+
+    _until_eof(core, during)
+    core.stop_recording()
+    return core
+
+
+def test_trial_info_after_the_run(tmp_path, monkeypatch):
+    import hr_monitor as hm
+    core = _record_pending(tmp_path, monkeypatch, "after.csv")
+    assert core.pending and not core.recording
+    files = sorted(tmp_path.glob("hr_wrist_*"))
+    assert len(files) == 3
+    raw = next(p for p in files if not p.name.endswith(("_hr.csv", "_vol.csv")))
+    assert "# trial_info=pending" in raw.read_text()
+
+    core.start_recording()                        # must not start over an unsaved run
+    assert not core.recording and "save or discard" in core.status
+
+    assert "number" in core.save_pending("12o", "80", "3", "T-01")
+    assert core.pending                           # a bad value keeps it waiting
+
+    assert core.save_pending("110", "84", "3", "T 01") is None
+    assert not core.pending
+    names = sorted(p.name for p in tmp_path.glob("hr_wrist_*"))
+    assert [n.split("_T-01")[1] for n in names] == [".csv", "_hr.csv", "_vol.csv"]
+    text = next(tmp_path.glob("hr_wrist_*_T-01.csv")).read_text()
+    assert "# trial_info=pending" not in text
+    assert "# run_id=T-01" in text and "# ref_systolic_mmhg=110" in text
+    assert "# ref_diastolic_mmhg=84" in text and "# cuff_to_sensor_cm=3" in text
+    assert "# trial_info_entered=after_run" in text
+    assert text.index("# run_id=T-01") < text.index("# session_t0=")   # header stays in order
+    assert core.trial["run_id"] == "T-02"
+    assert hm.load_trial_info()["run_id"] == "T-02"
+
+
+def test_saved_after_run_loads_for_analysis(tmp_path, monkeypatch):
+    from mapquest.io import load_csv
+    core = _record_pending(tmp_path, monkeypatch, "load.csv")
+    assert core.save_pending("118", "76", "7", "") is None
+    raw = next(p for p in tmp_path.glob("hr_wrist_*.csv")
+               if not p.name.endswith(("_hr.csv", "_vol.csv")))
+    meta, t, ch, _ = load_csv(raw)
+    assert meta.raw["ref_systolic_mmhg"] == "118" and len(t) > 300
+
+
+def test_discard_an_unsaved_run(tmp_path, monkeypatch):
+    core = _record_pending(tmp_path, monkeypatch, "drop.csv")
+    assert len(list(tmp_path.glob("hr_wrist_*"))) == 3
+    core.discard_pending()
+    assert not core.pending and list(tmp_path.glob("hr_wrist_*")) == []

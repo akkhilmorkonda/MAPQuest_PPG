@@ -1384,6 +1384,37 @@ reads 84.4 against 87.
 
 ---
 
+## D45 — Trial info entered after the run (automated cuff)
+
+**Status:** accepted · 2026-10-18
+
+**Why.** An automated BP monitor now drives the cuff's pneumatics: it inflates, deflates
+and gives its reading at the end of the run. The D42 workflow asked for the reference BP
+before Record, which the automated setup cannot provide.
+
+**What.** A feature flag, `hr_monitor.py --trial-info-after`, also available as an
+"enter after run" checkbox in the trial row (fixed while a run is recording or unsaved).
+With it on:
+- **Record** starts without checking the trial fields. They stay editable during the
+  run. The files are named without a run ID, and the header carries
+  `# trial_info=pending` where the trial lines will go.
+- **Stop** closes the files and leaves the run *unsaved*. The toolbar shows UNSAVED, and
+  Record becomes **Save run (R)**. A new recording cannot start until the run is saved
+  or discarded.
+- **Save run** checks the fields with the same rules as D42. A bad value keeps the run
+  waiting, with the reason in the status line. On success it replaces the placeholder
+  with the usual trial lines plus `# trial_info_entered=after_run`, renames the three
+  files to include the run ID, and steps the ID on (A-03 → A-04).
+- **Discard run** deletes the three files, after a confirmation dialog.
+
+With the flag off nothing changes: the D42 workflow is unchanged.
+
+**If the window is closed with a run unsaved,** the files stay on disk under their
+timestamp name with `# trial_info=pending`. The data is complete. Add the reference
+values to the header by hand (the same keys as D42) to use it as a trial.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 

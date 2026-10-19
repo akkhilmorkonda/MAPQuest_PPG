@@ -1490,6 +1490,52 @@ a real surge sits at MAP: 10.16.26 has the clearest surge of all (ratio 4.9) and
 
 ---
 
+## D47 — Every marker scored against both systolic and MAP
+
+**Status:** accepted · 2026-10-19
+
+**Why.** In a subject with a pulse, return to flow happens at systolic, so that is the
+test of whether a marker detects return to flow at all. The end use, patients with little
+or no pulse, needs MAP. Judging each marker against both, on every run with a reference,
+shows which marker does which job and where it holds.
+
+**What.** `host/marker_report.py` finds every recording with a reference BP in its
+header. It runs the `cuff_trial.py` analysis (hand-checked windows where stored) and
+prints each marker's error against systolic and against MAP: bias ± SD, and how many
+runs fall within 5 and within 10 mmHg. It writes `data/marker_report.csv` and
+`docs/figures/marker-fit.png`. A `data/cuff_windows.json` entry can hold
+`"exclude": "<reason>"`; test2 (deflation too fast) is the only one. Runs are grouped
+by how the reference was taken and how fast the cuff fell:
+- **slow manual:** 3 mmHg/s or slower, reference taken before the run;
+- **fast manual:** faster than 3 mmHg/s;
+- **automated:** the monitor read the same deflation (trial info entered after the run).
+
+**First result (15 runs, 2026-10-19).** Bias ± SD in mmHg; "±5" counts the runs within
+5 mmHg of the reference.
+
+| Marker | vs systolic: slow manual (8) | vs systolic: automated (6) | vs MAP: slow manual (8) |
+|---|---|---|---|
+| Refill onset (hinge) | −6.2 ± 7.9, ±5 in 3/8 | −6.1 ± 6.1, ±5 in 3/6 | +17.3 ± 8.5 |
+| Refill onset (intersect) | −10.5 ± 7.7, ±5 in 0/8 | **−2.2 ± 4.9, ±5 in 5/6** | +13.0 ± 8.4 |
+| Pulse return | −9.4 ± 6.9 | −17.3 ± 6.5 (5/6 found) | +14.1 ± 8.0 |
+| Steep refill | −20.4 ± 7.2 (6/8 found) | none found | **+2.8 ± 7.2, ±5 in 5/6** |
+
+- **Systolic.** The refill onset is the return-to-flow marker. The best fit depends on
+  the cycle: the straight line on the automated cycle, where refills turn a sharp corner,
+  and the hinge on slow hand deflation, where they start softly. Every marker reads low
+  on average. The manual references were taken before the run, so the reference and the
+  deflation speed are confounded here. test4, fast but with a reference taken before,
+  read −14.7, which points at the reference.
+- **MAP.** Only steep refill fits. It appears on 6 of 8 slow runs and on none of the
+  fast ones, and 5 of those 6 land within 5 mmHg. The onsets sit 13–25 mmHg above MAP, as
+  expected in a pulsatile arm.
+- **A yardstick, not a claim.** BP device standards ask for a mean error within ±5 mmHg
+  and an SD of 8 or less, over far more subjects. The automated straight-line onset meets
+  those numbers against systolic, and steep refill meets them against MAP when it is
+  found. Neither has the sample size to make that a claim.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 

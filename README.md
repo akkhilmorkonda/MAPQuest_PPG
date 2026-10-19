@@ -235,6 +235,7 @@ host/
   logger.py            recording + two-point pressure calibration
   analyze.py           offline analysis, figure, results.csv row
   cuff_trial.py        cuff trial figure: pulse return, refill onset, pressure (D43)
+  marker_report.py     every marker scored against systolic and MAP, all trials (D47)
   synth.py             synthetic recordings with known ground truth
   gauge_video.py       cuff pressure read from a phone video of the gauge (D38)
   pressure_monitor.py  live cuff pressure from the MPRLS test firmware (D40)
@@ -244,6 +245,7 @@ tests/
   test_provocation.py  arm-raise response analysis
   test_pulse_return.py pulse-return detector on synthetic pulses
   test_cuff_trial.py   cuff trial windows and an end-to-end recorded trial
+  test_marker_report.py  marker scoring against systolic and MAP
 data/                  recordings (tracked, D29); data/video/ phone videos (ignored)
 docs/
   SPEC.md              the requirements

@@ -1,5 +1,5 @@
 {
-  "_about": "Hand-checked analysis windows for past cuff trials, read by host/cuff_trial.py (D43). Times are session seconds. deflation = onset searches start here; hold = occluded stretch for the pulse floor; ref = refill-onset reference window; motion = movement spans shaded on the figure; x = figure range. Command-line options override these; recordings not listed use automatic windows from the pressure trace.",
+  "_about": "Hand-checked analysis windows for past cuff trials, read by host/cuff_trial.py (D43). Times are session seconds. deflation = onset searches start here; hold = occluded stretch for the pulse floor; ref = refill-onset reference window; motion = movement spans shaded on the figure; x = figure range; exclude = leave the run out of marker_report.py, with the reason. Command-line options override these; recordings not listed use automatic windows from the pressure trace.",
   "hr_wrist_20261009_203550.csv":           {"deflation": 102,  "hold": [88, 104],   "ref": [97, 102],   "x": [40, 140]},
   "hr_wrist_20261010_134527.csv":           {"deflation": 150,  "hold": [110, 150],  "ref": [145, 150],  "x": [79, 170]},
   "hr_wrist_20261010_151841.csv":           {"deflation": 97,   "hold": [65, 95],    "ref": [92, 97],    "x": [30, 138]},
@@ -8,7 +8,7 @@
   "hr_wrist_20261011_181047.csv":           {"deflation": 84,   "hold": [66, 84],    "ref": [79, 84],    "x": [28, 131]},
   "hr_wrist_20261011_220622.csv":           {"deflation": 91.5, "hold": [45, 74],    "ref": [85, 91.5],  "x": [30, 111], "motion": [[79.5, 83.8]]},
   "hr_wrist_20261016_185021_10.16.26.csv":  {"deflation": 111,  "hold": [97, 111],   "ref": [106, 111],  "x": [83, 164]},
-  "hr_wrist_20261016_185539_test2.csv":     {"deflation": 62,   "hold": [54, 62],    "ref": [57, 62],    "x": [35, 83]},
+  "hr_wrist_20261016_185539_test2.csv":     {"deflation": 62,   "hold": [54, 62],    "ref": [57, 62],    "x": [35, 83], "exclude": "deflation too fast, set aside 2026-10-16"},
   "hr_wrist_20261016_185835_test3.csv":     {"deflation": 63,   "hold": [53, 63],    "ref": [58, 63],    "x": [16, 102]},
   "hr_wrist_20261016_212342_test4.csv":     {"deflation": 69,   "hold": [50, 69],    "ref": [64, 69],    "x": [14, 95]},
   "hr_wrist_20261017_145914_test6.csv":     {"deflation": 64,   "hold": [50, 64],    "ref": [59, 64],    "x": [37, 126]},

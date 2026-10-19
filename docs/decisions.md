@@ -1374,6 +1374,17 @@ reads 84.4 against 87.
 **Superseded in part by D46.** test4's value was the onset corner, not a surge. With
 the surge check the comparison is 5 runs, r = +0.67, and +0.9 ± 1.9 mmHg at 3 cm.
 
+**Two counterexamples (2026-10-19, test53 and test54).** Both were slow manual runs at
+3 cm (1.7 and 2.2 mmHg/s), with steady occlusion baselines and the largest refills yet
+(149 and 164 µm). Neither had a surge near MAP:
+- **test53:** inflow jumped to about 4.5 µm/s within 8 mmHg of the onset, then stayed
+  roughly level. There was no second stage (slope ratio 0.97).
+- **test54:** inflow crept up gradually from about 1.5 to 3.5 µm/s between 119 and
+  95 mmHg.
+
+That makes 4 of 6 slow 3 cm runs with a surge near MAP (test6, test25, test26, test27)
+and 2 with none. Steep refill stays a candidate, not a measure.
+
 **Why provisional.**
 - The definition was chosen after seeing test25–27, so those runs fit it partly by
   construction. The 7 cm runs are the only independent check, and only one of three

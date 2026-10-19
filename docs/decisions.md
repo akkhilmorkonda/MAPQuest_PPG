@@ -1536,6 +1536,34 @@ by how the reference was taken and how fast the cuff fell:
 
 ---
 
+## D48 — Onset searches stop at the cuff dump
+
+**Status:** accepted · 2026-10-19
+
+**Why.** An automated monitor dumps the cuff as soon as it has its reading, and blood
+rushes back: the largest inflow in the record. On test58 and test59 the refill was a
+slow creep that never crossed the detection threshold, so the threshold crossing, the
+hinge fit and the ramp fit all latched onto the dump. They reported "onsets" of 69 and
+72 mmHg, at the moment the valve opened.
+
+**What.** `derive(..., search_end_s=)` stops the threshold search, the ramp fit and the
+hinge window at that time. `cuff_trial.py` passes `Windows.dump` (D45). Steep refill
+already stopped there. On the 18 runs scored before, nothing changed. test58 and test59
+now report no onset with the automatic windows.
+
+**The automated cycle's short hold.** The monitor inflates for 11–12 s and starts
+bleeding 1–2 s after the peak. The automatic reference window therefore sits in the
+drain that follows inflation, which sets a high threshold, and a slow refill can stay
+under it. On test58 and test59 hand-set windows at the end of that drain recover an
+onset:
+- **test59:** 106 (hinge) and 111 (intersect) mmHg, the same for both placements tried.
+- **test58:** 109–110 mmHg for one placement and none for a later one. It stays fragile.
+
+They are stored in `data/cuff_windows.json`. The fix belongs in the protocol: a longer
+hold at the top of the automated cycle, if the monitor allows it.
+
+---
+
 <a id="o1"></a>
 ## O1 — Red channel drift: cause and mitigation
 

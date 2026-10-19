@@ -16,5 +16,7 @@
   "hr_wrist_20261017_174829_test26.csv":    {"deflation": 94.9, "hold": [90, 110],   "ref": [89.9, 94.9]},
   "hr_wrist_20261017_175602_test27.csv":    {"deflation": 93,   "hold": [75, 93],    "ref": [88, 93]},
   "hr_forearm_20261018_221319_test47.csv":  {"deflation": 102,  "hold": [99.5, 104], "ref": [99, 102],   "x": [83, 126]},
-  "hr_forearm_20261019_105337_test57.csv":  {"deflation": 72,   "hold": [60, 72],    "ref": [65, 72]}
+  "hr_forearm_20261019_105337_test57.csv":  {"deflation": 72,   "hold": [60, 72],    "ref": [65, 72]},
+  "hr_forearm_20261019_112334_test58.csv":  {"deflation": 64,   "hold": [58, 64],    "ref": [60, 64]},
+  "hr_forearm_20261019_112710_test59.csv":  {"deflation": 86,   "hold": [78, 86],    "ref": [82, 86]}
 }

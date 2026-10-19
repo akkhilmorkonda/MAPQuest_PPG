@@ -152,8 +152,11 @@ def stored_windows(trial: Trial, w: Windows, path: Path = WINDOWS_FILE) -> Windo
 
 def analyse(trial: Trial, w: Windows) -> dict:
     t = trial.t
+    # Onset searches stop where the cuff is dumped (D48).
+    end = w.dump if w.dump is not None and w.dump > w.deflation + 5.0 else None
     d = derive(trial.channels, trial.fs, dark=trial.dark, ref_window=w.ref,
-               deflation_start_s=w.deflation, t=t, config=PipelineConfig())
+               deflation_start_s=w.deflation, t=t, config=PipelineConfig(),
+               search_end_s=end)
     p_t = trial.pressure(t)
     inside = (t >= trial.t_p[0]) & (t <= trial.t_p[-1])
     uncuffed = inside & (p_t < UNCUFFED_MMHG) & ((t < w.inflation) | (t > w.release))

@@ -255,8 +255,10 @@ def find_onset(
     sigma0: float,
     k: float,
     hold_s: float,
+    search_to: int | None = None,
 ) -> tuple[int | None, float]:
-    """First sample after ``search_from`` where dV/dt stays above threshold.
+    """First sample after ``search_from`` (and before ``search_to``, when
+    given) where dV/dt stays above threshold.
 
     Returns ``(index_of_run_start, threshold)``. The index is the FIRST sample
     of the qualifying run, not the end of it -- the cuff pressure there is the
@@ -267,6 +269,8 @@ def find_onset(
 
     above = ddv > threshold
     above[:search_from] = False
+    if search_to is not None:
+        above[search_to:] = False
     if not above.any():
         return None, threshold
 
@@ -318,6 +322,7 @@ def ramp_intersection(
     hold_s: float,
     fit_s: float,
     baseline: tuple[float, float] | None = None,
+    end_index: int | None = None,
 ) -> tuple[float | None, float, tuple[float, float] | None]:
     """Extrapolate the established filling ramp back to the baseline.
 
@@ -338,12 +343,13 @@ def ramp_intersection(
         baseline = (0.0, float(np.mean(dv_lp[ref_slice])))
     b_slope, b_intercept = baseline
 
+    n_end = len(dv_lp) if end_index is None else min(len(dv_lp), end_index)
     i0 = crossing_index + int(round(hold_s * fs))
-    i1 = min(i0 + int(round(fit_s * fs)), len(dv_lp))
+    i1 = min(i0 + int(round(fit_s * fs)), n_end)
     if i1 - i0 < 8:
         # Too little ramp left to fit; fall back to whatever remains.
-        i0 = min(crossing_index, len(dv_lp) - 8)
-        i1 = len(dv_lp)
+        i0 = min(crossing_index, n_end - 8)
+        i1 = n_end
         if i1 - i0 < 8:
             return None, float("nan"), None
 
@@ -355,7 +361,7 @@ def ramp_intersection(
 
     # The extrapolation must land inside the record and at or after the
     # reference window; otherwise the ramp fit was not describing real filling.
-    lo, hi = float(t[ref_slice.stop - 1]), float(t[-1])
+    lo, hi = float(t[ref_slice.stop - 1]), float(t[n_end - 1])
     if not (lo - 1.0 <= onset_t <= hi):
         return None, float(slope), (float(slope), float(intercept))
 
@@ -372,6 +378,7 @@ def hinge_onset(
     powers: tuple[float, ...] = (1.0, 2.0),
     step_s: float = 0.05,
     decimate: int = 5,
+    end_s: float | None = None,
 ):
     """Onset as the corner of a "trend, then rising" fit (D43).
 
@@ -396,6 +403,8 @@ def hinge_onset(
     seed = float(t[crossing_index])
     ws = max(float(t[ref_slice.start]), seed - before_s)
     we = min(float(t[-1]), seed + after_s)
+    if end_s is not None:
+        we = min(we, end_s)
     w = (t >= ws) & (t <= we)
     tw = t[w][::decimate]
     yw = dv_lp[w][::decimate]
@@ -495,6 +504,7 @@ def derive(
     deflation_start_s: float | None = None,
     t: np.ndarray | None = None,
     config: PipelineConfig | None = None,
+    search_end_s: float | None = None,
 ) -> Derivation:
     """Run the full chain.
 
@@ -507,6 +517,9 @@ def derive(
         last 3 s before ``deflation_start_s``, or the first 3 s of the record.
     deflation_start_s : onset search starts here; defaults to the reference
         window's end.
+    search_end_s : onset searches and fits stop here (D48). The cuff dump at
+        the end of a cycle is the biggest inflow in the record; on two
+        automated runs (test58, test59) the onset otherwise latched onto it.
     """
     cfg = config or PipelineConfig()
     if "ir" not in channels:
@@ -556,9 +569,10 @@ def derive(
 
     # -- 8. Onset (SPEC 5.1 steps 10-11) -----------------------------------
     search_from = int(np.searchsorted(t, deflation_start_s)) if deflation_start_s is not None else i1
+    search_to = int(np.searchsorted(t, search_end_s)) if search_end_s is not None else None
     mu_eff = max(mu0, 0.0) if cfg.floor_mu0 else mu0
     threshold_index, threshold = find_onset(
-        ddv, fs, search_from, mu_eff, sigma0, cfg.k_sigma, cfg.hold_s
+        ddv, fs, search_from, mu_eff, sigma0, cfg.k_sigma, cfg.hold_s, search_to
     )
 
     # -- 9. Bias-free refinement (see PipelineConfig.onset_method) ---------
@@ -573,10 +587,10 @@ def derive(
             dv_lp, t, fs, ref, threshold_index, cfg.baseline_s, cfg.baseline_guard_s
         )
         onset_flat, slope, ramp_fit = ramp_intersection(
-            dv_lp, t, fs, ref, threshold_index, cfg.hold_s, cfg.fit_s, flat
+            dv_lp, t, fs, ref, threshold_index, cfg.hold_s, cfg.fit_s, flat, search_to
         )
         onset_sloped, _, _ = ramp_intersection(
-            dv_lp, t, fs, ref, threshold_index, cfg.hold_s, cfg.fit_s, sloped
+            dv_lp, t, fs, ref, threshold_index, cfg.hold_s, cfg.fit_s, sloped, search_to
         )
         if cfg.baseline == "flat":
             onset_t_intersect, base_fit = onset_flat, flat
@@ -588,7 +602,7 @@ def derive(
     # -- 10. Corner of a trend-then-rising fit (D43) -----------------------
     onset_hinge = hinge_power = hinge_fit = None
     if threshold_index is not None:
-        hg = hinge_onset(dv_lp, t, ref, threshold_index)
+        hg = hinge_onset(dv_lp, t, ref, threshold_index, end_s=search_end_s)
         if hg is not None:
             onset_hinge, hinge_power, hinge_fit = hg
 

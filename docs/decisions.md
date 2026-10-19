@@ -1371,6 +1371,9 @@ marker (cuff oscillation maximum +6.0 ± 10.0, intersect +11.6 ± 6.0, pulse ret
 +15.1 ± 8.9, hinge +17.3 ± 7.8). At 3 cm: +0.9 ± 1.9. test6 (3 cm, not in the six)
 reads 84.4 against 87.
 
+**Superseded in part by D46.** test4's value was the onset corner, not a surge. With
+the surge check the comparison is 5 runs, r = +0.67, and +0.9 ± 1.9 mmHg at 3 cm.
+
 **Why provisional.**
 - The definition was chosen after seeing test25–27, so those runs fit it partly by
   construction. The 7 cm runs are the only independent check, and only one of three
@@ -1432,6 +1435,47 @@ these markers.**
   the steepest volume change in the record. It now stops where the dump begins
   (`Windows.dump`: the unbroken fall faster than 10 mmHg/s that ends at the release).
   No earlier run changed.
+
+---
+
+## D46 — Steep refill only counts if it is a real surge
+
+**Status:** accepted · 2026-10-18
+
+**Why.** `steep_refill` (D44) returns the sharpest bend in a 20 s window, whether or not
+the refill has a second stage. Two failures were already in the data:
+- **The onset corner.** On a single straight ramp the sharpest bend is where filling
+  starts, so the "MAP" repeated the onset, near systolic. This happened on test4 and on
+  the automated runs test47 and test48. test4 was one of the two 7 cm runs D44 counted as
+  reading 12–17 mmHg high: its 110 mmHg was never a surge.
+- **Noise.** With no corner at all it picks a wiggle. On test49 that was 69 mmHg, 0.9 s
+  before the search ended, on a refill that was slowing down.
+
+**What.** `pipeline.surge_check` accepts the point only if:
+- it comes **at least 3 s after the onset**;
+- the refill is **at least 1.2× steeper over the 4 s after it** than over the 4 s
+  before;
+- it sits **at least 2 s inside the search window**.
+
+Otherwise `cuff_trial.py` prints "steep refill: none (no clear surge: …)" with the
+reason. The 1.2 threshold was the user's call. At 1.5, test6 (ratio 1.2, −2.6 mmHg
+against MAP) would also be rejected. The gap and edge rules catch every clear failure on
+their own.
+
+**Effect on the comparison** (`docs/figures/map-markers-6-runs.png`,
+`steep-refill-vs-map.png`):
+- **Rejected among the six reference runs:** test4.
+- **Rejected elsewhere:** the three automated runs, and four older runs without reference
+  BP (2026-10-09 20:35, 10-10 13:45, 10-10 15:18, 10-11 16:57).
+- **The 3 cm runs are unchanged:** +0.9 ± 1.9 mmHg against MAP (test6, the fourth slow
+  3 cm run, −2.6).
+- **At 7 cm** it is now one good run and one off: test3 −0.6, 10.16.26 +16.9.
+- **The correlation fell** from r = +0.82 (n = 6) to +0.67 (n = 5). test4's high reference
+  MAP and high bogus value had been propping it up.
+
+**What it does not do.** It stops a non-surge from posing as a MAP. It does not show that
+a real surge sits at MAP: 10.16.26 has the clearest surge of all (ratio 4.9) and reads
+17 mmHg high.
 
 ---
 

@@ -32,7 +32,10 @@ Markers, each with the cuff pressure at that moment:
     refill onset        corner of the trend-then-rising fit (hinge, default)
     refill, intersect   straight ramp extrapolated to the sloped baseline (D39)
     steep refill        where the refill accelerates most, within 20 s of the
-                        onset; tracked MAP on the slow trials so far (D44)
+                        onset; tracked MAP on the slow trials so far (D44).
+                        Reported only if it is a real surge (D46): 3 s or
+                        more after the onset, refill at least 1.2x steeper
+                        after it, and 2 s or more inside the search window.
 
 With reference BP in the header (D42) each is also reported against systolic
 and MAP. Saves ``<name>_cuff.png`` next to the recording.
@@ -53,7 +56,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mapquest.cuff import REF_S, Windows, windows_from_pressure  # noqa: E402
 from mapquest.io import load_csv  # noqa: E402
 from mapquest.mprls import counts_to_mmhg  # noqa: E402
-from mapquest.pipeline import PipelineConfig, derive, steep_refill  # noqa: E402
+from mapquest.pipeline import PipelineConfig, derive, steep_refill, surge_check  # noqa: E402
 from mapquest import pulse_return  # noqa: E402
 
 UNCUFFED_MMHG = 8.0
@@ -161,7 +164,13 @@ def analyse(trial: Trial, w: Windows) -> dict:
     end = min(onset + STEEP_SEARCH_S, w.dump or w.release) if onset is not None else None
     steep = (steep_refill(d.ddv, t, onset, end)
              if onset is not None else None)
-    return {"derivation": d, "pulse": pr,
+    # Only a real surge counts (D46); otherwise say why there is none.
+    steep_note = None
+    if steep is not None:
+        ok, steep_note, _ratio = surge_check(d.dv_lp, t, onset, steep, end)
+        if not ok:
+            steep = None
+    return {"derivation": d, "pulse": pr, "steep_note": steep_note,
             "markers": [("pulse return", pr.t_return if pr else None),
                         ("refill onset (hinge)", d.onset_time_hinge),
                         ("refill onset (intersect)", d.onset_time_sloped),
@@ -187,7 +196,9 @@ def report(trial: Trial, w: Windows, res: dict) -> None:
     print()
     for name, tt in res["markers"]:
         if tt is None:
-            print(f"  {name:26s}: none")
+            why = (f" (no clear surge: {res['steep_note']})"
+                   if name == "steep refill" and res.get("steep_note") else "")
+            print(f"  {name:26s}: none{why}")
             continue
         line = f"  {name:26s}: t = {tt:6.2f} s  {P(tt):6.1f} mmHg"
         if "systolic" in ref:

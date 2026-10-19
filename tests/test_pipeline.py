@@ -366,3 +366,29 @@ def test_steep_refill_finds_the_surge():
     ddv = np.gradient(dv, t)
     assert abs(steep_refill(ddv, t, 20.0, 40.0) - 35.0) < 0.3
     assert steep_refill(ddv, t, 20.0, 20.01) is None
+
+
+def test_surge_check_accepts_a_surge_and_rejects_the_rest():
+    """D46: only a real second stage counts as steep refill."""
+    from scipy.ndimage import gaussian_filter1d
+    from mapquest.pipeline import steep_refill, surge_check
+    fs = 100.0
+    t = np.arange(0, 60, 1 / fs)
+
+    def run(dv, onset, end):
+        dv = gaussian_filter1d(dv, 0.8 * fs)
+        ddv = np.gradient(dv, t)
+        st = steep_refill(ddv, t, onset, end)
+        return st, surge_check(dv, t, onset, st, end)
+
+    two_stage = 0.4 * np.clip(t - 20, 0, None) + 2.6 * np.clip(t - 32, 0, None)
+    st, (ok, why, ratio) = run(two_stage, 20.0, 40.0)
+    assert ok and abs(st - 32) < 0.3 and ratio > 3, why
+
+    one_ramp = 1.5 * np.clip(t - 20, 0, None)                  # automated cycle
+    _st, (ok, why, _r) = run(one_ramp, 20.0, 40.0)
+    assert not ok and "onset corner" in why
+
+    slowing = 1.5 * np.clip(t - 20, 0, None) - 0.03 * np.clip(t - 20, 0, None) ** 2
+    _st, (ok, why, _r) = run(slowing + 0.002 * np.sin(7 * t), 25.0, 45.0)
+    assert not ok, why

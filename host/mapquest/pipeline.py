@@ -434,6 +434,44 @@ def steep_refill(ddv: np.ndarray, t: np.ndarray, start: float, end: float) -> fl
     return float(t[i][int(np.argmax(acc))])
 
 
+SURGE_MIN_GAP_S = 3.0
+SURGE_MIN_RATIO = 1.2
+SURGE_EDGE_S = 2.0
+SURGE_SLOPE_S = 4.0
+
+
+def surge_check(dv_lp: np.ndarray, t: np.ndarray, onset: float, steep: float,
+                end: float) -> tuple[bool, str, float]:
+    """Is the steep-refill point a real surge? (D46)
+
+    ``steep_refill`` always returns its sharpest bend, surge or not. On a
+    single straight ramp that bend is the onset corner itself (test4, test47,
+    test48), and with no corner at all it is noise (test49, 1 s before the
+    search ended). A surge must:
+
+    - come at least 3 s after the onset, or it is the onset's corner;
+    - leave the refill steeper than before: slope over the 4 s after it at
+      least 1.2x the slope over the 4 s before;
+    - sit at least 2 s inside the search window, or it was cut off.
+
+    Returns ``(ok, reason, slope_ratio)``.
+    """
+    def slope(a: float, b: float) -> float:
+        i = (t >= a) & (t <= b)
+        return float(np.polyfit(t[i], dv_lp[i], 1)[0]) if i.sum() >= 10 else float("nan")
+
+    before = slope(steep - SURGE_SLOPE_S, steep)
+    after = slope(steep, steep + SURGE_SLOPE_S)
+    ratio = after / max(before, 0.05) if np.isfinite(before) and np.isfinite(after) else float("nan")
+    if steep - onset < SURGE_MIN_GAP_S:
+        return False, f"onset corner ({steep - onset:.1f} s after onset)", ratio
+    if end - steep < SURGE_EDGE_S:
+        return False, f"at the end of the search ({end - steep:.1f} s from it)", ratio
+    if not ratio >= SURGE_MIN_RATIO:
+        return False, f"refill not steeper after it (slope ratio {ratio:.2f})", ratio
+    return True, f"slope ratio {ratio:.1f}", ratio
+
+
 def pulsatility_rms(x: np.ndarray, fs: float, band: tuple[float, float]) -> float:
     """RMS of the cardiac band during the reference window (SPEC 5.1 step 12).
 

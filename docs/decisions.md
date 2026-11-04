@@ -1562,6 +1562,59 @@ onset:
 They are stored in `data/cuff_windows.json`. The fix belongs in the protocol: a longer
 hold at the top of the automated cycle, if the monitor allows it.
 
+## D49 — Flow bench: a separate tool for the intralipid phantom
+
+**Status:** accepted · 2026-11-02
+
+**Why.** Bench testing moves from the arm to a phantom: homemade intralipid through clear
+tubing at a constant pressure, sensor directly on the tube, then the tube is dumped (drained
+to air) and refilled, several cycles per recording. The question is whether the optical
+change is detectable. None of the cuff, pressure, heart-rate or blood-volume machinery
+applies, and changing `hr_monitor.py` for it would risk the cuff tooling.
+
+**What.** `host/flow_bench.py`, standalone. It reuses `hr_monitor`'s serial and replay
+sources (dark offsets, LED auto-tune, reconnects) without changing them.
+- **Display:** IR and red as % of full scale with 5 % / 95 % lines, ΔOD since the last zero,
+  and a step table.
+- **One marker button (space):** it toggles. The first press marks `no_flow` (the tube
+  dumped), the next marks `flow` (flow back), and so on. A run is assumed to start flowing.
+- **Steps:** each step compares the median over 10 s ending 1 s ahead of the press with
+  the median over 10 s starting 5 s after it.
+  - The 1 s guard keeps the start of a drain out of the baseline. In a replay, a key
+    pressed 1 s late otherwise inflated the baseline noise tenfold.
+  - The step is reported as counts %, ΔOD, and step ÷ noise.
+  - **Medians, and noise from the flowing side (2026-11-02).** In the first real run,
+    residual liquid and air in the pump and tubing caused 25 dips, 5–9 % deep, all
+    through no flow.
+    - Before the fix, levels were means and noise was the detrended SD of the BEFORE
+      window. The return to flow then scored SNR 0–2, because its BEFORE window was full
+      of dips.
+    - Now levels are medians, and noise is a robust detrended SD (1.4826 × MAD) of
+      whichever window is flowing: BEFORE for `no_flow`, AFTER for `flow`.
+    - Re-scored with the transition times read off the trace, the run gives no flow:
+      red −2.9 %, SNR 164; flow back: red +2.6 %, SNR 100.
+  - A window is cut short at the neighbouring marker, re-tune or link reset, and a step is
+    flagged "rail" if either channel is near saturation.
+- **Recording:** starts by itself when the board first streams, so nothing is missed.
+  Stop / Start recording (R) saves the file and opens a new one, and closing the window
+  saves too.
+- **Where:** recordings go to `benchtop_data/` beside `data/`, as `flow_*.csv` with markers
+  inline plus a `_steps.csv`. Benchtop experiments are kept out of `data/`, where
+  `marker_report.py` scores every `hr_*.csv`. `--report` re-derives the table offline and
+  saves a figure.
+
+**LED and ADC tuning.**
+- **LEDs:** tune once with intralipid flowing (the baseline), then leave them. A re-tune
+  moves counts with nothing physical changing. Because recording starts by itself, a
+  re-tune is allowed mid-recording, but it is logged, it re-zeroes ΔOD, and no step window
+  reaches across it.
+  - Do one practice no-flow first. Intralipid scatters light back, so draining may darken the
+    signal, while air in clear tubing can add reflections; the direction is not known
+    ahead of time.
+  - If either channel leaves 5–95 %, re-tune in the brighter state.
+- **ADC range:** stays at the firmware's 4096 nA. Change it only if auto-tune cannot reach
+  mid-scale: pinned at maximum current and still dim, or saturating at minimum.
+
 ---
 
 <a id="o1"></a>

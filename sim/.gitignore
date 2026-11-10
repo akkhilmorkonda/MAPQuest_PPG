@@ -1,0 +1,3 @@
+# Simulated runs are regenerable from their .truth.json settings.
+out/
+__pycache__/

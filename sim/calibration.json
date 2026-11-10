@@ -1,0 +1,2844 @@
+{
+  "about": "sim/calibrate.py fit: shared vessel settings fitted to the training runs (per-run optical gain, offset and linear drain free).",
+  "vessels": {
+    "g_cuff": 0.16741664676720203,
+    "open_span": 0.5,
+    "open_power": 1.0155521702979877,
+    "open_offset": -0.023810366991586267,
+    "r_art": 380.81830123317593,
+    "c_art": 0.001,
+    "c_ven": 5.0,
+    "g_ven": 1.2,
+    "ven_span": 5.0,
+    "cvp": 5.0,
+    "drain_rate": 0.0,
+    "drain_tau": 0.0
+  },
+  "training_1_minus_r2": 0.044301356564537334,
+  "train": [
+    "10.16.26",
+    "test4",
+    "test25",
+    "test27",
+    "test48",
+    "test50",
+    "test52",
+    "test54",
+    "test56",
+    "test58",
+    "test60"
+  ],
+  "test": [
+    "test3",
+    "test6",
+    "test26",
+    "test47",
+    "test49",
+    "test51",
+    "test53",
+    "test55",
+    "test57",
+    "test59",
+    "test61"
+  ],
+  "slow_noise_gain": 0.6648773223107075,
+  "lf_band": [
+    0.03,
+    0.3
+  ],
+  "runs": [
+    {
+      "run": "test47",
+      "file": "hr_forearm_20261018_221319_test47.csv",
+      "group": "automated",
+      "rate": 4.28,
+      "sbp": 122.0,
+      "dbp": 80.0,
+      "hr_bpm": 63.8,
+      "fit_window_s": [
+        99,
+        114.4
+      ],
+      "r2": 0.952,
+      "gain": 9.356,
+      "drain_um_s": -0.083,
+      "white_counts": 7.5013152532729945,
+      "slow_um": 0.17235959459457378,
+      "hold_s": 4.5
+    },
+    {
+      "run": "test48",
+      "file": "hr_forearm_20261018_221544_test48.csv",
+      "group": "automated",
+      "rate": 3.88,
+      "sbp": 123.0,
+      "dbp": 83.0,
+      "hr_bpm": 63.8,
+      "fit_window_s": [
+        59.2,
+        72.6
+      ],
+      "r2": 0.981,
+      "gain": 13.389,
+      "drain_um_s": 0.078,
+      "white_counts": 7.487168581566479,
+      "slow_um": 0.07081583892620773,
+      "hold_s": 5.000000000000007
+    },
+    {
+      "run": "test49",
+      "file": "hr_forearm_20261018_221910_test49.csv",
+      "group": "automated",
+      "rate": 3.69,
+      "sbp": 116.0,
+      "dbp": 78.0,
+      "hr_bpm": 63.8,
+      "fit_window_s": [
+        55.3,
+        72.1
+      ],
+      "r2": 0.972,
+      "gain": 12.349,
+      "drain_um_s": 0.619,
+      "white_counts": 7.5372677695955606,
+      "slow_um": 0.37956372562034474,
+      "hold_s": 5.0
+    },
+    {
+      "run": "test50",
+      "file": "hr_forearm_20261018_222922_test50.csv",
+      "group": "automated",
+      "rate": 3.76,
+      "sbp": 123.0,
+      "dbp": 78.0,
+      "hr_bpm": 63.8,
+      "fit_window_s": [
+        57.2,
+        73.8
+      ],
+      "r2": 0.953,
+      "gain": 5.419,
+      "drain_um_s": -0.089,
+      "white_counts": 8.507883788276247,
+      "slow_um": 0.03874460247682324,
+      "hold_s": 5.0
+    },
+    {
+      "run": "test51",
+      "file": "hr_forearm_20261018_223118_test51.csv",
+      "group": "automated",
+      "rate": 3.87,
+      "sbp": 119.0,
+      "dbp": 81.0,
+      "hr_bpm": 63.8,
+      "fit_window_s": [
+        58.6,
+        75.5
+      ],
+      "r2": 0.804,
+      "gain": 3.343,
+      "drain_um_s": -0.164,
+      "white_counts": 8.125631434053227,
+      "slow_um": 0.03006020827777314,
+      "hold_s": 5.0
+    },
+    {
+      "run": "test52",
+      "file": "hr_forearm_20261018_223352_test52.csv",
+      "group": "automated",
+      "rate": 3.67,
+      "sbp": 119.0,
+      "dbp": 78.0,
+      "hr_bpm": 63.8,
+      "fit_window_s": [
+        56.5,
+        73.0
+      ],
+      "r2": 0.986,
+      "gain": 20.438,
+      "drain_um_s": -0.679,
+      "white_counts": 9.217823253275007,
+      "slow_um": 0.059832133294644124,
+      "hold_s": 5.0
+    },
+    {
+      "run": "test53",
+      "file": "hr_forearm_20261019_102018_test53.csv",
+      "group": "slow manual",
+      "rate": 1.72,
+      "sbp": 122.0,
+      "dbp": 83.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        58.2,
+        109.6
+      ],
+      "r2": 0.844,
+      "gain": 21.402,
+      "drain_um_s": -1.045,
+      "white_counts": 9.245027737200344,
+      "slow_um": 0.7341753104939842,
+      "hold_s": 15.200000000000259
+    },
+    {
+      "run": "test54",
+      "file": "hr_forearm_20261019_102558_test54.csv",
+      "group": "slow manual",
+      "rate": 2.2,
+      "sbp": 115.0,
+      "dbp": 80.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        150.8,
+        194.7
+      ],
+      "r2": 0.996,
+      "gain": 19.853,
+      "drain_um_s": 0.579,
+      "white_counts": 9.290279669085828,
+      "slow_um": 0.9932159913481918,
+      "hold_s": 20.299999999998676
+    },
+    {
+      "run": "test55",
+      "file": "hr_forearm_20261019_104332_test55.csv",
+      "group": "slow manual",
+      "rate": 1.95,
+      "sbp": 115.0,
+      "dbp": 73.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        56.2,
+        105.9
+      ],
+      "r2": 0.982,
+      "gain": 19.613,
+      "drain_um_s": -0.347,
+      "white_counts": 8.304362620809068,
+      "slow_um": 0.7432698001467221,
+      "hold_s": 15.200000000000259
+    },
+    {
+      "run": "test56",
+      "file": "hr_forearm_20261019_104920_test56.csv",
+      "group": "slow manual",
+      "rate": 1.93,
+      "sbp": 113.0,
+      "dbp": 80.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        50.6,
+        102.7
+      ],
+      "r2": 0.916,
+      "gain": 24.492,
+      "drain_um_s": -0.691,
+      "white_counts": 8.381407676967875,
+      "slow_um": 0.12592470077262932,
+      "hold_s": 5.800000000000125
+    },
+    {
+      "run": "test57",
+      "file": "hr_forearm_20261019_105337_test57.csv",
+      "group": "slow manual",
+      "rate": 1.51,
+      "sbp": 116.0,
+      "dbp": 73.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        65,
+        119.1
+      ],
+      "r2": 0.962,
+      "gain": 11.308,
+      "drain_um_s": -0.009,
+      "white_counts": 8.477779327000645,
+      "slow_um": 0.13663374105058115,
+      "hold_s": 12.0
+    },
+    {
+      "run": "test58",
+      "file": "hr_forearm_20261019_112334_test58.csv",
+      "group": "automated",
+      "rate": 3.78,
+      "sbp": 119.0,
+      "dbp": 76.0,
+      "hr_bpm": 63.8,
+      "fit_window_s": [
+        60,
+        72.5
+      ],
+      "r2": 0.989,
+      "gain": 25.048,
+      "drain_um_s": -2.528,
+      "white_counts": 10.384360047005595,
+      "slow_um": 0.05298958695961252,
+      "hold_s": 6.0
+    },
+    {
+      "run": "test59",
+      "file": "hr_forearm_20261019_112710_test59.csv",
+      "group": "automated",
+      "rate": 3.93,
+      "sbp": 110.0,
+      "dbp": 74.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        82,
+        97.0
+      ],
+      "r2": 0.869,
+      "gain": 19.758,
+      "drain_um_s": -1.039,
+      "white_counts": 12.858916439344776,
+      "slow_um": 0.3078933444495384,
+      "hold_s": 8.0
+    },
+    {
+      "run": "test60",
+      "file": "hr_forearm_20261019_113154_test60.csv",
+      "group": "automated",
+      "rate": 4.3,
+      "sbp": 110.0,
+      "dbp": 73.0,
+      "hr_bpm": 71.2,
+      "fit_window_s": [
+        72.2,
+        86.4
+      ],
+      "r2": 0.929,
+      "gain": 32.741,
+      "drain_um_s": -0.899,
+      "white_counts": 10.994513940997122,
+      "slow_um": 0.049562004907487085,
+      "hold_s": 5.0
+    },
+    {
+      "run": "test61",
+      "file": "hr_forearm_20261019_113516_test61.csv",
+      "group": "automated",
+      "rate": 4.57,
+      "sbp": 110.0,
+      "dbp": 74.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        66.8,
+        82.4
+      ],
+      "r2": 0.963,
+      "gain": 29.963,
+      "drain_um_s": -0.855,
+      "white_counts": 7.923683188988772,
+      "slow_um": 0.05326470202143944,
+      "hold_s": 5.0
+    },
+    {
+      "run": "10.16.26",
+      "file": "hr_wrist_20261016_185021_10.16.26.csv",
+      "group": "slow manual",
+      "rate": 2.09,
+      "sbp": 117.0,
+      "dbp": 80.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        106,
+        141.3
+      ],
+      "r2": 0.916,
+      "gain": 7.676,
+      "drain_um_s": 0.005,
+      "white_counts": 10.977931366693642,
+      "slow_um": 0.4661254392170837,
+      "hold_s": 14.0
+    },
+    {
+      "run": "test3",
+      "file": "hr_wrist_20261016_185835_test3.csv",
+      "group": "slow manual",
+      "rate": 2.71,
+      "sbp": 115.0,
+      "dbp": 75.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        58,
+        84.3
+      ],
+      "r2": 0.995,
+      "gain": 19.938,
+      "drain_um_s": -0.451,
+      "white_counts": 16.31525658020551,
+      "slow_um": 0.16158613040517056,
+      "hold_s": 10.0
+    },
+    {
+      "run": "test4",
+      "file": "hr_wrist_20261016_212342_test4.csv",
+      "group": "fast manual",
+      "rate": 3.89,
+      "sbp": 124.0,
+      "dbp": 85.0,
+      "hr_bpm": 63.8,
+      "fit_window_s": [
+        64,
+        78.9
+      ],
+      "r2": 0.981,
+      "gain": 11.505,
+      "drain_um_s": -0.522,
+      "white_counts": 8.010199296280017,
+      "slow_um": 0.09763134826310009,
+      "hold_s": 19.0
+    },
+    {
+      "run": "test6",
+      "file": "hr_wrist_20261017_145914_test6.csv",
+      "group": "slow manual",
+      "rate": 1.85,
+      "sbp": 111.0,
+      "dbp": 75.0,
+      "hr_bpm": 67.5,
+      "fit_window_s": [
+        59,
+        103.8
+      ],
+      "r2": 0.952,
+      "gain": 9.45,
+      "drain_um_s": -0.569,
+      "white_counts": 7.264627368980729,
+      "slow_um": 0.15644786601773666,
+      "hold_s": 14.0
+    },
+    {
+      "run": "test25",
+      "file": "hr_wrist_20261017_174322_test25.csv",
+      "group": "slow manual",
+      "rate": 1.86,
+      "sbp": 111.0,
+      "dbp": 75.0,
+      "hr_bpm": 75.0,
+      "fit_window_s": [
+        67.4,
+        108.7
+      ],
+      "r2": 0.892,
+      "gain": 19.14,
+      "drain_um_s": -1.234,
+      "white_counts": 7.695796137838975,
+      "slow_um": 0.12126272680814161,
+      "hold_s": 8.400000000000006
+    },
+    {
+      "run": "test26",
+      "file": "hr_wrist_20261017_174829_test26.csv",
+      "group": "slow manual",
+      "rate": 2.01,
+      "sbp": 108.0,
+      "dbp": 75.0,
+      "hr_bpm": 82.5,
+      "fit_window_s": [
+        89.9,
+        138.0
+      ],
+      "r2": 0.961,
+      "gain": 20.98,
+      "drain_um_s": -0.553,
+      "white_counts": 8.963791228674893,
+      "slow_um": 0.3345878682153487,
+      "hold_s": 20.0
+    },
+    {
+      "run": "test27",
+      "file": "hr_wrist_20261017_175602_test27.csv",
+      "group": "slow manual",
+      "rate": 1.77,
+      "sbp": 110.0,
+      "dbp": 84.0,
+      "hr_bpm": 75.0,
+      "fit_window_s": [
+        88,
+        133.6
+      ],
+      "r2": 0.972,
+      "gain": 27.576,
+      "drain_um_s": -1.769,
+      "white_counts": 8.095247682059624,
+      "slow_um": 0.6905672514804266,
+      "hold_s": 18.0
+    }
+  ],
+  "variants": {
+    "A": {
+      "about": "shape fit only: flow returns exactly where arterial pressure clears the cuff, the reference systolic taken as true",
+      "vessels": {
+        "g_cuff": 0.16741664676720203,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": -0.023810366991586267,
+        "r_art": 380.81830123317593,
+        "c_art": 0.001,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      }
+    },
+    "B": {
+      "about": "optical pulse held at its real size; opening offset 0 mmHg, chosen so the training twins' hinge bias matches the real one (onset below SBP is physiology)",
+      "vessels": {
+        "g_cuff": 0.0010016097835799848,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 0.0,
+        "r_art": 70108.09163708097,
+        "c_art": 2.4866053336156535e-05,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      }
+    },
+    "A2": {
+      "about": "as A, with the optical pulse held at its real size and no opening offset",
+      "vessels": {
+        "g_cuff": 0.0010016097835799848,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 0.0,
+        "r_art": 70108.09163708097,
+        "c_art": 2.4866053336156535e-05,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      }
+    },
+    "B-soft": {
+      "about": "as B, but the cuffed artery opens over 20 mmHg (held, not fitted): the soft end of what the real runs allow",
+      "vessels": {
+        "g_cuff": 1.00037507032129,
+        "open_span": 20.0,
+        "open_power": 1.0,
+        "open_offset": 0.0,
+        "r_art": 141.25375446227528,
+        "c_art": 0.012341700598191126,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      },
+      "training_1_minus_r2": 0.05089723051030645,
+      "held_out": {
+        "r2_median": 0.963,
+        "hinge_twin_minus_sbp": [
+          -3.472023334367151,
+          -5.31837528489667,
+          -6.308821654646006,
+          -0.69414001046709,
+          -7.8932220427338535,
+          -11.058787789797003,
+          -16.07554188775097,
+          -5.670222049323186,
+          -6.689810771114864,
+          -10.03889081085183,
+          -8.675116299571584
+        ],
+        "hinge_real_minus_sbp": [
+          -2.685203835102442,
+          -15.72923449471189,
+          -6.5806279405434935,
+          -4.303686805193351,
+          3.0822248493221736,
+          -12.988470659032785,
+          -15.880249401239197,
+          -8.051031943046539,
+          0.07206394107210201,
+          -3.691046958607572,
+          -8.698111057093598
+        ]
+      }
+    }
+  },
+  "scan_r_art_max_1000": [
+    {
+      "open_offset": 0,
+      "vessels": {
+        "g_cuff": 0.06992611332873314,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 0,
+        "r_art": 1000.0,
+        "c_art": 0.0017433115459438053,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      },
+      "one_minus_r2": 0.04795317585793446,
+      "hinge_twin": -7.159953313864984,
+      "hinge_real": -5.572153722296283,
+      "pulse_twin": -2.89615521667,
+      "pulse_real": -9.284404561927742,
+      "pulse_ratio": 0.5890460921668829
+    },
+    {
+      "open_offset": 1.5,
+      "vessels": {
+        "g_cuff": 0.08519642931257754,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 1.5,
+        "r_art": 1000.0,
+        "c_art": 0.0017433115459438053,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      },
+      "one_minus_r2": 0.04897681336160498,
+      "hinge_twin": -8.007554155882335,
+      "hinge_real": -5.572153722296283,
+      "pulse_twin": -3.541077360320402,
+      "pulse_real": -9.284404561927742,
+      "pulse_ratio": 0.5874729376560628
+    },
+    {
+      "open_offset": 3,
+      "vessels": {
+        "g_cuff": 0.1051556364210132,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 3,
+        "r_art": 1000.0,
+        "c_art": 0.0017433115459438053,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      },
+      "one_minus_r2": 0.05015439371934802,
+      "hinge_twin": -8.244672361191741,
+      "hinge_real": -5.572153722296283,
+      "pulse_twin": -4.067326484200099,
+      "pulse_real": -9.284404561927742,
+      "pulse_ratio": 0.5850423177635717
+    },
+    {
+      "open_offset": 4.5,
+      "vessels": {
+        "g_cuff": 0.13441011354537613,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 4.5,
+        "r_art": 1000.0,
+        "c_art": 0.0017433115459438053,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      },
+      "one_minus_r2": 0.05161720813053752,
+      "hinge_twin": -8.970884868800587,
+      "hinge_real": -5.572153722296283,
+      "pulse_twin": -5.03180983209353,
+      "pulse_real": -9.284404561927742,
+      "pulse_ratio": 0.5800639807444921
+    },
+    {
+      "open_offset": 6,
+      "vessels": {
+        "g_cuff": 0.2042086622478279,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 6,
+        "r_art": 1000.0,
+        "c_art": 0.0017433115459438053,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      },
+      "one_minus_r2": 0.05336503186679749,
+      "hinge_twin": -8.883340754094567,
+      "hinge_real": -5.572153722296283,
+      "pulse_twin": -5.9314995510298365,
+      "pulse_real": -9.284404561927742,
+      "pulse_ratio": 0.5710008844482297
+    },
+    {
+      "open_offset": 9,
+      "vessels": {
+        "g_cuff": 0.6188203663130648,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 9,
+        "r_art": 1000.0,
+        "c_art": 0.0017433115459438053,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      },
+      "one_minus_r2": 0.057168819216420405,
+      "hinge_twin": -10.297671862200666,
+      "hinge_real": -5.572153722296283,
+      "pulse_twin": -11.7462498387987,
+      "pulse_real": -9.284404561927742,
+      "pulse_ratio": 0.5438281738710036
+    }
+  ],
+  "scan": [
+    {
+      "open_offset": 0.0,
+      "vessels": {
+        "g_cuff": 0.0010016097835799848,
+        "open_span": 0.5,
+        "open_power": 1.0155521702979877,
+        "open_offset": 0.0,
+        "r_art": 70108.09163708097,
+        "c_art": 2.4866053336156535e-05,
+        "c_ven": 5.0,
+        "g_ven": 1.2,
+        "ven_span": 5.0,
+        "cvp": 5.0,
+        "drain_rate": 0.0,
+        "drain_tau": 0.0
+      },
+      "one_minus_r2": 0.04789167489618951,
+      "hinge_twin": -7.165277524166458,
+      "hinge_real": -5.572153722296283,
+      "pulse_twin": -2.8904835520576726,
+      "pulse_real": -9.284404561927742,
+      "pulse_ratio": 0.5869130863506264
+    }
+  ],
+  "checks": {
+    "B": {
+      "shape_r2_median": {
+        "training": {
+          "variant": 0.972,
+          "default": 0.902,
+          "hinge_p1": 0.895,
+          "hinge_p2": 0.965
+        },
+        "held out": {
+          "variant": 0.955,
+          "default": 0.906,
+          "hinge_p1": 0.928,
+          "hinge_p2": 0.939
+        }
+      },
+      "held_out": [
+        {
+          "run": "test3",
+          "twin_minus_sbp": {
+            "pulse return": -1.655294605669127,
+            "refill onset (hinge)": -2.4559048587762837,
+            "refill onset (intersect)": -9.120795157598133,
+            "steep refill": -11.248627814108223
+          },
+          "real_minus_sbp": {
+            "pulse return": -9.560416388666908,
+            "refill onset (hinge)": -2.685203835102442,
+            "refill onset (intersect)": -7.8113456327384085,
+            "steep refill": -27.2903810511757
+          },
+          "flow_onset_minus_sbp": -2.5949265744088024,
+          "pulse_pct_twin": 0.028787012206709553,
+          "pulse_pct_real": 0.022389174482427197
+        },
+        {
+          "run": "test6",
+          "twin_minus_sbp": {
+            "pulse return": -3.1429047388479083,
+            "refill onset (hinge)": -1.5230097217653384,
+            "refill onset (intersect)": -9.593979861477715,
+            "steep refill": -10.40107962289098
+          },
+          "real_minus_sbp": {
+            "pulse return": -16.177634674560863,
+            "refill onset (hinge)": -15.72923449471189,
+            "refill onset (intersect)": -16.48418266097562,
+            "steep refill": -26.62492539558116
+          },
+          "flow_onset_minus_sbp": -0.7093504294161193,
+          "pulse_pct_twin": 0.012559667145678249,
+          "pulse_pct_real": 0.0611624534991304
+        },
+        {
+          "run": "test26",
+          "twin_minus_sbp": {
+            "pulse return": -2.62940518563596,
+            "refill onset (hinge)": -3.380100615992196,
+            "refill onset (intersect)": -8.093295550853918,
+            "steep refill": -12.961764663278565
+          },
+          "real_minus_sbp": {
+            "pulse return": -13.795584303845999,
+            "refill onset (hinge)": -6.5806279405434935,
+            "refill onset (intersect)": -14.11302359535432,
+            "steep refill": -19.093545612531557
+          },
+          "flow_onset_minus_sbp": -0.557366096037768,
+          "pulse_pct_twin": 0.026474183024492823,
+          "pulse_pct_real": 0.05186866664984672
+        },
+        {
+          "run": "test47",
+          "twin_minus_sbp": {
+            "pulse return": -1.698237732939783,
+            "refill onset (hinge)": 0.328157814543322,
+            "refill onset (intersect)": -7.932666639844527,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": null,
+            "refill onset (hinge)": -4.303686805193351,
+            "refill onset (intersect)": -0.5696090613407989,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -1.403736907332373,
+          "pulse_pct_twin": 0.013828517709697057,
+          "pulse_pct_real": 0.031680104267716884
+        },
+        {
+          "run": "test49",
+          "twin_minus_sbp": {
+            "pulse return": -1.3706650727927656,
+            "refill onset (hinge)": -2.4214731541387664,
+            "refill onset (intersect)": -8.984330552811663,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -25.19039383776976,
+            "refill onset (hinge)": 3.0822248493221736,
+            "refill onset (intersect)": 4.819417429528684,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -2.0709768911009547,
+          "pulse_pct_twin": 0.017221891329202012,
+          "pulse_pct_real": 0.03255615400691087
+        },
+        {
+          "run": "test51",
+          "twin_minus_sbp": {
+            "pulse return": -5.647514326821725,
+            "refill onset (hinge)": -10.842388546535679,
+            "refill onset (intersect)": -8.327534137942445,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -11.491844752615407,
+            "refill onset (hinge)": -12.988470659032785,
+            "refill onset (intersect)": -4.399662350913928,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -0.789211561830129,
+          "pulse_pct_twin": 0.0047603753418766865,
+          "pulse_pct_real": 0.11549266667437175
+        },
+        {
+          "run": "test53",
+          "twin_minus_sbp": {
+            "pulse return": -4.170356568360536,
+            "refill onset (hinge)": -14.696820504810825,
+            "refill onset (intersect)": -14.089337440910583,
+            "steep refill": -16.557954979202748
+          },
+          "real_minus_sbp": {
+            "pulse return": -12.745782837895717,
+            "refill onset (hinge)": -15.880249401239197,
+            "refill onset (intersect)": -16.67257057467485,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": 0.1942275768319206,
+          "pulse_pct_twin": 0.03187294673097679,
+          "pulse_pct_real": 0.025543337912593795
+        },
+        {
+          "run": "test55",
+          "twin_minus_sbp": {
+            "pulse return": -4.806456083821312,
+            "refill onset (hinge)": -4.98526067254857,
+            "refill onset (intersect)": -11.824138832751537,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -14.204084206951165,
+            "refill onset (hinge)": -8.051031943046539,
+            "refill onset (intersect)": -11.936786361647535,
+            "steep refill": -14.955527773661174
+          },
+          "flow_onset_minus_sbp": -0.5017067925604977,
+          "pulse_pct_twin": 0.029771512867804693,
+          "pulse_pct_real": 0.02291406958642554
+        },
+        {
+          "run": "test57",
+          "twin_minus_sbp": {
+            "pulse return": -3.592999869119126,
+            "refill onset (hinge)": -3.8631637870077733,
+            "refill onset (intersect)": -7.288532527593655,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -9.866429841175318,
+            "refill onset (hinge)": 0.07206394107210201,
+            "refill onset (intersect)": -4.98383180128981,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -0.8175215585957858,
+          "pulse_pct_twin": 0.01668475395536895,
+          "pulse_pct_real": 0.02844775702836603
+        },
+        {
+          "run": "test59",
+          "twin_minus_sbp": {
+            "pulse return": -1.122906772070645,
+            "refill onset (hinge)": -9.46259784500711,
+            "refill onset (intersect)": -9.444928834411309,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -7.373804354130584,
+            "refill onset (hinge)": -3.691046958607572,
+            "refill onset (intersect)": 1.112143244618693,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -2.955256459401639,
+          "pulse_pct_twin": 0.026539807510537562,
+          "pulse_pct_real": 0.07125912725312467
+        },
+        {
+          "run": "test61",
+          "twin_minus_sbp": {
+            "pulse return": 0.9296974304661726,
+            "refill onset (hinge)": -8.50128697814931,
+            "refill onset (intersect)": -8.668341399239841,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -7.2239292413104295,
+            "refill onset (hinge)": -8.698111057093598,
+            "refill onset (intersect)": -7.245321776710512,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -0.4037384241034374,
+          "pulse_pct_twin": 0.04010711999273305,
+          "pulse_pct_real": 0.08087923150350787
+        }
+      ],
+      "seeds": 3
+    },
+    "A": {
+      "shape_r2_median": {
+        "training": {
+          "variant": 0.972,
+          "default": 0.902,
+          "hinge_p1": 0.895,
+          "hinge_p2": 0.965
+        },
+        "held out": {
+          "variant": 0.961,
+          "default": 0.906,
+          "hinge_p1": 0.928,
+          "hinge_p2": 0.939
+        }
+      },
+      "held_out": [
+        {
+          "run": "test3",
+          "twin_minus_sbp": {
+            "pulse return": -2.155854017319816,
+            "refill onset (hinge)": -0.6864291286334492,
+            "refill onset (intersect)": -8.290044614158385,
+            "steep refill": -16.432445349112314
+          },
+          "real_minus_sbp": {
+            "pulse return": -9.560416388666908,
+            "refill onset (hinge)": -2.685203835102442,
+            "refill onset (intersect)": -7.8113456327384085,
+            "steep refill": -27.2903810511757
+          },
+          "flow_onset_minus_sbp": -2.5949265744088024,
+          "pulse_pct_twin": 0.010610729738133545,
+          "pulse_pct_real": 0.022389174482427197
+        },
+        {
+          "run": "test6",
+          "twin_minus_sbp": {
+            "pulse return": -3.021703438533374,
+            "refill onset (hinge)": 0.83506308800825,
+            "refill onset (intersect)": -7.241160068300104,
+            "steep refill": -9.558219733799405
+          },
+          "real_minus_sbp": {
+            "pulse return": -16.177634674560863,
+            "refill onset (hinge)": -15.72923449471189,
+            "refill onset (intersect)": -16.48418266097562,
+            "steep refill": -26.62492539558116
+          },
+          "flow_onset_minus_sbp": -0.7093504294161193,
+          "pulse_pct_twin": 0.004562351023827604,
+          "pulse_pct_real": 0.0611624534991304
+        },
+        {
+          "run": "test26",
+          "twin_minus_sbp": {
+            "pulse return": -2.8864494247908445,
+            "refill onset (hinge)": -2.1947893378395995,
+            "refill onset (intersect)": -6.7763919616139345,
+            "steep refill": -14.764595876190063
+          },
+          "real_minus_sbp": {
+            "pulse return": -13.795584303845999,
+            "refill onset (hinge)": -6.5806279405434935,
+            "refill onset (intersect)": -14.11302359535432,
+            "steep refill": -19.093545612531557
+          },
+          "flow_onset_minus_sbp": -0.557366096037768,
+          "pulse_pct_twin": 0.008565265127578946,
+          "pulse_pct_real": 0.05186866664984672
+        },
+        {
+          "run": "test47",
+          "twin_minus_sbp": {
+            "pulse return": -0.1736353799250215,
+            "refill onset (hinge)": 4.233804455927451,
+            "refill onset (intersect)": -7.131792332372437,
+            "steep refill": -32.47310602231699
+          },
+          "real_minus_sbp": {
+            "pulse return": null,
+            "refill onset (hinge)": -4.303686805193351,
+            "refill onset (intersect)": -0.5696090613407989,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -1.403736907332373,
+          "pulse_pct_twin": 0.005401128112691332,
+          "pulse_pct_real": 0.031680104267716884
+        },
+        {
+          "run": "test49",
+          "twin_minus_sbp": {
+            "pulse return": 0.3815946912629566,
+            "refill onset (hinge)": -3.9610053226578685,
+            "refill onset (intersect)": -15.572101303356959,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -25.19039383776976,
+            "refill onset (hinge)": 3.0822248493221736,
+            "refill onset (intersect)": 4.819417429528684,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -2.0709768911009547,
+          "pulse_pct_twin": 0.006486143356306828,
+          "pulse_pct_real": 0.03255615400691087
+        },
+        {
+          "run": "test51",
+          "twin_minus_sbp": {
+            "pulse return": -5.474654692862093,
+            "refill onset (hinge)": 3.7408680511018653,
+            "refill onset (intersect)": -11.624973443091775,
+            "steep refill": -8.590264527567236
+          },
+          "real_minus_sbp": {
+            "pulse return": -11.491844752615407,
+            "refill onset (hinge)": -12.988470659032785,
+            "refill onset (intersect)": -4.399662350913928,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -0.789211561830129,
+          "pulse_pct_twin": 0.001792501065691361,
+          "pulse_pct_real": 0.11549266667437175
+        },
+        {
+          "run": "test53",
+          "twin_minus_sbp": {
+            "pulse return": -3.9769841914791946,
+            "refill onset (hinge)": -10.638875135674335,
+            "refill onset (intersect)": -16.424082121776028,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -12.745782837895717,
+            "refill onset (hinge)": -15.880249401239197,
+            "refill onset (intersect)": -16.67257057467485,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": 0.1942275768319206,
+          "pulse_pct_twin": 0.011317278826422396,
+          "pulse_pct_real": 0.025543337912593795
+        },
+        {
+          "run": "test55",
+          "twin_minus_sbp": {
+            "pulse return": -3.635913274180529,
+            "refill onset (hinge)": -4.903123006947503,
+            "refill onset (intersect)": -9.71349301947184,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -14.204084206951165,
+            "refill onset (hinge)": -8.051031943046539,
+            "refill onset (intersect)": -11.936786361647535,
+            "steep refill": -14.955527773661174
+          },
+          "flow_onset_minus_sbp": -0.5017067925604977,
+          "pulse_pct_twin": 0.011049059883985276,
+          "pulse_pct_real": 0.02291406958642554
+        },
+        {
+          "run": "test57",
+          "twin_minus_sbp": {
+            "pulse return": -2.2775915319849864,
+            "refill onset (hinge)": -0.956703818505332,
+            "refill onset (intersect)": -6.0796965639063005,
+            "steep refill": -7.232558009218522
+          },
+          "real_minus_sbp": {
+            "pulse return": -9.866429841175318,
+            "refill onset (hinge)": 0.07206394107210201,
+            "refill onset (intersect)": -4.98383180128981,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -0.8216732337304364,
+          "pulse_pct_twin": 0.006577579320802537,
+          "pulse_pct_real": 0.02844775702836603
+        },
+        {
+          "run": "test59",
+          "twin_minus_sbp": {
+            "pulse return": 0.2832122953249107,
+            "refill onset (hinge)": 1.2766442584199258,
+            "refill onset (intersect)": -11.229344283343812,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -7.373804354130584,
+            "refill onset (hinge)": -3.691046958607572,
+            "refill onset (intersect)": 1.112143244618693,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -2.955256459401639,
+          "pulse_pct_twin": 0.009684269455942819,
+          "pulse_pct_real": 0.07125912725312467
+        },
+        {
+          "run": "test61",
+          "twin_minus_sbp": {
+            "pulse return": 1.0249724346689437,
+            "refill onset (hinge)": 2.902409378186173,
+            "refill onset (intersect)": -9.316174553587478,
+            "steep refill": null
+          },
+          "real_minus_sbp": {
+            "pulse return": -7.2239292413104295,
+            "refill onset (hinge)": -8.698111057093598,
+            "refill onset (intersect)": -7.245321776710512,
+            "steep refill": null
+          },
+          "flow_onset_minus_sbp": -0.4037384241034374,
+          "pulse_pct_twin": 0.014745134293459718,
+          "pulse_pct_real": 0.08087923150350787
+        }
+      ],
+      "seeds": 3
+    }
+  },
+  "sweeps": {
+    "B": {
+      "map": 85,
+      "gain": 2346.9725,
+      "seeds": 5,
+      "rows": [
+        {
+          "rate": 2.0,
+          "pp": 0,
+          "sbp_minus_map": 0.0,
+          "flow_minus_map": -0.0020000000000095497,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 0.07528850006762866,
+          "refill onset (hinge) all": [
+            -0.4378329321589405,
+            0.07528850006762866,
+            0.1863241312087638,
+            44.0661315419286,
+            -0.3614305410427221
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 0.7528487141453652,
+          "refill onset (intersect) all": [
+            0.3993329675266608,
+            0.2081924808916824,
+            1.1063644607640697,
+            null,
+            1.1838103696423303
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 13.1249217067556,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            13.1249217067556,
+            null
+          ],
+          "steep refill wild": 1
+        },
+        {
+          "rate": 2.0,
+          "pp": 5,
+          "sbp_minus_map": 3.6808905991633623,
+          "flow_minus_map": 2.4259999999999877,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 0.6842352718165046,
+          "refill onset (hinge) all": [
+            3.628941377985072,
+            0.386574488890048,
+            0.6842352718165046,
+            44.065979104298705,
+            0.24705920017645155
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 1.0913883599439274,
+          "refill onset (intersect) all": [
+            -0.08999892315399904,
+            1.1763214416756256,
+            1.459606447620942,
+            null,
+            1.0064552782122291
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 13.124769269125707,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            13.124769269125707,
+            null
+          ],
+          "steep refill wild": 1
+        },
+        {
+          "rate": 2.0,
+          "pp": 10,
+          "sbp_minus_map": 7.3617811983267245,
+          "flow_minus_map": 7.175999999999988,
+          "pulse return": 6.871829417052979,
+          "pulse return all": [
+            7.2002447058907535,
+            5.953036495382975,
+            6.340183812188428,
+            7.27508692055298,
+            6.871829417052979
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 6.20718715410753,
+          "refill onset (hinge) all": [
+            6.20718715410753,
+            2.2027010663170046,
+            2.570334248269731,
+            44.065826666668826,
+            6.438423245665703
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 1.837981584019495,
+          "refill onset (intersect) all": [
+            1.48861871105332,
+            2.280929123448061,
+            1.8670683926985276,
+            null,
+            1.8088947753404625
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 0.05131428339080202,
+          "steep refill all": [
+            0.27491580172643637,
+            null,
+            null,
+            null,
+            -0.17228723494483233
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 2.0,
+          "pp": 15,
+          "sbp_minus_map": 11.042671797490087,
+          "flow_minus_map": 10.383999999999986,
+          "pulse return": 9.92254629966908,
+          "pulse return all": [
+            10.325585619179648,
+            9.92254629966908,
+            8.194160539201505,
+            10.27878869901285,
+            9.546543241219695
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 8.744791652416495,
+          "refill onset (hinge) all": [
+            4.6792030698063485,
+            8.46492389847451,
+            8.744791652416495,
+            44.06567422903895,
+            9.270634217642652
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 4.4426907284479,
+          "refill onset (intersect) all": [
+            4.68677905579888,
+            4.073307768829551,
+            4.4410246826003,
+            null,
+            4.4443567742955
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 2.0092753765804616,
+          "steep refill all": [
+            null,
+            2.0092753765804616,
+            2.0845282295203873,
+            null,
+            1.796051930309389
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 2.0,
+          "pp": 20,
+          "sbp_minus_map": 14.723562396653449,
+          "flow_minus_map": 13.587999999999994,
+          "pulse return": 12.428250035241277,
+          "pulse return all": [
+            14.53962517821104,
+            12.296924040973764,
+            13.249484363995279,
+            12.428250035241277,
+            12.421661074868865
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 12.302671015035159,
+          "refill onset (hinge) all": [
+            13.006192167103407,
+            11.920290389666107,
+            11.839637637112702,
+            44.06552179140907,
+            12.302671015035159
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 8.006697751614588,
+          "refill onset (intersect) all": [
+            9.60353070623988,
+            7.93789772445065,
+            7.256090238589323,
+            null,
+            8.075497778778526
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 5.400714830217481,
+          "steep refill all": [
+            5.404561889609667,
+            3.5523375553202072,
+            5.776127666958487,
+            null,
+            5.3968677708252955
+          ],
+          "steep refill wild": 1
+        },
+        {
+          "rate": 2.0,
+          "pp": 30,
+          "sbp_minus_map": 22.085343594980188,
+          "flow_minus_map": 21.574000000000012,
+          "pulse return": 20.009351582529533,
+          "pulse return all": [
+            20.693830091641246,
+            19.735464510033097,
+            20.450611420122556,
+            20.009351582529533,
+            19.836272019731396
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 19.218620428223474,
+          "refill onset (hinge) all": [
+            19.18505594459745,
+            19.218620428223474,
+            20.447489893374055,
+            44.06521691614928,
+            19.058252206179503
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 14.534409226474544,
+          "refill onset (intersect) all": [
+            15.817744429532539,
+            13.36912233062462,
+            15.186073837929868,
+            null,
+            13.88274461501922
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 12.190294610328507,
+          "steep refill all": [
+            null,
+            null,
+            9.812735407575431,
+            12.948004233269458,
+            12.190294610328507
+          ],
+          "steep refill wild": 1
+        },
+        {
+          "rate": 2.0,
+          "pp": 40,
+          "sbp_minus_map": 29.447124793306898,
+          "flow_minus_map": 27.982,
+          "pulse return": 27.125321108979747,
+          "pulse return all": [
+            26.798762173908443,
+            27.27304622902642,
+            25.776357695,
+            27.50360829791977,
+            27.125321108979747
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 26.88975627214583,
+          "refill onset (hinge) all": [
+            26.092423633275487,
+            27.098039861442516,
+            26.02817111318174,
+            43.57528658048476,
+            26.88975627214583
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 21.347335960794233,
+          "refill onset (intersect) all": [
+            21.0820772570751,
+            21.64879267518998,
+            21.417079981075787,
+            null,
+            21.27759194051268
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 14.421909495994385,
+          "steep refill all": [
+            14.60554033865364,
+            14.421909495994385,
+            17.10654128125188,
+            13.73512898076038,
+            13.707419026291177
+          ],
+          "steep refill wild": 5
+        },
+        {
+          "rate": 2.0,
+          "pp": 50,
+          "sbp_minus_map": 36.80890599163364,
+          "flow_minus_map": 35.97399999999999,
+          "pulse return": 34.35068075517037,
+          "pulse return all": [
+            33.48253819067156,
+            34.94651489171106,
+            34.35068075517037,
+            34.804086790446235,
+            32.417152956586406
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 36.29990354761567,
+          "refill onset (hinge) all": [
+            38.14311375266438,
+            36.29990354761567,
+            33.02808520903726,
+            42.613019437552836,
+            34.64997053709136
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 30.35497023068227,
+          "refill onset (intersect) all": [
+            31.195661696574433,
+            30.35497023068227,
+            27.405526855377516,
+            38.1484366464734,
+            29.22952752113312
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 22.662896902066848,
+          "steep refill all": [
+            22.094918053382386,
+            22.15763704790308,
+            25.121079852189922,
+            22.662896902066848,
+            24.96485903529708
+          ],
+          "steep refill wild": 5
+        },
+        {
+          "rate": 4.0,
+          "pp": 0,
+          "sbp_minus_map": 0.0,
+          "flow_minus_map": -0.004000000000019099,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 1.6052350638739625,
+          "refill onset (hinge) all": [
+            1.5833080784114628,
+            1.6052350638739625,
+            2.4860983530181215,
+            1.8567019804150107,
+            1.005145775137862
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 3.37837631922109,
+          "refill onset (intersect) all": [
+            3.2502329151418508,
+            1.972781467446822,
+            3.654648877937248,
+            3.5018872919917072,
+            3.37837631922109
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 5,
+          "sbp_minus_map": 3.6796702670061876,
+          "flow_minus_map": 3.3799999999999955,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 1.7088198046972565,
+          "refill onset (hinge) all": [
+            1.220581813490469,
+            1.7088198046972565,
+            2.218675277714368,
+            2.639584367165284,
+            1.270854748030544
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 3.4927301847407364,
+          "refill onset (intersect) all": [
+            2.9935316620296533,
+            2.284807527987283,
+            3.4927301847407364,
+            4.111526551155293,
+            3.871154861329032
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 10,
+          "sbp_minus_map": 7.359340534012375,
+          "flow_minus_map": 6.588000000000022,
+          "pulse return": -12.686429142840879,
+          "pulse return all": [
+            -10.259127942156809,
+            null,
+            -12.623480796780584,
+            -85.27523691462834,
+            -12.749377488901175
+          ],
+          "pulse return wild": 4,
+          "refill onset (hinge)": 3.322697067682313,
+          "refill onset (hinge) all": [
+            3.322697067682313,
+            2.6582942243609864,
+            3.6640197320307806,
+            3.9087707185338587,
+            2.4147539891558694
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 4.060769103145347,
+          "refill onset (intersect) all": [
+            4.060769103145347,
+            3.680388853936435,
+            3.8589700574184462,
+            4.966054210760973,
+            4.207842382286287
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 15,
+          "sbp_minus_map": 11.039010801018549,
+          "flow_minus_map": 9.792000000000002,
+          "pulse return": 11.655931418730532,
+          "pulse return all": [
+            10.193922916139613,
+            11.655931418730532,
+            10.497172379843661,
+            12.317386976880073,
+            13.633191977071064
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 4.716915288354556,
+          "refill onset (hinge) all": [
+            4.402847818868068,
+            4.68924721400721,
+            5.149060964933511,
+            5.969434496982643,
+            4.716915288354556
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 5.26431079282149,
+          "refill onset (intersect) all": [
+            5.26431079282149,
+            5.188482830385539,
+            5.2707981983854495,
+            5.994738338128741,
+            5.182852913055498
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 20,
+          "sbp_minus_map": 14.718681068024736,
+          "flow_minus_map": 12.99199999999999,
+          "pulse return": 14.467286053770067,
+          "pulse return all": [
+            13.865652479001184,
+            13.790014880179825,
+            14.467286053770067,
+            15.758739498905726,
+            15.514015454625579
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 7.613698434779238,
+          "refill onset (hinge) all": [
+            7.0585129913580715,
+            8.254507241146598,
+            7.060449447962085,
+            8.105767809107178,
+            7.613698434779238
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 7.672871437212095,
+          "refill onset (intersect) all": [
+            7.672871437212095,
+            7.213609374062315,
+            8.170349397108325,
+            7.80721024546321,
+            7.497019714737149
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 30,
+          "sbp_minus_map": 22.07802160203711,
+          "flow_minus_map": 19.391999999999996,
+          "pulse return": 21.303847131339936,
+          "pulse return all": [
+            21.303847131339936,
+            21.26059474540952,
+            21.78419664335783,
+            21.99152121635305,
+            20.233196813501635
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 20.886965584990293,
+          "refill onset (hinge) all": [
+            21.727298953990967,
+            22.268009011800885,
+            20.205952216974822,
+            20.886965584990293,
+            14.559246938227076
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 13.772532051943813,
+          "refill onset (intersect) all": [
+            12.673831125104059,
+            13.971468998940367,
+            14.293298979965158,
+            13.27162709092184,
+            13.772532051943813
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 8.996402161913991,
+          "steep refill all": [
+            9.304765921889114,
+            8.688038401938869,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 2
+        },
+        {
+          "rate": 4.0,
+          "pp": 40,
+          "sbp_minus_map": 29.437362136049472,
+          "flow_minus_map": 28.94399999999999,
+          "pulse return": 28.329615922136384,
+          "pulse return all": [
+            28.350254991231665,
+            28.277675552358332,
+            30.347709844325024,
+            28.302044687874584,
+            28.329615922136384
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 28.32284617415428,
+          "refill onset (hinge) all": [
+            19.744057493761275,
+            27.932715864008443,
+            28.32284617415428,
+            28.638991529419556,
+            29.837941276661937
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 19.73928753013385,
+          "refill onset (intersect) all": [
+            19.638256336296536,
+            20.24109901544574,
+            19.73928753013385,
+            19.191858428482732,
+            20.62562517879509
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 17.194821751115683,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            17.194821751115683
+          ],
+          "steep refill wild": 1
+        },
+        {
+          "rate": 4.0,
+          "pp": 50,
+          "sbp_minus_map": 36.79670267006185,
+          "flow_minus_map": 35.360000000000014,
+          "pulse return": 35.1528160986055,
+          "pulse return all": [
+            34.6014237197234,
+            37.03509666319886,
+            35.1528160986055,
+            34.481781349642674,
+            35.256418916808315
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 35.284555480748665,
+          "refill onset (hinge) all": [
+            36.508692757336746,
+            35.14260775168998,
+            26.452961254240307,
+            35.284555480748665,
+            36.04824111949053
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 27.17121162724392,
+          "refill onset (intersect) all": [
+            27.17121162724392,
+            26.163466815397314,
+            26.89957160645328,
+            27.586550268783185,
+            27.889798875147108
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 21.005130347051477,
+          "steep refill all": [
+            21.10045521883319,
+            21.824706722738753,
+            null,
+            20.909805475269764,
+            20.21233369778419
+          ],
+          "steep refill wild": 4
+        }
+      ]
+    },
+    "A": {
+      "map": 85,
+      "gain": 19.685499999999998,
+      "seeds": 5,
+      "rows": [
+        {
+          "rate": 2.0,
+          "pp": 0,
+          "sbp_minus_map": 0.0,
+          "flow_minus_map": 0.02199999999999136,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": -0.18992756024829305,
+          "refill onset (hinge) all": [
+            0.09493074300873161,
+            -0.5202449908266829,
+            -0.18992756024829305,
+            44.0661315419286,
+            -0.5492834178200496
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": -0.4853599340877537,
+          "refill onset (intersect) all": [
+            -0.4893980267081446,
+            -0.4813218414673628,
+            -0.5136028484639752,
+            null,
+            -0.47547533416961585
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 13.1249217067556,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            13.1249217067556,
+            null
+          ],
+          "steep refill wild": 1
+        },
+        {
+          "rate": 2.0,
+          "pp": 5,
+          "sbp_minus_map": 3.6808905991633623,
+          "flow_minus_map": 2.4279999999999973,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 0.5221295065053368,
+          "refill onset (hinge) all": [
+            3.8801692371356467,
+            0.03016240741031595,
+            0.2313840197999184,
+            44.065979104298705,
+            0.5221295065053368
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 0.08175747282847112,
+          "refill onset (intersect) all": [
+            0.04409191866479034,
+            0.1194230269921519,
+            0.8345440764416026,
+            null,
+            -0.006209365262790811
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 13.124769269125707,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            13.124769269125707,
+            null
+          ],
+          "steep refill wild": 1
+        },
+        {
+          "rate": 2.0,
+          "pp": 10,
+          "sbp_minus_map": 7.3617811983267245,
+          "flow_minus_map": 7.175999999999988,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 6.3767544189241505,
+          "refill onset (hinge) all": [
+            6.410605160062119,
+            6.0672857333727706,
+            6.3767544189241505,
+            44.065826666668826,
+            5.678877352210563
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 1.602799349473493,
+          "refill onset (intersect) all": [
+            1.8791540930964885,
+            1.461825107918628,
+            1.2533796741606835,
+            null,
+            1.7437735910283578
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": -0.6771392617658449,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            -0.6771392617658449
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 2.0,
+          "pp": 15,
+          "sbp_minus_map": 11.042671797490087,
+          "flow_minus_map": 10.385999999999996,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 9.576118246374989,
+          "refill onset (hinge) all": [
+            9.418239157144342,
+            9.576118246374989,
+            9.189805235162112,
+            44.06567422903895,
+            9.883042395532357
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 4.870902554777288,
+          "refill onset (intersect) all": [
+            4.800632311602882,
+            4.791345848595924,
+            5.015531547098178,
+            null,
+            4.941172797951694
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 1.8032375738444415,
+          "steep refill all": [
+            null,
+            1.8032375738444415,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 2.0,
+          "pp": 20,
+          "sbp_minus_map": 14.723562396653449,
+          "flow_minus_map": 13.590000000000003,
+          "pulse return": 14.934438163999403,
+          "pulse return all": [
+            14.934438163999403,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 13.954640418623626,
+          "refill onset (hinge) all": [
+            13.954640418623626,
+            13.341735723469185,
+            13.30218569296217,
+            44.06552179140907,
+            14.147038252141684
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 8.706588793685292,
+          "refill onset (intersect) all": [
+            9.795379642832472,
+            8.576312329201315,
+            8.311425517135262,
+            null,
+            8.836865258169269
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 5.839237936987345,
+          "steep refill all": [
+            5.839237936987345,
+            null,
+            null,
+            12.054718325590386,
+            -1.435742033629822
+          ],
+          "steep refill wild": 1
+        },
+        {
+          "rate": 2.0,
+          "pp": 30,
+          "sbp_minus_map": 22.085343594980188,
+          "flow_minus_map": 21.574000000000012,
+          "pulse return": 21.240200940249167,
+          "pulse return all": [
+            22.201043760975168,
+            20.217255868387795,
+            20.66435178016569,
+            21.240200940249167,
+            21.319489666022136
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 20.984895222422224,
+          "refill onset (hinge) all": [
+            20.057690032778183,
+            20.25688760309359,
+            22.02537323948927,
+            44.06521691614928,
+            20.984895222422224
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 16.540359087980065,
+          "refill onset (intersect) all": [
+            16.600821494930358,
+            16.47989668102977,
+            16.998908223331213,
+            null,
+            16.263935886690547
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 13.979211391137248,
+          "steep refill all": [
+            13.820251812461137,
+            14.60101782248259,
+            null,
+            13.345958470451563,
+            14.138170969813359
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 2.0,
+          "pp": 40,
+          "sbp_minus_map": 29.447124793306898,
+          "flow_minus_map": 27.982,
+          "pulse return": 28.057585961334382,
+          "pulse return all": [
+            28.33617612792041,
+            28.10502749220548,
+            28.057585961334382,
+            27.985922192255785,
+            27.623142202104816
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 27.610387057124072,
+          "refill onset (hinge) all": [
+            27.610387057124072,
+            29.64303563911838,
+            27.358787851191764,
+            43.57528658048476,
+            23.33198170662638
+          ],
+          "refill onset (hinge) wild": 1,
+          "refill onset (intersect)": 22.787185071976246,
+          "refill onset (intersect) all": [
+            22.526680076556943,
+            23.284492115986865,
+            22.880263141461114,
+            null,
+            22.69410700249138
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 22.131564618829877,
+          "steep refill all": [
+            null,
+            21.638875299714073,
+            null,
+            22.62425393794568,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 2.0,
+          "pp": 50,
+          "sbp_minus_map": 36.80890599163364,
+          "flow_minus_map": 35.97399999999999,
+          "pulse return": 35.138873244390695,
+          "pulse return all": [
+            34.29363718852851,
+            35.138873244390695,
+            35.51839967394615,
+            35.539940205585125,
+            33.08046926504282
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 36.027908285942615,
+          "refill onset (hinge) all": [
+            36.80431080942077,
+            36.027908285942615,
+            34.13762968263049,
+            41.2572737347561,
+            35.21947751055343
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 30.676321191399794,
+          "refill onset (intersect) all": [
+            31.773882803465682,
+            30.676321191399794,
+            29.511318479291504,
+            36.97219479794636,
+            30.024029086352158
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 25.60249505627847,
+          "steep refill all": [
+            5.788422461903039,
+            29.596385054829398,
+            25.51633748574922,
+            30.90184216476554,
+            25.60249505627847
+          ],
+          "steep refill wild": 3
+        },
+        {
+          "rate": 4.0,
+          "pp": 0,
+          "sbp_minus_map": 0.0,
+          "flow_minus_map": 0.01999999999998181,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 0.24994851128316498,
+          "refill onset (hinge) all": [
+            0.24994851128316498,
+            -0.24008058138241495,
+            1.0491248784918241,
+            1.8130565653265194,
+            -0.2727413521005815
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": -0.13910667415125033,
+          "refill onset (intersect) all": [
+            0.08369375113930744,
+            -0.655167078494344,
+            -0.13910667415125033,
+            -0.043274242037966815,
+            -0.2931904200397213
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 5,
+          "sbp_minus_map": 3.6796702670061876,
+          "flow_minus_map": 3.3799999999999955,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 0.8047244363425818,
+          "refill onset (hinge) all": [
+            0.8047244363425818,
+            0.22977035479722474,
+            2.0888150514823565,
+            1.8557697507412172,
+            0.5718201430611316
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 0.23715152001364004,
+          "refill onset (intersect) all": [
+            0.050351300986164915,
+            0.23715152001364004,
+            0.26237808806303065,
+            1.0404473806176497,
+            -0.1331189818113785
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 10,
+          "sbp_minus_map": 7.359340534012375,
+          "flow_minus_map": 6.588000000000022,
+          "pulse return": null,
+          "pulse return all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 2.658294224360816,
+          "refill onset (hinge) all": [
+            2.3058639067114086,
+            2.658294224360816,
+            3.623580997418699,
+            3.2352328464124156,
+            2.183065872208715
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 1.691890064796084,
+          "refill onset (intersect) all": [
+            1.4626963944203624,
+            1.1752385236926273,
+            1.9865517725357051,
+            2.6779944825636903,
+            1.691890064796084
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 15,
+          "sbp_minus_map": 11.039010801018549,
+          "flow_minus_map": 9.792000000000002,
+          "pulse return": 12.117898617982732,
+          "pulse return all": [
+            10.866086761002435,
+            null,
+            null,
+            null,
+            13.369710474963028
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 11.923726014059895,
+          "refill onset (hinge) all": [
+            4.852046500633392,
+            12.205441520663896,
+            12.342461313825012,
+            5.755477863829356,
+            11.923726014059895
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 3.3801626651742396,
+          "refill onset (intersect) all": [
+            2.9479855073375063,
+            3.6129253046823635,
+            3.3545470865622633,
+            4.48942836195782,
+            3.3801626651742396
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 20,
+          "sbp_minus_map": 14.718681068024736,
+          "flow_minus_map": 12.99199999999999,
+          "pulse return": 15.125810672046839,
+          "pulse return all": [
+            14.224528318860308,
+            14.793542662718863,
+            15.125810672046839,
+            16.015618464107817,
+            15.689433470950377
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 14.907342118539006,
+          "refill onset (hinge) all": [
+            14.907342118539006,
+            15.284195659265336,
+            14.510166908084514,
+            15.63410743521807,
+            14.496988652642756
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 6.409145360763944,
+          "refill onset (intersect) all": [
+            5.267328804944256,
+            7.337592386453849,
+            6.124359028436459,
+            6.477552699667356,
+            6.409145360763944
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 30,
+          "sbp_minus_map": 22.07802160203711,
+          "flow_minus_map": 19.395999999999987,
+          "pulse return": 22.038449191791642,
+          "pulse return all": [
+            23.31679398136383,
+            22.038449191791642,
+            21.799972719690842,
+            23.47907544780621,
+            20.79862753807967
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 22.913463261009113,
+          "refill onset (hinge) all": [
+            22.88601043730955,
+            24.268658972002655,
+            22.913463261009113,
+            22.28675470356889,
+            23.880616010430828
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 13.567908593887637,
+          "refill onset (intersect) all": [
+            12.768642570302774,
+            14.058635631065442,
+            14.661548931178075,
+            13.28248610467142,
+            13.567908593887637
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": null,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 40,
+          "sbp_minus_map": 29.437362136049472,
+          "flow_minus_map": 28.94399999999999,
+          "pulse return": 29.058115970964437,
+          "pulse return all": [
+            28.732381503484078,
+            28.5345058939577,
+            31.16984001769528,
+            30.126966936018135,
+            29.058115970964437
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 31.183495301968478,
+          "refill onset (hinge) all": [
+            32.82871410191818,
+            24.438306644661623,
+            23.175732459106413,
+            31.183495301968478,
+            32.370729697136625
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 21.678925630040112,
+          "refill onset (intersect) all": [
+            21.355212386668768,
+            21.743207866507106,
+            21.678925630040112,
+            20.82343879447778,
+            22.671995206020952
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 20.713840344378525,
+          "steep refill all": [
+            null,
+            null,
+            null,
+            null,
+            20.713840344378525
+          ],
+          "steep refill wild": 0
+        },
+        {
+          "rate": 4.0,
+          "pp": 50,
+          "sbp_minus_map": 36.79670267006185,
+          "flow_minus_map": 35.360000000000014,
+          "pulse return": 36.04633339730992,
+          "pulse return all": [
+            37.18109585930918,
+            37.70517171917162,
+            35.63489484925199,
+            36.04633339730992,
+            35.48202858429046
+          ],
+          "pulse return wild": 0,
+          "refill onset (hinge)": 38.747289580033964,
+          "refill onset (hinge) all": [
+            39.21827020093278,
+            28.985586690065375,
+            28.863062357965035,
+            38.747289580033964,
+            40.108114474237155
+          ],
+          "refill onset (hinge) wild": 0,
+          "refill onset (intersect)": 29.24639588502629,
+          "refill onset (intersect) all": [
+            29.24639588502629,
+            28.404494722746122,
+            29.29442723681055,
+            29.211423418735052,
+            29.96709292218408
+          ],
+          "refill onset (intersect) wild": 0,
+          "steep refill": 7.725804690993655,
+          "steep refill all": [
+            7.725804690993655,
+            null,
+            null,
+            null,
+            null
+          ],
+          "steep refill wild": 1
+        }
+      ]
+    }
+  },
+  "populations": {
+    "sharp": [
+      {
+        "source": "test47",
+        "gain": 1047.648,
+        "drain": -0.06,
+        "white": 7.5013152532729945,
+        "lf": 0.2592351834103126
+      },
+      {
+        "source": "test48",
+        "gain": 1446.807,
+        "drain": 0.144,
+        "white": 7.487168581566479,
+        "lf": 0.10650963200263038
+      },
+      {
+        "source": "test49",
+        "gain": 1435.002,
+        "drain": 0.643,
+        "white": 7.5372677695955606,
+        "lf": 0.5708778339757672
+      },
+      {
+        "source": "test50",
+        "gain": 605.214,
+        "drain": -0.076,
+        "white": 8.507883788276247,
+        "lf": 0.058273310243415526
+      },
+      {
+        "source": "test51",
+        "gain": 393.957,
+        "drain": -0.162,
+        "white": 8.125631434053227,
+        "lf": 0.045211661263016484
+      },
+      {
+        "source": "test52",
+        "gain": 2335.517,
+        "drain": -0.633,
+        "white": 9.217823253275007,
+        "lf": 0.08998973387557298
+      },
+      {
+        "source": "test53",
+        "gain": 2666.465,
+        "drain": -0.967,
+        "white": 9.245027737200344,
+        "lf": 1.1042267285375882
+      },
+      {
+        "source": "test54",
+        "gain": 2489.046,
+        "drain": 0.679,
+        "white": 9.290279669085828,
+        "lf": 1.4938334607298376
+      },
+      {
+        "source": "test55",
+        "gain": 2308.572,
+        "drain": -0.298,
+        "white": 8.304362620809068,
+        "lf": 1.1179051761963699
+      },
+      {
+        "source": "test56",
+        "gain": 3221.895,
+        "drain": -0.684,
+        "white": 8.381407676967875,
+        "lf": 0.1893953915212388
+      },
+      {
+        "source": "test57",
+        "gain": 1260.656,
+        "drain": 0.068,
+        "white": 8.477779327000645,
+        "lf": 0.20550218283235427
+      },
+      {
+        "source": "test58",
+        "gain": 2692.476,
+        "drain": -2.407,
+        "white": 10.384360047005595,
+        "lf": 0.07969829197280046
+      },
+      {
+        "source": "test59",
+        "gain": 2394.311,
+        "drain": -1.015,
+        "white": 12.858916439344776,
+        "lf": 0.4630829389390049
+      },
+      {
+        "source": "test60",
+        "gain": 3875.576,
+        "drain": -0.868,
+        "white": 10.994513940997122,
+        "lf": 0.07454308222641709
+      },
+      {
+        "source": "test61",
+        "gain": 3614.914,
+        "drain": -0.856,
+        "white": 7.923683188988772,
+        "lf": 0.08011207516647412
+      },
+      {
+        "source": "10.16.26",
+        "gain": 885.007,
+        "drain": 0.073,
+        "white": 10.977931366693642,
+        "lf": 0.7010698418726576
+      },
+      {
+        "source": "test3",
+        "gain": 2358.428,
+        "drain": -0.395,
+        "white": 16.31525658020551,
+        "lf": 0.24303149616172176
+      },
+      {
+        "source": "test4",
+        "gain": 1309.817,
+        "drain": -0.463,
+        "white": 8.010199296280017,
+        "lf": 0.14684114645961024
+      },
+      {
+        "source": "test6",
+        "gain": 1242.798,
+        "drain": -0.567,
+        "white": 7.264627368980729,
+        "lf": 0.23530335712762684
+      },
+      {
+        "source": "test25",
+        "gain": 2391.365,
+        "drain": -1.18,
+        "white": 7.695796137838975,
+        "lf": 0.18238361083922433
+      },
+      {
+        "source": "test26",
+        "gain": 2900.912,
+        "drain": -0.537,
+        "white": 8.963791228674893,
+        "lf": 0.5032324866375734
+      },
+      {
+        "source": "test27",
+        "gain": 4137.129,
+        "drain": -1.782,
+        "white": 8.095247682059624,
+        "lf": 1.0386386003968922
+      }
+    ],
+    "soft": [
+      {
+        "source": "test47",
+        "gain": 2.054,
+        "drain": -0.049,
+        "white": 7.5013152532729945,
+        "lf": 0.2592351834103126
+      },
+      {
+        "source": "test48",
+        "gain": 2.845,
+        "drain": 0.179,
+        "white": 7.487168581566479,
+        "lf": 0.10650963200263038
+      },
+      {
+        "source": "test49",
+        "gain": 2.847,
+        "drain": 0.676,
+        "white": 7.5372677695955606,
+        "lf": 0.5708778339757672
+      },
+      {
+        "source": "test50",
+        "gain": 1.205,
+        "drain": -0.069,
+        "white": 8.507883788276247,
+        "lf": 0.058273310243415526
+      },
+      {
+        "source": "test51",
+        "gain": 0.799,
+        "drain": -0.158,
+        "white": 8.125631434053227,
+        "lf": 0.045211661263016484
+      },
+      {
+        "source": "test52",
+        "gain": 4.656,
+        "drain": -0.592,
+        "white": 9.217823253275007,
+        "lf": 0.08998973387557298
+      },
+      {
+        "source": "test53",
+        "gain": 5.317,
+        "drain": -0.877,
+        "white": 9.245027737200344,
+        "lf": 1.1042267285375882
+      },
+      {
+        "source": "test54",
+        "gain": 4.862,
+        "drain": 0.841,
+        "white": 9.290279669085828,
+        "lf": 1.4938334607298376
+      },
+      {
+        "source": "test55",
+        "gain": 4.636,
+        "drain": -0.255,
+        "white": 8.304362620809068,
+        "lf": 1.1179051761963699
+      },
+      {
+        "source": "test56",
+        "gain": 6.671,
+        "drain": -0.65,
+        "white": 8.381407676967875,
+        "lf": 0.1893953915212388
+      },
+      {
+        "source": "test57",
+        "gain": 2.496,
+        "drain": 0.114,
+        "white": 8.477779327000645,
+        "lf": 0.20550218283235427
+      },
+      {
+        "source": "test58",
+        "gain": 5.297,
+        "drain": -2.346,
+        "white": 10.384360047005595,
+        "lf": 0.07969829197280046
+      },
+      {
+        "source": "test59",
+        "gain": 4.75,
+        "drain": -0.957,
+        "white": 12.858916439344776,
+        "lf": 0.4630829389390049
+      },
+      {
+        "source": "test60",
+        "gain": 7.753,
+        "drain": -0.796,
+        "white": 10.994513940997122,
+        "lf": 0.07454308222641709
+      },
+      {
+        "source": "test61",
+        "gain": 7.259,
+        "drain": -0.821,
+        "white": 7.923683188988772,
+        "lf": 0.08011207516647412
+      },
+      {
+        "source": "10.16.26",
+        "gain": 1.697,
+        "drain": 0.128,
+        "white": 10.977931366693642,
+        "lf": 0.7010698418726576
+      },
+      {
+        "source": "test3",
+        "gain": 4.655,
+        "drain": -0.325,
+        "white": 16.31525658020551,
+        "lf": 0.24303149616172176
+      },
+      {
+        "source": "test4",
+        "gain": 2.464,
+        "drain": -0.389,
+        "white": 8.010199296280017,
+        "lf": 0.14684114645961024
+      },
+      {
+        "source": "test6",
+        "gain": 2.525,
+        "drain": -0.535,
+        "white": 7.264627368980729,
+        "lf": 0.23530335712762684
+      },
+      {
+        "source": "test25",
+        "gain": 4.839,
+        "drain": -1.125,
+        "white": 7.695796137838975,
+        "lf": 0.18238361083922433
+      },
+      {
+        "source": "test26",
+        "gain": 6.088,
+        "drain": -0.485,
+        "white": 8.963791228674893,
+        "lf": 0.5032324866375734
+      },
+      {
+        "source": "test27",
+        "gain": 8.078,
+        "drain": -1.376,
+        "white": 8.095247682059624,
+        "lf": 1.0386386003968922
+      }
+    ]
+  }
+}

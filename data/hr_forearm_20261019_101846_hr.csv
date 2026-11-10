@@ -1,0 +1,3 @@
+t_s,hr_shown,source,quality,hr_beats,hr_spectral,spectral_conc,perfusion_pct,pulse_snr,rmssd_ms,hr_instant,avg_beats,avg_window_s,reason
+33.0,,,SEARCHING,68.3,68.2,0.36,0.0319,15.2,153,74.4,9,10,"confirming (1/3 s)"
+34.0,,,SEARCHING,69.5,69.0,0.36,0.0223,10.5,151,81.5,9,10,"confirming (2/3 s)"

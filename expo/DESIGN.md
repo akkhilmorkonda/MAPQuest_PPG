@@ -40,7 +40,9 @@ the result.
 | Dashboard | public and technical modes; full swap between them |
 | Who switches the mode | the phone **or** a laptop key / clicker; last press wins |
 | Mode after a new Start | back to public |
-| Technical layout | one dense screen for now; to be refined |
+| Dashboard look | matches the team poster; chosen screens in [`DASHBOARD.md`](DASHBOARD.md) |
+| Public screens | the run as a timeline with the pressure beside it, and "Narrator" cards underneath |
+| Technical layout | onset close-up as the hero, pipeline strip above, checks right, machine below |
 | Result | yes, after every complete run, labelled "return-of-flow pressure" |
 | Where it is computed | a laptop Python process, using `host/mapquest` unchanged |
 | When | after the cuff vents; no live estimate |
@@ -136,7 +138,7 @@ a 160 target suits visitors whose pulse stops by about 130 mmHg. Above that, the
 | 0 | | Analyser light on, sensors green, cuff zeroed | public idle screen |
 | 1 | Screen verbally, fit the cuff and bands | | "getting ready" |
 | 2 | **Start** | "Pump to 160" | back to public mode; phase: cuff squeezing |
-| 3 | Pump | readout green at 150; amber **"pulse still present, pump higher (max 190)"** if the pulse doesn't stop | live pressure, arm illustration |
+| 3 | Pump | readout green at 150; amber **"pulse still present, pump higher (max 190)"** if the pulse doesn't stop | live pressure and timeline; "Squeezing the cuff" |
 | 4 | **Run** | "Deflation starts in N s" | phase: holding |
 | 5 | | rate vs −2.0 mmHg/s | phase: letting the cuff down; blood volume live |
 | 6 | | "Venting", then "Analysing…" | "Analysing…" |
@@ -192,11 +194,15 @@ Keep the screen awake during a run: a sleeping phone stops pinging, and that ven
 
 ## 6. Monitor dashboard
 
+The look, layouts, wording and every state of each screen are in
+[`DASHBOARD.md`](DASHBOARD.md) (settled 2026-11-18). This section keeps the behaviour.
+
 ### 6.1 Shared frame
 
-- A run stepper: Idle → Inflate → Hold → Deflate → Result, with the run number.
+- The wordmark and tagline, a run stepper (Idle → Inflate → Hold → Deflate → Result) and the
+  anonymous run number.
 - A small mode label in a corner, so a presenter knows which mode is up.
-- "Reconnecting" and "Analyser offline" notices.
+- A "● Live" chip that becomes "Reconnecting" or "Analyser offline".
 
 ### 6.2 Switching modes
 
@@ -207,41 +213,29 @@ Keep the screen awake during a run: a sleeping phone stops pinging, and that ven
   so switching mid-run shows the run so far at once.
 - **Back to public** whenever a new run starts.
 
-### 6.3 Public mode
+### 6.3 Public mode (DASHBOARD.md §4)
 
-| Component | Content |
-|---|---|
-| Idle screen | what MAPQuest is; why LVAD patients have no pulse; "next up" |
-| Live pressure | big number or gauge |
-| Arm illustration | the forearm fills with blood, driven by the live blood-volume signal |
-| Phase captions | e.g. "Blood flow stopped", "Releasing slowly", "Blood is back" |
-| Pressure trace | with the return-of-flow moment marked |
-| Result card | "Return-of-flow pressure: X mmHg", run number, amber caution tag when flagged, one line on how this point is MAP in a pulseless patient |
-| Results board (optional) | today's anonymous results |
+- **During the run:** the run as a timeline (Inflate, Hold, Deflate shaded; cuff pressure and
+  blood in the forearm drawn up to "now"), the cuff pressure beside it, and three Narrator
+  cards: **Now** · **Watch for** · a **time-left** ring.
+- **After the run:** the whole run with the return of flow marked, an outcome panel (result,
+  caution, no reading, safety stop, analysing), and three Narrator cards: **What we found** ·
+  **What it means** ("For you, this lands near your systolic…") · **Want to try it?**
+- **Idle:** the same screen with "Next up: you".
+- The arm illustration and the anonymous results board were explored and dropped.
 
-### 6.4 Technical mode (one dense screen, first pass)
+### 6.4 Technical mode (DASHBOARD.md §5)
 
-```
-┌───────────────────────────────────────────┬───────────────────────┐
-│ Signal pipeline (largest zone)            │ Cuff controller       │
-│ raw IR/red → ΔOD → blood volume →         │ state machine, lit    │
-│ low-pass → dV/dt vs μ0+3σ0 → onset        │ Pref ramp vs actual   │
-│ (stacked, one time axis; hinge fit drawn, │ rate, valve duty      │
-│  intersect + pulse return as small marks) ├───────────────────────┤
-│                                           │ Safety margins        │
-│                                           │ 280 · 120 s · dropouts│
-├──────────────────────────┬────────────────┴───────────────────────┤
-│ Hardware diagram         │ Link health + event log                │
-│ ESP32, mux, bands, valve │ rates, latency, gaps, who controls     │
-└──────────────────────────┴────────────────────────────────────────┘
-```
-
-- **During the run** the raw, ΔOD and blood-volume panels draw live (they need no data from
-  later in the run). The low-pass, derivative and onset panels fill in after the vent, because
-  the validated filters are zero-phase and need the whole run (SPEC §5.1).
-- **The result card** sits over the pipeline zone at the end of a run.
-- **"How well does this work?"** A small panel with the bench evidence, labelled as bench data:
-  refill onset (hinge) read −6.2 ± 7.9 mmHg against systolic on 8 slow manual runs (D47).
+- **Hero:** low-passed blood volume against cuff pressure, 140 → 90 mmHg, with the sloped
+  trend, the hinge fit, the onset and the pulse-return and intersect marks, and badges ① ② ③.
+- **Pipeline strip:** raw light → ΔOD → blood volume → low-pass → dV/dt vs μ₀ + 3σ₀ → hinge
+  onset. **During the run** the first three draw live (they need no later data); the rest fill in
+  after the vent, because the validated filters are zero-phase and need the whole run (SPEC §5.1).
+- **Right column:** "How the corner is found" (three steps matching the badges; the chart
+  already labels the reading, so there is no separate result card), the four confidence checks
+  with heartbeat and arm-motion traces, and "How well does this work?" (bench data, D47).
+- **Bottom row:** cuff controller, safety margins (a tripped limit turns crimson), hardware,
+  link and events.
 - Steep refill is not shown anywhere.
 
 ---
@@ -358,7 +352,7 @@ The phone greys Start out and shows **one** reason with its fix. The public moni
 4. **Confidence checks** (§7.4): **built**; the IMU limit (20 °/s) and the occluded-pulse
    ratio (50 %) are provisional until team dry runs.
 5. **Light-level check before Start** (§8.1). Not built.
-6. **The dashboard** (§6): not built. **The phone page** (§5): built, except "Next visitor"
+6. **The dashboard** (§6): designed ([`DASHBOARD.md`](DASHBOARD.md)), not built. **The phone page** (§5): built, except "Next visitor"
    (it resets the dashboard, which does not exist yet) and the pump-higher hint (needs 3).
 
 ---
@@ -383,8 +377,10 @@ The phone greys Start out and shows **one** reason with its fix. The public moni
 
 ## 11. Open
 
-1. **Public mode's visual design** and the idle screen's content.
-2. **Technical layout refinements** beyond the first pass in §6.4.
+1. ~~Public mode's visual design~~ and ~~technical layout~~: settled 2026-11-18
+   ([`DASHBOARD.md`](DASHBOARD.md)). Its own open items (idle content, the technical caution
+   chip, notices, crossfade) are in its §7.
+2. **The idle screen's content** beyond "Next up: you".
 3. ~~Exact display command names and line formats~~ (§3.1): settled 2026-11-18.
 4. **Should the 190 cap also be a hard limit?** `SET p_max` can tighten the board's
    over-pressure vent (never loosen it). Today 190 is only a red readout on the phone.

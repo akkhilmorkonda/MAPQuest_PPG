@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "expo-sim",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["expo/host/sim_server.py", "--port", "8765"],
+      "port": 8765
+    },
+    {
+      "name": "expo-sim-x3",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["expo/host/sim_server.py", "--port", "8766", "--speed", "3"],
+      "port": 8766
+    }
+  ]
+}

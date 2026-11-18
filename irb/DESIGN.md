@@ -129,6 +129,8 @@ The 280 mmHg over-pressure dump stays the hard ceiling in every case.
 
 ### 3.2 Bus layout
 
+Wiring diagram, pin by pin: [`docs/wiring.svg`](docs/wiring.svg).
+
 ```mermaid
 flowchart LR
     ESP["ESP32-WROOM-32D"] -- "I2C main bus<br/>GPIO21/22" --> MUX["TCA9548A 0x70"]

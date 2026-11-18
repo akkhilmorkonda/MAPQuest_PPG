@@ -39,6 +39,8 @@ Compile check without the IDE:
 
 ### Wiring
 
+Full diagram: [`docs/wiring.svg`](docs/wiring.svg) (regenerate with `python irb/docs/make_wiring.py`).
+
 | ESP32 | Goes to |
 |---|---|
 | 3V3, GND | TCA9548A VIN/GND, MPRLS VIN/GND, and power for both bands from the same rail (the mux switches only SDA/SCL) |

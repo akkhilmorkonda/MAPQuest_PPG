@@ -19,6 +19,9 @@ What it does (expo/DESIGN.md section 7):
    ``RESULT <n> <mmHg> <flag>`` through the board to every screen.
 5. Appends one anonymous row to the results file. The run's signals are
    dropped once it is analysed (DESIGN 7.5).
+6. Serves the monitor dashboard on this laptop (http://127.0.0.1:8800/,
+   web/dashboard.html): it relays the board's stream to it, adds run numbers
+   and results with their traces, and passes back only its mode switch.
 
 ``--save-raw DIR`` keeps each run's lines for TEAM dry runs only (to check a
 missed onset afterwards). Never use it with visitors: it is the raw signal.
@@ -38,10 +41,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from expotool.results import Result, ResultsLog, Run, RunRecorder, analyse, describe  # noqa: E402
+from expotool.dashserve import DashServer  # noqa: E402
+from expotool.results import Result, ResultsLog, Run, RunRecorder, analyse, describe, payload  # noqa: E402
 from expotool.ws import WSClient  # noqa: E402
 
 DEFAULT_URL = "ws://192.168.4.1/ws"
+DASH_PORT = 8800
 DEFAULT_RESULTS = Path(__file__).resolve().parents[1] / "results" / "expo_results.csv"
 PING_S = 0.5                       # the board drops a silent analyser after 2 s
 RETRY_S = 2.0
@@ -60,14 +65,20 @@ class Manager:
     """
 
     def __init__(self, log: ResultsLog, save_raw: Path | None = None, out=say,
-                 threaded: bool = True) -> None:
+                 threaded: bool = True, dash=None) -> None:
         self.log = log
         self.save_raw = save_raw
         self.out = out
+        self.dash = dash                             # DashServer, or None
         self.recorder = RunRecorder()
         self.results: list = []
         self._done: queue.Queue = queue.Queue()
         self._threaded = threaded
+        self._tell("hello", next_run=self.log.last_run + 1)
+
+    def _tell(self, kind: str, **payload) -> None:
+        if self.dash is not None:
+            self.dash.message(kind, **payload)
 
     def line(self, line: str) -> list[str]:
         send = []
@@ -75,10 +86,12 @@ class Manager:
             if kind == "deflate":
                 run.number = self.log.next_run()
                 self.out(f"run {run.number}: deflating")
+                self._tell("run", run=run.number)
             elif kind == "ended":
                 if run.end_reason == "reached stop pressure":
                     send.append(f"RESULT {run.number} - pending")
                     self.out(f"run {run.number}: analysing")
+                    self._tell("pending", run=run.number)
             elif kind == "complete":
                 self._submit(run)
         return send
@@ -118,10 +131,15 @@ class Manager:
             self.results.append(res)
             self.out(describe(res))
             send.append(res.command())
+            self._tell("result", at=round(time.time(), 1), **payload(res))
+            self._tell("hello", next_run=self.log.last_run + 1)
 
 
 def run_live(url: str, mgr: Manager, seconds: float | None = None, ping_s: float = PING_S,
-             out=say, stop: threading.Event | None = None) -> None:
+             out=say, stop: threading.Event | None = None, dash=None,
+             dash_cmds: queue.Queue | None = None) -> None:
+    """Stay connected to the board until stopped. ``dash`` gets the stream
+    relayed; ``dash_cmds`` holds the dashboard's mode switches to forward."""
     t_end = None if seconds is None else time.monotonic() + seconds
     stop = stop or threading.Event()
     while not stop.is_set() and (t_end is None or time.monotonic() < t_end):
@@ -132,25 +150,47 @@ def run_live(url: str, mgr: Manager, seconds: float | None = None, ping_s: float
             stop.wait(RETRY_S)
             continue
         out(f"connected to {url}")
+        if dash is not None:
+            dash.message("link", up=True)
         try:
             ws.send_text("ANALYSER")
             ws.send_text("INFO")                    # cuff zero, dark offsets, sample rate
-            next_ping = 0.0
+            next_ping = next_echo = 0.0
+            me, n_echo, echo_sent, rtts = 0, 0, {}, []
             while not stop.is_set() and (t_end is None or time.monotonic() < t_end):
                 now = time.monotonic()
                 if now >= next_ping:
                     ws.send_text("PING")
                     next_ping = now + ping_s
+                if dash is not None and me and now >= next_echo:      # round trip, for the monitor
+                    n_echo += 1
+                    echo_sent[n_echo] = now
+                    ws.send_text(f"ECHO {n_echo}")
+                    next_echo = now + 2.0
                 for cmd in mgr.poll():
                     ws.send_text(cmd)
+                while dash_cmds is not None and not dash_cmds.empty():
+                    ws.send_text(dash_cmds.get_nowait())     # VIEW only (DashServer filters)
                 msg = ws.recv(timeout=0.05)
                 if msg:
+                    arrived = time.monotonic()
+                    if dash is not None:
+                        dash.relay(msg)
                     for ln in msg.split("\n"):
+                        if ln.startswith("# client_id="):
+                            me = int(ln.split("=", 1)[1])
+                        elif ln.startswith("# echo=") and f"client={me}" in ln and dash is not None:
+                            sent = echo_sent.pop(int(ln.split("=", 1)[1].split()[0]), None)
+                            if sent is not None:
+                                rtts = (rtts + [(arrived - sent) * 1000.0])[-10:]
+                                dash.message("rtt", ms=round(sorted(rtts)[len(rtts) // 2], 1))
                         for cmd in mgr.line(ln):
                             ws.send_text(cmd)
         except ConnectionError as e:
             out(f"LINK LOST: {e}; reconnecting")
             mgr.link_lost()
+            if dash is not None:
+                dash.message("link", up=False)
         finally:
             ws.close()
     mgr.poll()                                     # a result finishing now is still logged
@@ -173,19 +213,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--save-raw", type=Path, metavar="DIR",
                     help="TEAM DRY RUNS ONLY: keep each run's raw lines here")
     ap.add_argument("--replay", type=Path, metavar="FILE", help="analyse a saved stream and exit")
+    ap.add_argument("--dash-port", type=int, default=DASH_PORT,
+                    help=f"serve the monitor dashboard on this laptop at this port (default {DASH_PORT}; 0 = off)")
     args = ap.parse_args(argv)
     results = args.results or (None if args.replay else DEFAULT_RESULTS)
-    mgr = Manager(ResultsLog(results), args.save_raw, threaded=args.replay is None)
-    if args.save_raw:
-        say(f"SAVING RAW RUNS to {args.save_raw} (team dry runs only, never visitors)")
     if args.replay:
+        mgr = Manager(ResultsLog(results), args.save_raw, threaded=False)
         replay(args.replay, mgr)
         if not mgr.results:
             say("no run in that file reached DEFLATE")
         return 0
+    dash = dash_cmds = None
+    if args.dash_port:
+        dash_cmds = queue.Queue()
+        dash = DashServer(on_command=dash_cmds.put)
+        port = dash.start("127.0.0.1", args.dash_port)
+        say(f"dashboard -> http://127.0.0.1:{port}/  (open it full screen on the monitor)")
+    mgr = Manager(ResultsLog(results), args.save_raw, dash=dash)
+    if args.save_raw:
+        say(f"SAVING RAW RUNS to {args.save_raw} (team dry runs only, never visitors)")
     say(f"results -> {results}")
     try:
-        run_live(args.url, mgr)
+        run_live(args.url, mgr, dash=dash, dash_cmds=dash_cmds)
     except KeyboardInterrupt:
         pass
     return 0

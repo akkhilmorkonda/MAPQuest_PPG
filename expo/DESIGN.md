@@ -352,8 +352,10 @@ The phone greys Start out and shows **one** reason with its fix. The public moni
 4. **Confidence checks** (§7.4): **built**; the IMU limit (20 °/s) and the occluded-pulse
    ratio (50 %) are provisional until team dry runs.
 5. **Light-level check before Start** (§8.1). Not built.
-6. **The dashboard** (§6): designed ([`DASHBOARD.md`](DASHBOARD.md)), not built. **The phone page** (§5): built, except "Next visitor"
-   (it resets the dashboard, which does not exist yet) and the pump-higher hint (needs 3).
+6. **The dashboard** (§6): designed ([`DASHBOARD.md`](DASHBOARD.md)) and **built 2026-11-18**,
+   served by the laptop process; tested on the stand-in only. Not built: the results board,
+   the arm illustration, "Next visitor" (the outcome returns to idle after 2 minutes).
+   **The phone page** (§5): built, except "Next visitor" and the pump-higher hint (needs 3).
 
 ---
 

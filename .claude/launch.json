@@ -12,6 +12,13 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["expo/host/sim_server.py", "--port", "8766", "--speed", "3"],
       "port": 8766
+    },
+    {
+      "name": "expo-dashboard-on-sim",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["expo/host/expo_results.py", "--url", "ws://127.0.0.1:8766/ws", "--dash-port", "8800",
+                      "--results", "expo/results/sim_results.csv"],
+      "port": 8800
     }
   ]
 }

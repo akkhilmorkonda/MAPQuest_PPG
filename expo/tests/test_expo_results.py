@@ -265,6 +265,133 @@ def test_phone_board_and_results_process_end_to_end(tmp_path):
     assert abs(float(final.group(1)) - SBP) < 5.0
 
 
+# ---- the dashboard (served by the results process) --------------------------------
+
+def test_result_payload_is_strict_json_with_the_traces():
+    import json
+    from expotool.results import payload
+    res = result_of(Session())
+    p = json.loads(json.dumps(payload(res), allow_nan=False))       # a browser can parse it
+    assert p["flag"] == "ok" and abs(p["mmhg"] - SBP) < 5
+    on_t, on_p = p["markers"]["refill onset (hinge)"]
+    assert p["windows"]["deflate"] < on_t < p["windows"]["dump"]   # times from the start of inflation
+    tr = p["traces"]
+    assert len(tr["t"]) == len(tr["dv_lp"]) == len(tr["p"]) > 100
+    assert tr["hinge"]["t"] and tr["baseline"]["t"] and tr["pulse_env"]
+
+
+def _collect(ws, until, limit=30.0):
+    got, t0 = [], time.monotonic()
+    while time.monotonic() - t0 < limit:
+        msg = ws.recv(timeout=0.05)
+        if msg:
+            got += [ln for ln in msg.split("\n") if ln]
+            if until(got):
+                break
+    return got
+
+
+def test_dashboard_catch_up_is_in_order_and_only_view_goes_back():
+    import queue
+    from expotool.dashserve import DashServer
+    cmds = queue.Queue()
+    dash = DashServer(on_command=cmds.put)
+    port = dash.start("127.0.0.1", 0)
+    try:
+        dash.message("hello", next_run=1)
+        dash.relay("EV,1000,state,INFLATE\nC,1,1000,INFLATE,10.00,nan,0.000,0.0\n")
+        dash.message("run", run=1)
+        dash.message("result", run=1, mmhg=120.0, flag="ok")
+        time.sleep(0.2)
+        page = urllib_get(f"http://127.0.0.1:{port}/")
+        assert "<title>MAPQuest Dashboard</title>" in page
+        ws = WSClient(f"ws://127.0.0.1:{port}/ws")
+        got = _collect(ws, lambda g: any('"kind":"result"' in ln for ln in g) and g.count(g[-1]) and len(g) >= 6, 3)
+        # The latest messages first, then everything in the order it happened.
+        hist = got[[i for i, ln in enumerate(got) if ln.startswith("EV,")][0]:]
+        kinds = [ln for ln in hist if ln.startswith(("EV,", "A,"))]
+        assert kinds[0].startswith("EV,1000,state,INFLATE")
+        assert '"kind":"run"' in kinds[1] and '"kind":"result"' in kinds[2]
+        for cmd in ("START", "DUMP", "SET p_run_min 200", "view technical"):
+            ws.send_text(cmd)
+        time.sleep(0.3)
+        ws.close()
+        sent = []
+        while not cmds.empty():
+            sent.append(cmds.get_nowait())
+        assert sent == ["VIEW TECHNICAL"]          # the mode switch, nothing that touches the cuff
+    finally:
+        dash.stop()
+
+
+def urllib_get(url):
+    import urllib.request
+    return urllib.request.urlopen(url, timeout=5).read().decode()
+
+
+def test_dashboard_page_needs_no_internet():
+    page = (EXPO / "web" / "dashboard.html").read_text(encoding="utf-8")
+    assert not re.search(r'(src|href)\s*=\s*"https?:', page)   # the booth laptop is offline
+    assert "@import" not in page and "fonts.googleapis" not in page.split("-->", 1)[1]
+
+
+def test_dashboard_sees_the_whole_run_end_to_end(tmp_path):
+    import queue
+    import expo_results
+    import sim_server
+    from expotool.dashserve import DashServer
+    _srv, port, stop_srv = sim_server.start_in_thread(speed=8.0)
+    url = f"ws://127.0.0.1:{port}/ws"
+    cmds = queue.Queue()
+    dash = DashServer(on_command=cmds.put)
+    dport = dash.start("127.0.0.1", 0)
+    mgr = expo_results.Manager(ResultsLog(tmp_path / "r.csv"), out=lambda s: None, dash=dash)
+    stop = threading.Event()
+    worker = threading.Thread(target=expo_results.run_live, daemon=True,
+                              kwargs=dict(url=url, mgr=mgr, ping_s=0.05, out=lambda s: None, stop=stop,
+                                          dash=dash, dash_cmds=cmds))
+    worker.start()
+    phone = WSClient(url)
+    monitor = WSClient(f"ws://127.0.0.1:{dport}/ws")
+    seen, state, p = [], "?", 0.0
+    try:
+        phone.send_text("CLAIM")
+        monitor.send_text("VIEW TECHNICAL")         # the laptop key, relayed to the board
+        t0, last_ping, phase = time.monotonic(), 0.0, "pre"
+        while time.monotonic() - t0 < 40:
+            if time.monotonic() - last_ping > 0.05:
+                phone.send_text("PING")
+                last_ping = time.monotonic()
+            for ln in (phone.recv(timeout=0.02) or "").split("\n"):
+                f = ln.split(",")
+                if f[0] == "C" and len(f) > 4:
+                    state, p = f[3], float(f[4])
+            seen += [ln for ln in (monitor.recv(timeout=0.02) or "").split("\n") if ln]
+            if phase == "pre" and time.monotonic() - t0 > 2.5:
+                phone.send_text("START")
+                phase = "start"
+            elif phase == "start" and state == "INFLATE" and p >= hubmod.P_RUN_MIN:
+                phone.send_text("RUN")
+                phase = "run"
+            if any(ln.startswith('A,{"kind":"result"') for ln in seen):
+                break
+    finally:
+        phone.close()
+        monitor.close()
+        stop.set()
+        worker.join(3)
+        dash.stop()
+        stop_srv()
+    assert any(",view,TECHNICAL client" in ln for ln in seen), "the monitor's key reached the board"
+    assert any(",view,PUBLIC start" in ln for ln in seen), "and START put it back to public"
+    assert sum(ln.startswith("S,") for ln in seen) > 500                 # the stream is relayed
+    assert any(ln.startswith('A,{"kind":"run","run":1') for ln in seen)
+    assert any(ln.startswith('A,{"kind":"pending"') for ln in seen)
+    import json
+    res = json.loads(next(ln for ln in seen if ln.startswith('A,{"kind":"result"'))[2:])
+    assert res["flag"] == "ok" and abs(res["mmhg"] - SBP) < 5 and res["traces"]["dv_lp"]
+
+
 # ---- firmware contract ---------------------------------------------------------------
 
 def _ino(name):

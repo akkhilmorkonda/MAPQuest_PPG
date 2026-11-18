@@ -37,6 +37,10 @@ shares no code paths with `irb/` or `host/` (it reuses `irb/host/irbtool` read-o
 > and posts it through the board; the phone page now follows DESIGN §5. On the stand-in a
 > full run read **121 mmHg against the model's 120** (flag ok), in a browser and in an
 > end-to-end socket test. Nothing of this has met a real arm.
+>
+> **Monitor dashboard (2026-11-18):** the chosen public and technical screens, served on the
+> laptop by `expo_results.py` at `http://127.0.0.1:8800/`. Checked in a browser on the
+> stand-in through idle, live, result and safety stop; **78 tests** in all.
 
 | Step | State |
 |---|---|
@@ -44,7 +48,7 @@ shares no code paths with `irb/` or `host/` (it reuses `irb/host/irbtool` read-o
 | 2 Real firmware over Wi-Fi (`expo_fw`) | **compiles** (IRB `irb_fw` 0.2.1 + Wi-Fi link + control rules); not flashed, needs the wired rig |
 | 3 Results manager (`host/expo_results.py`) | **built, tested on the stand-in**; thresholds marked provisional need team dry runs |
 | 4 Phone page (DESIGN §5) | **built** (controls + pressure, result line, fault banner, mode switch, settings drawer); not flashed |
-| 5 Presentation dashboard | not started; the page's `?view` layout (with plots) stands in |
+| 5 Presentation dashboard | **built** (the chosen B3 public + B3c technical screens), served by `expo_results.py`; tested on the stand-in only |
 
 ## Network
 
@@ -210,10 +214,37 @@ python expo/host/sim_server.py --speed 3
 ```
 
 ```powershell
-python expo/host/expo_results.py --url ws://127.0.0.1:8765/ws
+python expo/host/expo_results.py --url ws://127.0.0.1:8765/ws --results expo/results/sim_results.csv
 ```
 
-The stand-in's arm has a systolic of 120 mmHg, so a run should read about 120.
+Then the phone page at `http://127.0.0.1:8765/` and the dashboard at `http://127.0.0.1:8800/`.
+The stand-in's arm has a systolic of 120 mmHg, so a run should read about 120. (The phone's
+timers count real seconds while the stand-in runs at 3×.)
+
+## The monitor dashboard (`web/dashboard.html`)
+
+`expo_results.py` serves it on the laptop itself: open **`http://127.0.0.1:8800/`** in the
+laptop's browser, full screen (F11) on the monitor. The monitor never talks to the board:
+the results process relays the board's stream to it and adds each run's number and result,
+with the analysis traces. It draws the chosen designs from the dashboard canvas at a fixed
+1600 × 900, scaled to the screen:
+
+| Mode | Screens |
+|---|---|
+| **Public** | idle ("Next up: you"); live run (stepper, pressure, the run as a timeline, "Now / Watch for / time left"); outcome (the number with "Blood is back" marked, a caution tag, "No clear reading", "Safety stop: the cuff released itself", or "Run stopped") |
+| **Technical** | pipeline strip (raw light → ΔOD → blood volume live; low-pass, dV/dt and the onset after the vent), the onset close-up against cuff pressure (hinge fit, sloped trend, pulse return, intersect), confidence checks, heartbeat vs its stopped level, arm motion, cuff controller, safety margins, hardware, link and events |
+
+- **Switch modes** with **T**, Page Up/Down or the arrow keys (a presentation clicker works),
+  or the phone's Monitor switch; the last press wins and every new run starts on public.
+  That key press is the **only** thing the dashboard can send, and it can't touch the cuff.
+- The outcome stays up for 2 minutes, then the idle screen returns (or at the next Start).
+- Opened late, or reloaded, it catches up on the last two minutes at once.
+- **Offline:** no web fonts or CDN (the laptop is on the board's network). Fredoka, Inter
+  and JetBrains Mono are used if installed on the laptop, otherwise rounded / Segoe UI
+  fallbacks; install them for the poster look.
+- `--dash-port 0` turns it off.
+
+The phone's `/?view` page (watch only, with plots) is still there for link tests.
 
 ## The phone page
 
@@ -307,13 +338,15 @@ expo/
     expo_fw.ino             irb_fw + Wi-Fi output, control rules, ST line, stream gaps
     wifi_link.h/.cpp        COPY of the simulator's (a test keeps them identical)
     web_page.h              GENERATED, as above
-  web/index.html            phone controls + display; ?view = laptop, watch only
+  web/index.html            phone controls + display; ?view = watch only, with plots
+  web/dashboard.html        the monitor dashboard (served by host/expo_results.py, not the board)
   tools/embed_web.py        index.html -> web_page.h (run after editing the page)
   host/expo_results.py      laptop: the results manager (run -> return-of-flow pressure)
   host/expo_receiver.py     laptop: watch and grade the link
   host/sim_server.py        laptop: stand-in for the board, no hardware (--speed N)
   host/expotool/            ws (WebSocket), linkstats, hub (model of the board's rules),
-                            results (recorder, analysis adapter, flags, results file)
+                            results (recorder, analysis adapter, flags, results file),
+                            dashserve (the dashboard's local server and relay)
   results/                  expo_results.csv, anonymous (gitignored)
   tests/                    python -m pytest expo/tests
 ```

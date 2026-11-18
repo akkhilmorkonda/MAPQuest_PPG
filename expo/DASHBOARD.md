@@ -1,6 +1,8 @@
 # Expo dashboard: visual design
 
-**Status:** design settled 2026-11-18 · not built. This is the look and layout of the monitor
+**Status:** design settled 2026-11-18 · **built the same day** as `web/dashboard.html`, served
+by `host/expo_results.py` at `http://127.0.0.1:8800/` (README, "The monitor dashboard");
+tested on the laptop stand-in only. Where the build differs, §8 says so. This is the look and layout of the monitor
 dashboard described in [`DESIGN.md`](DESIGN.md) §6: what is on each screen, how it changes with
 the run, and the theme it shares with the team poster.
 **Mockups:** the design canvas *MAPQuest expo dashboard*
@@ -318,6 +320,25 @@ simulation) for a judges' Q&A slide, and T5's fail-safe cards for the IRB safety
 3. **Live heartbeat trace** needs the live pulse detector (DESIGN §9.3); until then it can only
    be drawn after the vent.
 4. **Inflation countdown** is an estimate while pumping by hand.
-5. **"Reconnecting" and "Analyser offline"** notices are specified (§3) but not drawn in the
-   mockups.
-6. **Crossfade timing** for the mode switch (DESIGN §6.2) is not specified.
+5. ~~"Reconnecting" and "Analyser offline" notices~~: built as the status chip's text (§3).
+6. ~~Crossfade timing~~: built as a 0.35 s fade.
+
+---
+
+## 8. As built (2026-11-18)
+
+- **Fonts:** the booth laptop is offline, so the page loads no web fonts. Fredoka, Inter and
+  JetBrains Mono are used when installed on the laptop; otherwise Arial Rounded / Segoe UI /
+  Consolas stand in. Install the three for the exact look.
+- **Fixed 1600 × 900,** scaled to fit the window (letterboxed on other aspect ratios).
+- **Public timeline axis** is the run's own expected length (to the vent at `p_stop`), not a
+  fixed 80 s, so a slow pump or a long hold still fits.
+- **Live close-up** shows the release so far (at least 60 mmHg of it, growing as the pressure
+  falls), since the corner is unknown until the vent; after the vent it zooms to the corner
+  (onset + 22 down to 50 mmHg below).
+- **Heartbeat trace** draws after the vent only (open item 3).
+- **The outcome** stays up 2 minutes, then the idle screen (no "Next visitor" yet).
+- **Link line** shows rates, the results process's own `ECHO` round trip and missing samples;
+  the event log shows the run's events (device connect/disconnect churn is left out).
+- **Safety-stop text** follows the dump reason with DESIGN §8.2's public lines, instead of
+  the mockup's single hold-timeout sentence.

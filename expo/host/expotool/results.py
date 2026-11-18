@@ -371,12 +371,84 @@ def _analyse_complete(run: Run, number: int) -> Result:
         else:
             detail["occluded_pulse_ratio"] = None       # joined mid-run: no uncuffed pulse to compare
 
+    detail["traces"] = _traces(run, t, t_us, ir, p_t, d, pr, t_infl, t_dump, fs, onset)
+
     if onset is None:
         return Result(number, None, "no_onset", "; ".join([FLAG_TEXT["no_onset"]] + reasons),
                       flags, markers, detail)
     flag = next((f for f in FLAG_ORDER if f in flags), "ok")
     mmhg = round(pressure(onset), 1)
     return Result(number, mmhg, flag, "; ".join(reasons), flags, markers, detail)
+
+
+TRACE_HZ = 10.0
+
+
+def _list(x, nd=4) -> list:
+    return [None if not np.isfinite(v) else round(float(v), nd) for v in np.asarray(x, dtype=float)]
+
+
+def _traces(run, t, t_us, ir, p_t, d, pr, t_infl, t_dump, fs, onset) -> dict:
+    """What the technical view draws, at 10 Hz, times from the start of
+    inflation. Shown on the monitor during the visit, never written to the
+    results file (DESIGN 7.5)."""
+    step = max(1, int(round(fs / TRACE_HZ)))
+    sel = np.flatnonzero((t >= t_infl - 5.0) & (t <= t_dump + 3.0))[::step]
+    tr = {
+        "t": _list(t[sel] - t_infl, 2), "p": _list(p_t[sel], 2),
+        "raw_ir": _list(ir[sel], 0), "d_od": _list(d.d_od["ir"][sel], 5),
+        "dv": _list(d.dv[sel]), "dv_lp": _list(d.dv_lp[sel]), "ddv": _list(d.ddv[sel]),
+        "threshold": None if not np.isfinite(d.threshold) else round(float(d.threshold), 5),
+    }
+    if d.hinge_fit is not None and onset is not None:
+        b0, b1, a, ws = d.hinge_fit
+        th = np.linspace(ws, onset + 6.0, 80)
+        tr["hinge"] = {"t": _list(th - t_infl, 2),
+                       "y": _list(b0 + b1 * (th - ws) + a * np.clip(th - onset, 0, None) ** d.hinge_power),
+                       "p": _list(np.interp(th, t, p_t), 2)}
+    if d.baseline_fit is not None and d.baseline_span is not None:
+        bs, bi = d.baseline_fit
+        tb = np.linspace(d.baseline_span[0], (onset or d.baseline_span[1]) + 8.0, 40)
+        tr["baseline"] = {"t": _list(tb - t_infl, 2), "y": _list(bs * tb + bi), "p": _list(np.interp(tb, t, p_t), 2)}
+    if pr is not None:
+        tr["pulse_env"] = _list(pr.env_hr[sel] * np.sqrt(2), 5)
+        tr["pulse_thr"] = round(float(pr.threshold * np.sqrt(2)), 5)
+    if run.imu:
+        m = np.asarray([(tu, gx, gy, gz) for tu, band, gx, gy, gz in run.imu if band == "D"], dtype=float)
+        if m.size:
+            mt = np.interp(m[:, 0], t_us, t) - t_infl
+            g = np.linalg.norm(m[:, 1:], axis=1) / IMU_LSB_PER_DPS
+            k = max(1, len(mt) // 400)
+            tr["imu"] = {"t": _list(mt[::k], 2), "dps": _list(g[::k], 1), "limit": IMU_MOVE_DPS}
+    return tr
+
+
+def payload(res: Result) -> dict:
+    """The result as the dashboard gets it (``A,{"kind":"result",...}``):
+    times relative to the start of inflation."""
+    w = res.detail.get("windows", {})
+    t0 = w.get("inflate", 0.0)
+    rel = {k: (round(v - t0, 2) if isinstance(v, float) else v) for k, v in w.items() if k != "ref"}
+    marks = {k: (None if v is None else [round(v[0] - t0, 2), round(v[1], 1)]) for k, v in res.markers.items()}
+    keep = ("p_deflate_start", "hinge_power", "rail_fraction", "imu_peak_dps", "heart_rate_bpm",
+            "occluded_pulse_ratio")
+    det = {k: res.detail[k] for k in keep if k in res.detail}
+    return _clean({"run": res.run, "mmhg": res.mmhg, "flag": res.flag, "reason": res.reason,
+                   "flags": list(res.flags), "markers": marks, "windows": rel, "detail": det,
+                   "traces": res.detail.get("traces"), "seconds": round(res.seconds, 3)})
+
+
+def _clean(x):
+    """JSON a browser can parse: no NaN or infinity, no numpy scalars."""
+    if isinstance(x, dict):
+        return {k: _clean(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_clean(v) for v in x]
+    if isinstance(x, (np.floating, float)):
+        return float(x) if np.isfinite(x) else None
+    if isinstance(x, np.integer):
+        return int(x)
+    return x
 
 
 # ---------------------------------------------------------------------------

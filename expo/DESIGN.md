@@ -98,7 +98,8 @@ form a new class of command:
 | result (run, mmHg, flag, reason) | laptop | the phone shows its one-line result |
 | notice (e.g. pulse still present) | laptop | the phone shows an amber hint |
 
-Only the link simulator has the Wi-Fi layer today; `expo_fw` needs it first (README, Owed).
+Both sketches have the Wi-Fi layer now (`expo_fw` compiles, not yet run on hardware); neither
+has display commands yet.
 
 ---
 
@@ -372,9 +373,9 @@ None exist yet:
 - **One adult cuff and a 160 target.** Large arms (over ~34 cm, AHA) need more pressure to
   occlude and can over-read. These visitors are the likeliest to hit the 190 cap or get
   flagged results.
-- **Dead-client stall** (README): a device leaving the network stalls the stream to every
-  device for ~1–2 s. The phone's own reconnect waits 3 s, and the controller timeout is on
-  pings the phone *sends*, so a stall alone should not vent the cuff. Worth confirming.
+- **Dead-client stall** (README): a device leaving the network used to stall the stream to
+  every device for ~1–2 s. Fixed in source 2026-11-18 (one sender per device); not yet
+  flashed or re-tested (README checklist row 13).
 - **Radio noise on the real sensors** and the valve with Wi-Fi on (README, Owed).
 
 ---

@@ -16,7 +16,8 @@
 // The real valve pin, GPIO25, is held low (vented) the whole time.
 //
 // Wireless control rules (expo/README.md, "Control rules"):
-//   - any client may watch, send DUMP, INFO, P, ECHO <n>;
+//   - any client may watch, send DUMP, INFO, P, ECHO <n>, and the display
+//     commands VIEW, RESULT, ANALYSER (they never touch the cuff);
 //   - one client at a time holds control (CLAIM, CLAIM FORCE when no run is
 //     active, RELEASE); every other command needs control;
 //   - the controller is lost if it disconnects or is silent for
@@ -293,6 +294,87 @@ static void cmdRelease(uint32_t id) {
 }
 
 // ===========================================================================
+// Display state (expo/DESIGN.md 3.1). What every screen shows: the dashboard
+// mode, the latest result, whether the laptop results process is connected.
+// Open to every client and never touches the cuff (no valve, no settings, no
+// session state). The board keeps the latest values and repeats them in ST
+// and INFO, so a screen that reconnects comes back in step.
+// Same code in expo_fw (a test keeps the command lists in step).
+// ===========================================================================
+
+static bool     g_view_technical = false;
+static uint32_t g_analyser       = 0;    // client id of the laptop results process
+static char     g_result[48]     = "";   // latest: "run=N mmhg=V flag=F"
+
+static const char *const kResultFlags[] = {"pending", "ok", "no_onset", "arm_moved",
+                                           "pulse_present", "incomplete", "safety_stop", "stopped"};
+
+static void setView(bool technical, const char *why) {
+  g_view_technical = technical;
+  char d[40];
+  snprintf(d, sizeof(d), "%s %s", technical ? "TECHNICAL" : "PUBLIC", why);
+  event("view", d);
+}
+
+static void cmdView(uint32_t src, const char *arg) {
+  bool technical;
+  if (arg && strcasecmp(arg, "PUBLIC") == 0)         technical = false;
+  else if (arg && strcasecmp(arg, "TECHNICAL") == 0) technical = true;
+  else { Out.println(F("E,VIEW needs PUBLIC or TECHNICAL")); return; }
+  char why[24];
+  if (src == SRC_SERIAL) snprintf(why, sizeof(why), "serial");
+  else                   snprintf(why, sizeof(why), "client %lu", (unsigned long)src);
+  setView(technical, why);
+}
+
+// RESULT <run> <mmhg|-> <flag>, from the laptop results process.
+static void cmdResult(const char *arg) {
+  unsigned long run = 0;
+  char val[12], flag[16];
+  if (!arg || sscanf(arg, "%lu %11s %15s", &run, val, flag) != 3 || run == 0) {
+    Out.println(F("E,RESULT needs <run> <mmhg|-> <flag>"));
+    return;
+  }
+  bool known = false;
+  for (const char *f : kResultFlags) if (strcmp(flag, f) == 0) { known = true; break; }
+  if (!known) { Out.printf("E,RESULT unknown flag: %s\n", flag); return; }
+  if (strcmp(val, "-") != 0) {
+    char *end = nullptr;
+    const float v = strtof(val, &end);
+    if (end == val || *end != '\0' || !(v >= 0.0f && v <= 300.0f)) {
+      Out.printf("E,RESULT mmHg must be 0-300 or -: %s\n", val);
+      return;
+    }
+  }
+  snprintf(g_result, sizeof(g_result), "run=%lu mmhg=%s flag=%s", run, val, flag);
+  event("result", g_result);
+}
+
+static void cmdAnalyser(uint32_t src) {
+  if (src == SRC_SERIAL) { Out.println(F("E,ANALYSER is for Wi-Fi clients")); return; }
+  g_analyser = src;
+  char d[24];
+  snprintf(d, sizeof(d), "%lu joined", (unsigned long)src);
+  event("analyser", d);
+}
+
+// Every loop pass: the analyser is gone once it disconnects or goes quiet.
+static void analyserService(uint32_t now) {
+  if (!g_analyser) return;
+  const bool gone = !wifiConnected(g_analyser) ||
+                    (int32_t)(now - wifiLastSeenMs(g_analyser)) > (int32_t)CONTROLLER_TIMEOUT_MS;
+  if (!gone) return;
+  g_analyser = 0;
+  event("analyser", "none lost");
+}
+
+static void printDisplayInfo() {
+  Out.printf("# view=%s analyser=%lu\n", g_view_technical ? "TECHNICAL" : "PUBLIC",
+             (unsigned long)g_analyser);
+  if (g_result[0]) Out.printf("# result %s\n", g_result);
+}
+
+// ===========================================================================
 // Reports
 // ===========================================================================
 
@@ -309,6 +391,7 @@ static void printInfo() {
   wifiPrintInfo(Out);
   Out.printf("# controller=%lu controller_timeout_ms=%lu run_by_wifi=%d\n",
              (unsigned long)g_controller, (unsigned long)CONTROLLER_TIMEOUT_MS, g_run_by_wifi ? 1 : 0);
+  printDisplayInfo();
   Out.println(F("# mode=spo2 channels=ir,red fs=100.00 simulated=1"));
   Out.printf("# set rate=%.2f hold_s=%.1f p_stop=%.1f p_run_min=%.1f p_max=%.1f hold_timeout_s=%.1f\n",
              S.rate, S.hold_s, S.p_stop, S.p_run_min, S.p_max, S.hold_timeout_s);
@@ -320,7 +403,7 @@ static void printInfo() {
   Out.println(F("# columns_C=c_idx,t_us,state,p_mmhg,pref_mmhg,rate_mmhg_s,duty_pct"));
   Out.println(F("# columns_EV=t_us,name,detail"));
   Out.println(F("# columns_ST=t_us,state,sensors,zeroed,controller,clients,p_run_min,hold_s,"
-                "rate,p_max,ws_dropped_bytes,loop_max_us"));
+                "rate,p_max,ws_dropped_bytes,loop_max_us,view,analyser"));
   Out.printf("# loop_max_us=%lu loop_slow_passes=%lu loop_warn_us=%lu\n", (unsigned long)g_loop_max_us,
              (unsigned long)g_slow_passes, (unsigned long)LOOP_WARN_US);
   Out.printf("# state=%s streaming=%d sensors_ok=5/5 valve=%s\n", stateName(g_state),
@@ -329,10 +412,11 @@ static void printInfo() {
 
 static void statusLine() {
   // sensors: pressure, distal PPG, proximal PPG, distal IMU, proximal IMU.
-  dataLine("ST,%lu,%s,11111,1,%lu,%u,%.1f,%.1f,%.2f,%.1f,%lu,%lu\n", (unsigned long)micros(),
+  dataLine("ST,%lu,%s,11111,1,%lu,%u,%.1f,%.1f,%.2f,%.1f,%lu,%lu,%s,%lu\n", (unsigned long)micros(),
            stateName(g_state), (unsigned long)g_controller, (unsigned)wifiClientCount(),
            S.p_run_min, S.hold_s, S.rate, S.p_max, (unsigned long)wifiDroppedBytes(),
-           (unsigned long)g_loop_win_max_us);
+           (unsigned long)g_loop_win_max_us, g_view_technical ? "TECHNICAL" : "PUBLIC",
+           (unsigned long)g_analyser);
   g_loop_win_max_us = 0;
   const uint32_t dropped = wifiDroppedBytes();
   if (dropped != g_last_dropped) {
@@ -380,6 +464,7 @@ static void cmdStart(uint32_t src) {
   g_valve_closed = true;
   showValve();
   setState(ST_INFLATE);
+  if (g_view_technical) setView(false, "start");   // every new run opens on the public screen
 }
 
 static void cmdRun() {
@@ -462,6 +547,9 @@ static void handleCommand(char *line, uint32_t src) {
   else if (strcmp(line, "ECHO") == 0)     Out.printf("# echo=%lu client=%lu\n", arg ? strtoul(arg, nullptr, 10) : 0UL, (unsigned long)src);
   else if (strcmp(line, "CLAIM") == 0)    { if (src == SRC_SERIAL) Out.println(F("E,CLAIM is for Wi-Fi clients")); else cmdClaim(src, arg); }
   else if (strcmp(line, "RELEASE") == 0)  { if (src == SRC_SERIAL) Out.println(F("E,RELEASE is for Wi-Fi clients")); else cmdRelease(src); }
+  else if (strcmp(line, "VIEW") == 0)     cmdView(src, arg);
+  else if (strcmp(line, "RESULT") == 0)   cmdResult(arg);
+  else if (strcmp(line, "ANALYSER") == 0) cmdAnalyser(src);
   else if (strcmp(line, "STREAM") == 0) {
     if (src != SRC_SERIAL) { Out.println(F("E,STREAM is serial-only: Wi-Fi clients always receive the stream")); return; }
     g_serial_stream = arg && arg[0] == '1';
@@ -480,7 +568,8 @@ static bool verbIs(const char *line, const char *verb) {
 // A Wi-Fi command: watching, DUMP and the link checks are open to everyone;
 // the rest needs control.
 static void handleWifiCommand(WifiCommand &c) {
-  static const char *const kOpenToAll[] = {"INFO", "P", "ECHO", "CLAIM", "RELEASE", "DUMP"};
+  static const char *const kOpenToAll[] = {"INFO", "P", "ECHO", "CLAIM", "RELEASE", "DUMP",
+                                           "VIEW", "RESULT", "ANALYSER"};
   for (const char *v : kOpenToAll) {
     if (verbIs(c.line, v)) { handleCommand(c.line, c.client); return; }
   }
@@ -590,6 +679,7 @@ void loop() {
     statusLine();
   }
   controllerService(millis());
+  analyserService(millis());
 
   // LED: the simulated valve, or a blink for the BLINK command.
   if ((int32_t)(g_blink_until_ms - now) > 0) {

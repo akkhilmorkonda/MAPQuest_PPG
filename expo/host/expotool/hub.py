@@ -1,32 +1,74 @@
-"""Python model of the expo link simulator's wireless side.
+"""Python model of the expo board's wireless side.
 
-``LinkSimHub`` follows ``expo/firmware/expo_link_sim``'s rules for Wi-Fi
-clients: client numbering, the ``# client_id`` welcome, one controller at a
-time (CLAIM, CLAIM FORCE, RELEASE), commands open to everyone, the
-controller-lost dump, ECHO, BLINK, the ST status line and the stream gap
-after ZERO. The board underneath is ``irbtool.mock.MockBoard`` (read-only
-reuse), which already follows the IRB firmware's session rules and emits
-its line formats and rates.
+``LinkSimHub`` follows the rules both expo sketches give Wi-Fi clients:
+client numbering, the ``# client_id`` welcome, one controller at a time
+(CLAIM, CLAIM FORCE, RELEASE), commands open to everyone, the controller-lost
+dump, ECHO, BLINK, the ST status line, the stream gap after ZERO, and the
+display commands (VIEW, RESULT, ANALYSER; expo/DESIGN.md 3.1). The board
+underneath is ``irbtool.mock.MockBoard`` (read-only reuse), which already
+follows the IRB firmware's session rules and emits its line formats and rates.
 
-It is what ``sim_server.py`` serves, so the phone page and the laptop
-receiver can be exercised without the ESP32. Passing tests here prove the
-host side and the protocol contract, not the firmware.
+It is what ``sim_server.py`` serves, so the phone page, the laptop receiver
+and the results process can be exercised without the ESP32. Passing tests
+here prove the host side and the protocol contract, not the firmware.
 """
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass, field
 
-from irbtool.mock import MockBoard
+from irbtool.mock import ROOM_ABS_MMHG, MockBoard, _abs_to_counts
 
 FIRMWARE = "mapquest-expo-linksim-pysim"
-CONTROLLER_TIMEOUT_S = 2.0          # expo_link_sim/config.h CONTROLLER_TIMEOUT_MS
+CONTROLLER_TIMEOUT_S = 2.0          # config.h CONTROLLER_TIMEOUT_MS (also the analyser's)
 STATUS_PERIOD_S = 0.5               # STATUS_PERIOD_MS
 PUMP_TARGET = 160.0                 # SIM_PUMP_TARGET
-OPEN_TO_ALL = ("INFO", "P", "ECHO", "CLAIM", "RELEASE", "DUMP")
+P_RUN_MIN = 150.0                   # DEFAULT_P_RUN_MIN, the expo profile (DESIGN 4.2)
+OPEN_TO_ALL = ("INFO", "P", "ECHO", "CLAIM", "RELEASE", "DUMP", "VIEW", "RESULT", "ANALYSER")
 ST_COLUMNS = ("t_us", "state", "sensors", "zeroed", "controller", "clients", "p_run_min",
-              "hold_s", "rate", "p_max", "ws_dropped_bytes", "loop_max_us")
+              "hold_s", "rate", "p_max", "ws_dropped_bytes", "loop_max_us", "view", "analyser")
 SENSOR_ORDER = ("pressure", "ppg_D", "ppg_P", "imu_D", "imu_P")
+RESULT_FLAGS = ("pending", "ok", "no_onset", "arm_moved", "pulse_present", "incomplete",
+                "safety_stop", "stopped")   # kResultFlags in both sketches
+
+
+class ArmBoard(MockBoard):
+    """The IRB mock board with a pulse that the cuff can stop.
+
+    MockBoard's heartbeat never changes with cuff pressure, so every run on it
+    would read "pulse never fully stopped". Here the pulse shrinks to a faint
+    ripple (5 %) above systolic and grows back as the cuff drops below it,
+    as on a real arm. Everything else is MockBoard unchanged."""
+
+    RIPPLE = 0.05
+
+    def _pulse_scale(self) -> float:
+        if self.p >= self.sbp:
+            return self.RIPPLE
+        return self.RIPPLE + (1 - self.RIPPLE) * min(1.0, (self.sbp - self.p) / 30.0)
+
+    def _ppg(self) -> None:
+        # MockBoard._ppg with the pulse amplitude scaled; kept line for line
+        # so the stream is the same apart from that.
+        for tag in ("D", "P"):
+            if f"ppg_{tag}" in self.failed:
+                continue
+            self.last[f"ppg_{tag}"] = self.t
+            pulse = 0.0015 * math.sin(2 * math.pi * 1.2 * self.t) * (self._pulse_scale() if tag == "D" else 1.0)
+            vol = self.volume if tag == "D" else 0.0
+            ir_amp, red_amp = self.amps[tag]
+            ir = 9 + 4200 * ir_amp * (1 - 0.0005 * vol + pulse) + self.rng.gauss(0, 20)
+            red = 13 + 3500 * red_amp * (1 - 0.0008 * vol + pulse) + self.rng.gauss(0, 20)
+            ir, red = (int(min(max(v, 0), 262143)) for v in (ir, red))
+            if self.streaming:
+                if tag == "D":
+                    raw = _abs_to_counts(ROOM_ABS_MMHG + self.p)
+                    self._emit(f"S,{self.idx['D']},{self._us()},{ir},{red},{self.p_idx},{raw},64")
+                else:
+                    self._emit(f"SP,{self.idx['P']},{self._us()},{ir},{red}")
+            self.idx[tag] += 1
 
 
 @dataclass
@@ -37,14 +79,18 @@ class _Client:
 
 class LinkSimHub:
     def __init__(self, board: MockBoard | None = None, now: float = 0.0) -> None:
-        self.board = board or MockBoard(realtime=False)
+        self.board = board or ArmBoard(realtime=False)
         self.board.command("STREAM 1")       # Wi-Fi clients always get the stream
+        self.board.command(f"SET p_run_min {P_RUN_MIN:g}")
         self.board.out.clear()
         self.clients: dict[int, _Client] = {}
         self.next_id = 1
         self.controller = 0
         self.run_by_wifi = False
         self.blinks = 0
+        self.view_technical = False
+        self.analyser = 0
+        self.result = ""
         self._now = now
         self._next_status = now
         self._out: list[str] = []
@@ -92,6 +138,10 @@ class LinkSimHub:
         self.controller = cid
         self._event("controller", f"{cid if cid else 'none'} {why}")
 
+    def _set_view(self, technical: bool, why: str) -> None:
+        self.view_technical = technical
+        self._event("view", f"{'TECHNICAL' if technical else 'PUBLIC'} {why}")
+
     # -- commands ----------------------------------------------------------
 
     def _command(self, line: str, cid: int) -> None:
@@ -115,6 +165,16 @@ class LinkSimHub:
                 self._emit("E,RELEASE refused while its run is active")
             else:
                 self._set_controller(0, "released")
+        elif verb == "VIEW":
+            if arg.upper() not in ("PUBLIC", "TECHNICAL"):
+                self._emit("E,VIEW needs PUBLIC or TECHNICAL")
+            else:
+                self._set_view(arg.upper() == "TECHNICAL", f"client {cid}")
+        elif verb == "RESULT":
+            self._result(arg)
+        elif verb == "ANALYSER":
+            self.analyser = cid
+            self._event("analyser", f"{cid} joined")
         elif verb == "ECHO":
             n = int(arg) if arg.isdigit() else 0
             self._emit(f"# echo={n} client={cid}")
@@ -137,6 +197,8 @@ class LinkSimHub:
             if b.state == "INFLATE":
                 self.run_by_wifi = True
                 b.pump_to(max(PUMP_TARGET, b.settings["p_run_min"] + 15.0))
+                if self.view_technical:
+                    self._set_view(False, "start")
         elif verb == "INFO":
             b.command("INFO")
             self._flush_board()
@@ -147,6 +209,27 @@ class LinkSimHub:
                     and b.pump_target is not None:
                 b.pump_to(max(b.pump_target, b.settings["p_run_min"] + 15.0))
 
+    def _result(self, arg: str) -> None:
+        """RESULT <run> <mmhg|-> <flag>, validated as the firmware does."""
+        m = re.fullmatch(r"(\d+) (\S+) (\S+)", arg)
+        if not m or int(m.group(1)) == 0:
+            self._emit("E,RESULT needs <run> <mmhg|-> <flag>")
+            return
+        run, val, flag = m.groups()
+        if flag not in RESULT_FLAGS:
+            self._emit(f"E,RESULT unknown flag: {flag}")
+            return
+        if val != "-":
+            try:
+                ok = 0.0 <= float(val) <= 300.0
+            except ValueError:
+                ok = False
+            if not ok:
+                self._emit(f"E,RESULT mmHg must be 0-300 or -: {val}")
+                return
+        self.result = f"run={int(run)} mmhg={val} flag={flag}"
+        self._event("result", self.result)
+
     def _info(self) -> None:
         self._emit(f"# firmware={FIRMWARE}")
         self._emit("# board=pc mode=link_simulator sensors=simulated")
@@ -154,6 +237,9 @@ class LinkSimHub:
         self._emit(f"# controller={self.controller} "
                    f"controller_timeout_ms={int(CONTROLLER_TIMEOUT_S * 1000)} "
                    f"run_by_wifi={int(self.run_by_wifi)}")
+        self._emit(f"# view={'TECHNICAL' if self.view_technical else 'PUBLIC'} analyser={self.analyser}")
+        if self.result:
+            self._emit(f"# result {self.result}")
         self._emit("# columns_ST=" + ",".join(ST_COLUMNS))
 
     def status_line(self) -> str:
@@ -161,7 +247,8 @@ class LinkSimHub:
         sensors = "".join("0" if k in b.failed else "1" for k in SENSOR_ORDER)
         return (f"ST,{b._us()},{b.state},{sensors},{int(b.zeroed)},{self.controller},"
                 f"{len(self.clients)},{s['p_run_min']:.1f},{s['hold_s']:.1f},{s['rate']:.2f},"
-                f"{s['p_max']:.1f},0,0")
+                f"{s['p_max']:.1f},0,0,{'TECHNICAL' if self.view_technical else 'PUBLIC'},"
+                f"{self.analyser}")
 
     # -- time --------------------------------------------------------------
 
@@ -182,6 +269,7 @@ class LinkSimHub:
             dt -= step
             self._flush_board()
         self._controller_check(now)
+        self._analyser_check(now)
         if now >= self._next_status:
             self._next_status = now + STATUS_PERIOD_S
             self._emit(self.status_line())
@@ -192,11 +280,17 @@ class LinkSimHub:
         out, self._out = self._out, []
         return (out if self.clients else []), direct
 
+    def _gone(self, cid: int, now: float) -> bool:
+        c = self.clients.get(cid)
+        return c is None or now - c.last_rx > CONTROLLER_TIMEOUT_S
+
+    def _analyser_check(self, now: float) -> None:
+        if self.analyser and self._gone(self.analyser, now):
+            self.analyser = 0
+            self._event("analyser", "none lost")
+
     def _controller_check(self, now: float) -> None:
-        if not self.controller:
-            return
-        c = self.clients.get(self.controller)
-        if c is not None and now - c.last_rx <= CONTROLLER_TIMEOUT_S:
+        if not self.controller or not self._gone(self.controller, now):
             return
         self._set_controller(0, "lost")
         b = self.board

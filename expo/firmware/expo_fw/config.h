@@ -108,7 +108,7 @@ static const float    DEFAULT_KD          = 0.0f;
 static const float    DEFAULT_U0          = 0.04f;
 static const float    DEFAULT_HOLD_S      = 10.0f;
 static const float    DEFAULT_P_STOP      = 40.0f;
-static const float    DEFAULT_P_RUN_MIN   = 140.0f;   // the host sets it per subject
+static const float    DEFAULT_P_RUN_MIN   = 150.0f;   // expo profile (DESIGN 4.2): pump to 160, Run at 150
 
 static const uint8_t  RATE_HISTORY        = 10;      // windows in the 1 s slope
 

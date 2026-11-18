@@ -18,7 +18,8 @@
 // http://192.168.4.1/ to run the cuff; the laptop watches. Every WebSocket
 // client receives the data lines whenever it is connected. Control rules
 // (expo/README.md, "Control rules"), as in the link simulator:
-//   - any client may watch, send DUMP, INFO, P, ECHO <n>, CLAIM, RELEASE;
+//   - any client may watch, send DUMP, INFO, P, ECHO <n>, CLAIM, RELEASE, and
+//     the display commands VIEW, RESULT, ANALYSER (never touch the cuff);
 //   - one client at a time holds control and may also send START, RUN,
 //     ZERO, BLINK and SET rate|hold_s|p_stop|p_run_min;
 //   - the controller is lost if it disconnects or is silent for
@@ -1078,6 +1079,87 @@ static void cmdRelease(uint32_t id) {
 }
 
 // ===========================================================================
+// Display state (expo/DESIGN.md 3.1). What every screen shows: the dashboard
+// mode, the latest result, whether the laptop results process is connected.
+// Open to every client and never touches the cuff (no valve, no settings, no
+// session state). The board keeps the latest values and repeats them in ST
+// and INFO, so a screen that reconnects comes back in step.
+// Same code in expo_fw (a test keeps the command lists in step).
+// ===========================================================================
+
+static bool     g_view_technical = false;
+static uint32_t g_analyser       = 0;    // client id of the laptop results process
+static char     g_result[48]     = "";   // latest: "run=N mmhg=V flag=F"
+
+static const char *const kResultFlags[] = {"pending", "ok", "no_onset", "arm_moved",
+                                           "pulse_present", "incomplete", "safety_stop", "stopped"};
+
+static void setView(bool technical, const char *why) {
+  g_view_technical = technical;
+  char d[40];
+  snprintf(d, sizeof(d), "%s %s", technical ? "TECHNICAL" : "PUBLIC", why);
+  event("view", d);
+}
+
+static void cmdView(uint32_t src, const char *arg) {
+  bool technical;
+  if (arg && strcasecmp(arg, "PUBLIC") == 0)         technical = false;
+  else if (arg && strcasecmp(arg, "TECHNICAL") == 0) technical = true;
+  else { Out.println(F("E,VIEW needs PUBLIC or TECHNICAL")); return; }
+  char why[24];
+  if (src == SRC_SERIAL) snprintf(why, sizeof(why), "serial");
+  else                   snprintf(why, sizeof(why), "client %lu", (unsigned long)src);
+  setView(technical, why);
+}
+
+// RESULT <run> <mmhg|-> <flag>, from the laptop results process.
+static void cmdResult(const char *arg) {
+  unsigned long run = 0;
+  char val[12], flag[16];
+  if (!arg || sscanf(arg, "%lu %11s %15s", &run, val, flag) != 3 || run == 0) {
+    Out.println(F("E,RESULT needs <run> <mmhg|-> <flag>"));
+    return;
+  }
+  bool known = false;
+  for (const char *f : kResultFlags) if (strcmp(flag, f) == 0) { known = true; break; }
+  if (!known) { Out.printf("E,RESULT unknown flag: %s\n", flag); return; }
+  if (strcmp(val, "-") != 0) {
+    char *end = nullptr;
+    const float v = strtof(val, &end);
+    if (end == val || *end != '\0' || !(v >= 0.0f && v <= 300.0f)) {
+      Out.printf("E,RESULT mmHg must be 0-300 or -: %s\n", val);
+      return;
+    }
+  }
+  snprintf(g_result, sizeof(g_result), "run=%lu mmhg=%s flag=%s", run, val, flag);
+  event("result", g_result);
+}
+
+static void cmdAnalyser(uint32_t src) {
+  if (src == SRC_SERIAL) { Out.println(F("E,ANALYSER is for Wi-Fi clients")); return; }
+  g_analyser = src;
+  char d[24];
+  snprintf(d, sizeof(d), "%lu joined", (unsigned long)src);
+  event("analyser", d);
+}
+
+// Every loop pass: the analyser is gone once it disconnects or goes quiet.
+static void analyserService(uint32_t now) {
+  if (!g_analyser) return;
+  const bool gone = !wifiConnected(g_analyser) ||
+                    (int32_t)(now - wifiLastSeenMs(g_analyser)) > (int32_t)CONTROLLER_TIMEOUT_MS;
+  if (!gone) return;
+  g_analyser = 0;
+  event("analyser", "none lost");
+}
+
+static void printDisplayInfo() {
+  Out.printf("# view=%s analyser=%lu\n", g_view_technical ? "TECHNICAL" : "PUBLIC",
+             (unsigned long)g_analyser);
+  if (g_result[0]) Out.printf("# result %s\n", g_result);
+}
+
+// ===========================================================================
 // Blocking commands while data flows (expo). The IRB firmware refuses them
 // while streaming; here Wi-Fi clients always receive the stream, so they run
 // and the gap is accounted for. The FIFOs are cleared after the block, so
@@ -1129,6 +1211,7 @@ static void printInfo() {
   wifiPrintInfo(Out);
   Out.printf("# controller=%lu controller_timeout_ms=%lu run_by_wifi=%d\n",
              (unsigned long)g_controller, (unsigned long)CONTROLLER_TIMEOUT_MS, g_run_by_wifi ? 1 : 0);
+  printDisplayInfo();
   Out.printf("# loop_max_us=%lu loop_slow_passes=%lu loop_warn_us=%lu\n", (unsigned long)g_loop_max_us,
              (unsigned long)g_slow_passes, (unsigned long)LOOP_WARN_US);
   Out.printf("# i2c_hz=%lu sda=%d scl=%d\n", (unsigned long)I2C_CLOCK_HZ, PIN_SDA, PIN_SCL);
@@ -1177,7 +1260,7 @@ static void printInfo() {
   Out.println(F("# columns_C=c_idx,t_us,state,p_mmhg,pref_mmhg,rate_mmhg_s,duty_pct"));
   Out.println(F("# columns_EV=t_us,name,detail"));
   Out.println(F("# columns_ST=t_us,state,sensors,zeroed,controller,clients,p_run_min,hold_s,"
-                "rate,p_max,ws_dropped_bytes,loop_max_us"));
+                "rate,p_max,ws_dropped_bytes,loop_max_us,view,analyser"));
   Out.printf("# valve_pin=%d valve_type=normally_open valve=%s\n",
                 PIN_VALVE, g_valve_closed ? "CLOSED" : "open");
   Out.printf("# state=%s streaming=%d sensors_ok=%d/5\n", stateName(g_state),
@@ -1190,11 +1273,12 @@ static uint32_t g_last_dropped = 0;
 static uint32_t g_last_slow = 0, g_last_failed = 0;
 
 static void statusLine() {
-  dataLine("ST,%lu,%s,%d%d%d%d%d,%d,%lu,%u,%.1f,%.1f,%.2f,%.1f,%lu,%lu\n", (unsigned long)micros(),
+  dataLine("ST,%lu,%s,%d%d%d%d%d,%d,%lu,%u,%.1f,%.1f,%.2f,%.1f,%lu,%lu,%s,%lu\n", (unsigned long)micros(),
            stateName(g_state), g_p_ok ? 1 : 0, g_bands[0].ppg_ok ? 1 : 0, g_bands[1].ppg_ok ? 1 : 0,
            g_bands[0].imu_ok ? 1 : 0, g_bands[1].imu_ok ? 1 : 0, g_p_zeroed ? 1 : 0,
            (unsigned long)g_controller, (unsigned)wifiClientCount(), S.p_run_min, S.hold_s, S.rate,
-           S.p_max, (unsigned long)wifiDroppedBytes(), (unsigned long)g_loop_win_max_us);
+           S.p_max, (unsigned long)wifiDroppedBytes(), (unsigned long)g_loop_win_max_us,
+           g_view_technical ? "TECHNICAL" : "PUBLIC", (unsigned long)g_analyser);
   g_loop_win_max_us = 0;
   const uint32_t dropped = wifiDroppedBytes();
   if (dropped != g_last_dropped) {
@@ -1308,6 +1392,7 @@ static void cmdStart(uint32_t src) {
   valveAllowClose();
   valveWrite(true);
   setState(ST_INFLATE);
+  if (g_view_technical) setView(false, "start");   // every new run opens on the public screen
 }
 
 static void cmdRun() {
@@ -1478,6 +1563,12 @@ static void handleCommand(char *line, uint32_t src) {
     else cmdRelease(src);
   } else if (strcmp(line, "RADIO") == 0) {
     cmdRadio(arg);
+  } else if (strcmp(line, "VIEW") == 0) {
+    cmdView(src, arg);
+  } else if (strcmp(line, "RESULT") == 0) {
+    cmdResult(arg);
+  } else if (strcmp(line, "ANALYSER") == 0) {
+    cmdAnalyser(src);
   } else if (strcmp(line, "TEST") == 0 && arg && strcmp(arg, "HANG") == 0) {
     if (requireIdle("TEST HANG", true)) {
       valveLockOpen();
@@ -1518,7 +1609,8 @@ static bool verbIs(const char *line, const char *verb) {
 // Watching, DUMP and the link checks are open to every client; the session
 // commands need control; everything else is a bench command, serial only.
 static void handleWifiCommand(WifiCommand &c) {
-  static const char *const kOpenToAll[] = {"INFO", "P", "ECHO", "CLAIM", "RELEASE", "DUMP"};
+  static const char *const kOpenToAll[] = {"INFO", "P", "ECHO", "CLAIM", "RELEASE", "DUMP",
+                                           "VIEW", "RESULT", "ANALYSER"};
   static const char *const kController[] = {"START", "RUN", "SET", "ZERO", "BLINK"};
   for (const char *v : kOpenToAll) {
     if (verbIs(c.line, v)) { handleCommand(c.line, c.client); return; }
@@ -1638,6 +1730,7 @@ void loop() {
 
   // expo
   controllerService(millis());
+  analyserService(millis());
   if ((int32_t)(now - g_next_status_ms) >= 0) {
     g_next_status_ms = now + STATUS_PERIOD_MS;
     statusLine();

@@ -40,3 +40,7 @@ irb_data/
 # Expo board Wi-Fi password (expo/README.md). Only secrets.example.h is tracked.
 expo/firmware/*/secrets.h
 expo/firmware/**/build/
+
+# Expo results and team dry-run captures (expo/host/expo_results.py). Anonymous, but
+# session data, not source.
+expo/results/

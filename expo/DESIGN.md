@@ -82,24 +82,24 @@ flowchart LR
 - **Control rules are unchanged** (README, Control rules): one controller, DUMP open to every
   device, the controller-lost dump during INFLATE and HOLD.
 
-### 3.1 Display commands (new, proposed)
+### 3.1 Display commands (built 2026-11-18, not flashed)
 
 The mode switch and the result have to reach every screen, so they go through the board. They
 form a new class of command:
 
 - **open to every connected device** (the laptop is not the controller);
 - **never touch cuff state**: no valve, no settings, no session state;
-- the board keeps the latest value and repeats it in the `ST` status line, so a screen that
-  reconnects comes back in step.
+- the board keeps the latest value and repeats it (mode and analyser in the `ST` status line,
+  the latest result in `INFO`), so a screen that reconnects comes back in step.
 
-| Proposed | Sent by | Effect |
+| Command | Sent by | Effect |
 |---|---|---|
-| view mode (public / technical) | phone or laptop | every screen shows the new mode; reset to public when START is accepted |
-| result (run, mmHg, flag, reason) | laptop | the phone shows its one-line result |
-| notice (e.g. pulse still present) | laptop | the phone shows an amber hint |
+| `VIEW PUBLIC\|TECHNICAL` | phone or laptop | every screen shows the new mode; reset to public when START is accepted |
+| `RESULT <run> <mmHg\|-> <flag>` | laptop | the phone shows its one-line result. Flags: `pending ok no_onset arm_moved pulse_present incomplete safety_stop stopped`; the reason text stays in the laptop's file (board command lines are 63 characters) |
+| `ANALYSER` | laptop | marks the results process, for the phone's Analyser light |
+| notice (e.g. pulse still present) | laptop | **not built**: waits for the live pulse detector (§9.3) |
 
-Both sketches have the Wi-Fi layer now (`expo_fw` compiles, not yet run on hardware); neither
-has display commands yet.
+Both sketches carry the same code (a test keeps them identical). Formats: README, Control rules.
 
 ---
 
@@ -349,16 +349,17 @@ The phone greys Start out and shows **one** reason with its fix. The public moni
 
 ## 9. New pieces this needs
 
-None exist yet:
-
-1. **Display commands** on the board (§3.1), in the link simulator and then `expo_fw`.
-2. **The laptop process:** record the run in memory, build windows from board events (§7.2),
-   run `host/mapquest`, serve the dashboard, keep the anonymous results.
+1. **Display commands** on the board (§3.1): **built** in both sketches, not flashed.
+2. **The laptop process** (`host/expo_results.py`): records the run in memory, builds windows
+   from board events (§7.2), runs `host/mapquest`, keeps the anonymous results: **built**,
+   tested on the stand-in only. It does **not serve the dashboard yet**.
 3. **Live "pulse still present" detector** during INFLATE and HOLD. `mapquest/pulse_return.py`
-   only runs after the fact.
-4. **Confidence checks** (§7.4).
-5. **Light-level check before Start** (§8.1).
-6. **The dashboard** (§6) and the trimmed phone page (§5).
+   only runs after the fact. Not built.
+4. **Confidence checks** (§7.4): **built**; the IMU limit (20 °/s) and the occluded-pulse
+   ratio (50 %) are provisional until team dry runs.
+5. **Light-level check before Start** (§8.1). Not built.
+6. **The dashboard** (§6): not built. **The phone page** (§5): built, except "Next visitor"
+   (it resets the dashboard, which does not exist yet) and the pump-higher hint (needs 3).
 
 ---
 
@@ -384,7 +385,7 @@ None exist yet:
 
 1. **Public mode's visual design** and the idle screen's content.
 2. **Technical layout refinements** beyond the first pass in §6.4.
-3. **Exact display command names and line formats** (§3.1).
+3. ~~Exact display command names and line formats~~ (§3.1): settled 2026-11-18.
 4. **Should the 190 cap also be a hard limit?** `SET p_max` can tighten the board's
    over-pressure vent (never loosen it). Today 190 is only a red readout on the phone.
 5. **Approval for visitor demos.** The expo is outside the IRB protocol; confirm with the

@@ -7,8 +7,8 @@ shares no code paths with `irb/` or `host/` (it reuses `irb/host/irbtool` read-o
 
 > **Status (2026-11-18).** Step 1, the **link simulator**, is built: it runs on a bare
 > ESP32 with nothing wired and streams a simulated session at the real system's rates.
-> The phone page, laptop receiver and control rules pass **54 tests** against a Python
-> model of the board (`python -m pytest expo/tests`). **Flashed to the WROOM on COM7 on
+> The phone page, laptop receiver, results manager and control rules pass **74 tests**
+> against a Python model of the board (`python -m pytest expo/tests`). **Flashed to the WROOM on COM7 on
 > 2026-11-18:** it boots (`wifi_ok=1`, slowest loop pass 0.18 ms), and a laptop scan sees
 > `MAPQuest-Expo` as WPA2-Personal on channel 6 at 95 % signal.
 >
@@ -31,12 +31,20 @@ shares no code paths with `irb/` or `host/` (it reuses `irb/host/irbtool` read-o
 >
 > `firmware/expo_fw/` (the real firmware: IRB sensors + valve + this Wi-Fi link + the
 > control rules) **compiles, never run on hardware**. It needs the rig wired; see "Step 2".
+>
+> **Results manager and the real phone page (2026-11-18, not flashed):** the laptop process
+> `host/expo_results.py` turns each run into a return-of-flow pressure with `host/mapquest`
+> and posts it through the board; the phone page now follows DESIGN §5. On the stand-in a
+> full run read **121 mmHg against the model's 120** (flag ok), in a browser and in an
+> end-to-end socket test. Nothing of this has met a real arm.
 
 | Step | State |
 |---|---|
 | 1 Link simulator on the ESP32 (no wiring) | **flashed; first phone + laptop link test passed.** Dead-client stall fixed in source, not flashed; rows 6, 8 and 13 owed |
 | 2 Real firmware over Wi-Fi (`expo_fw`) | **compiles** (IRB `irb_fw` 0.2.1 + Wi-Fi link + control rules); not flashed, needs the wired rig |
-| 3 Presentation display | the page's `?view` layout for now; your design to come |
+| 3 Results manager (`host/expo_results.py`) | **built, tested on the stand-in**; thresholds marked provisional need team dry runs |
+| 4 Phone page (DESIGN §5) | **built** (controls + pressure, result line, fault banner, mode switch, settings drawer); not flashed |
+| 5 Presentation dashboard | not started; the page's `?view` layout (with plots) stands in |
 
 ## Network
 
@@ -87,10 +95,10 @@ Paste the receiver's report and anything odd into the session log.
 | # | Do | Pass when |
 |---|---|---|
 | 1 | Reset the board, Serial Monitor at 921600 | `# ready: join Wi-Fi "MAPQuest-Expo" and open http://192.168.4.1/` |
-| 2 | Phone: join the network, open `http://192.168.4.1/` | header shows **Live** and **You control**; five green lights; pressure 0 |
+| 2 | Phone: join the network, open `http://192.168.4.1/` | header shows **Live** and **You control**; five green lights; pressure 0 (Analyser lights only with `expo_results.py` running) |
 | 3 | **Blink LED** | the board's LED flashes for ~1.5 s |
 | 4 | Laptop: join the network, open `http://192.168.4.1/?view` | same numbers as the phone; header says **Watching**; Link panel shows 2 clients |
-| 5 | Phone: **Start** | LED on; pressure climbs to 160 on both screens; readout turns green and **Run** unlocks at 140 |
+| 5 | Phone: **Start** | LED on; pressure climbs to 165 on both screens; readout turns green and **Run** unlocks at 150 |
 | 6 | **Run** | Holding 10 s, then Deflating at −2.0 mmHg/s; at 40 the cuff vents, LED off, back to Ready. No red banner |
 | 7 | Start again, then **DUMP** while inflating | LED off at once; Venting, then Ready |
 | 8 | Start, then lock the phone or turn its Wi-Fi off | within ~2 s: LED off, laptop shows red **Cuff vented automatically: controller lost** |
@@ -155,6 +163,80 @@ settings (copy the file across after changing the password).
 | F4 | `VALVE TEST` with the radio on, a phone joined and watching | no reset (`INFO` uptime / `reset_reason` not `brownout`) |
 | F5 | Phone: rows 2-13 of the simulator checklist, on a real arm | as there; the cuff really vents in rows 7 and 8 |
 
+## Results: the laptop process (`host/expo_results.py`)
+
+Leave it running on the laptop for the whole session, joined to the board's network:
+
+```powershell
+python expo/host/expo_results.py
+```
+
+It watches like any other device (it never takes control), announces itself with `ANALYSER`
+so the phone's **Analyser** light comes on, and for every run (expo/DESIGN.md §7):
+
+1. **Records it in memory:** from START to the vent, plus 15 s of stream before it (the
+   uncuffed pulse).
+2. **Numbers it** once it reaches DEFLATE. A run vented before that is not a run.
+3. **When it is dumped at `p_stop`,** posts `RESULT <n> - pending` (the phone shows
+   "Analysing…"). When the cuff has vented, runs `host/mapquest`'s `derive()` **unchanged**,
+   with the windows taken from the board's own state events instead of guessed from the
+   pressure trace (§7.2), and posts `RESULT <n> <mmHg> <flag>`.
+4. **Grades it** (§7.4): the headline is the **refill onset (hinge)**; intersect and pulse
+   return are computed for the technical view.
+
+| Flag | When | Phone shows |
+|---|---|---|
+| `ok` | | "Return of flow: 121 mmHg (run 4)" |
+| `incomplete` | missing samples, a `stream_gap`/overflow, the link lost, or the light sensor on a rail for > 1 % of the deflation | number + "signal incomplete" |
+| `arm_moved` | the validated PPG motion detector (`mapquest/quality.py`) or the IMUs (> 20 °/s) between deflation and 5 s after the onset | number + "arm moved" |
+| `pulse_present` | the pulse during the hold was > 50 % of the uncuffed pulse | number + "flow may not have fully stopped" |
+| `no_onset` | no hinge onset | "no clear reading, try another run" |
+| `stopped` / `safety_stop` | vented by DUMP / by the board before `p_stop` | no number |
+
+5. **Keeps one anonymous row** in `expo/results/expo_results.csv` (gitignored): run, time,
+   mmHg, flag, reason. The run's signals are dropped once it is analysed. Run numbers carry
+   on across restarts.
+
+**Provisional:** the 20 °/s IMU limit and the 50 % pulse ratio are first guesses, not bench
+numbers. Team dry runs on the expo cycle should set them (DESIGN §10), and that is what
+`--save-raw DIR` is for: it keeps each run's raw lines. **Team only, never with visitors.**
+`--replay FILE` re-analyses a saved run, an `expo_receiver.py --save` capture or a serial
+log, and writes no results unless `--results` is given.
+
+On the laptop stand-in (no board), at three times real speed:
+
+```powershell
+python expo/host/sim_server.py --speed 3
+```
+
+```powershell
+python expo/host/expo_results.py --url ws://127.0.0.1:8765/ws
+```
+
+The stand-in's arm has a systolic of 120 mmHg, so a run should read about 120.
+
+## The phone page
+
+Controls and pressure for one hand while the other pumps (DESIGN §5); the laptop's `?view`
+is the same page, watch only, with the plots.
+
+- **Header:** link, who controls, the **Analyser** light; the **Monitor Public | Technical**
+  switch (any device; `T`, Page Up/Down or the arrows on the laptop; back to public at each
+  Start).
+- **Readout:** state, pressure (green from the Run threshold, red above the cap), "Pump to
+  160", the hold countdown, how long the cuff has been closed against the 120 s vent, and
+  the result line.
+- **Start / Run / DUMP.** Start shows the **one** reason it is locked, with its fix (Zero
+  cuff appears right there when needed). DUMP is always live and says "open the bulb release
+  screw" if it cannot reach the board.
+- **Automatic vent:** a red banner with the reason and what to do; Start stays locked until
+  it is tapped. A deliberate DUMP needs no tap.
+- **Settings drawer:** Pump-to target and cap (kept on the phone), Run threshold and hold
+  (set on the board, IDLE), Zero cuff, Blink LED, Take control, link diagnostics, event log.
+
+The run profile is the expo one: pump to **160**, Run unlocks at **150** (now the firmware
+default), cap **190**, hold **10 s**.
+
 ## How the link works
 
 ```
@@ -188,9 +270,19 @@ settings (copy the file across after changing the password).
 
 | Who | May |
 |---|---|
-| Any device on the network | watch; **DUMP**; `INFO`, `P`, `ECHO <n>`; `CLAIM` |
-| The controller (one at a time) | everything else: `START`, `RUN`, `SET`, `ZERO`, `BLINK`, `RELEASE` |
+| Any device on the network | watch; **DUMP**; `INFO`, `P`, `ECHO <n>`; `CLAIM`, `RELEASE`; the display commands below |
+| The controller (one at a time) | `START`, `RUN`, `SET`, `ZERO`, `BLINK` (`expo_fw`: bench commands stay on serial) |
 | USB serial | everything, as on the bench (`STREAM 1` for data on serial) |
+
+**Display commands** never touch the cuff (no valve, settings or session state); the board
+keeps the latest values, repeats them in `ST` (`view`, `analyser` columns) and in `INFO`
+(`# view=`, `# result `), so a screen that reconnects comes back in step:
+
+| Command | Effect |
+|---|---|
+| `VIEW PUBLIC` / `VIEW TECHNICAL` | the monitor mode; `EV,view`; reset to public when START is accepted |
+| `RESULT <run> <mmHg\|-> <flag>` | the latest result, from the laptop; `EV,result,run=N mmhg=V flag=F` |
+| `ANALYSER` | this client is the results process; lost like a controller (2 s of silence) |
 
 - The phone page claims control when it connects. A second phone is refused while the first
   holds it. `CLAIM FORCE` takes it over, but only when no run is active.
@@ -217,9 +309,12 @@ expo/
     web_page.h              GENERATED, as above
   web/index.html            phone controls + display; ?view = laptop, watch only
   tools/embed_web.py        index.html -> web_page.h (run after editing the page)
+  host/expo_results.py      laptop: the results manager (run -> return-of-flow pressure)
   host/expo_receiver.py     laptop: watch and grade the link
-  host/sim_server.py        laptop: stand-in for the board, no hardware
-  host/expotool/            ws (WebSocket), linkstats, hub (model of the board's rules)
+  host/sim_server.py        laptop: stand-in for the board, no hardware (--speed N)
+  host/expotool/            ws (WebSocket), linkstats, hub (model of the board's rules),
+                            results (recorder, analysis adapter, flags, results file)
+  results/                  expo_results.csv, anonymous (gitignored)
   tests/                    python -m pytest expo/tests
 ```
 

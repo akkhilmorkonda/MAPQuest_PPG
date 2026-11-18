@@ -34,15 +34,16 @@ MAX_BACKLOG = 16384
 
 
 class SimServer:
-    def __init__(self, hub: LinkSimHub | None = None, page: Path = PAGE) -> None:
+    def __init__(self, hub: LinkSimHub | None = None, page: Path = PAGE, speed: float = 1.0) -> None:
         self.hub = hub or LinkSimHub()
         self.page = page
+        self.speed = speed               # > 1 runs the simulated session faster (tests, rehearsal)
         self.writers: dict[int, asyncio.StreamWriter] = {}
         self.t0 = time.monotonic()
         self.server: asyncio.base_events.Server | None = None
 
     def now(self) -> float:
-        return time.monotonic() - self.t0
+        return (time.monotonic() - self.t0) * self.speed
 
     async def start(self, host: str, port: int) -> int:
         self.server = await asyncio.start_server(self._conn, host, port)
@@ -117,10 +118,11 @@ class SimServer:
             writer.close()
 
 
-def start_in_thread(host: str = "127.0.0.1", port: int = 0, hub: LinkSimHub | None = None):
+def start_in_thread(host: str = "127.0.0.1", port: int = 0, hub: LinkSimHub | None = None,
+                    speed: float = 1.0):
     """For tests: run a server on a background thread. Returns (server, port, stop)."""
     loop = asyncio.new_event_loop()
-    srv = SimServer(hub)
+    srv = SimServer(hub, speed=speed)
     started = threading.Event()
     box = {}
 
@@ -145,11 +147,14 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Local stand-in for the expo board (no hardware).")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--lan", action="store_true", help="listen on every interface, not just this computer")
+    ap.add_argument("--speed", type=float, default=1.0,
+                    help="run the simulated session this many times faster (the controller and "
+                         "analyser timeouts count simulated time, so keep it at 1 with a real phone)")
     args = ap.parse_args(argv)
     host = "0.0.0.0" if args.lan else "127.0.0.1"
 
     async def amain():
-        port = await SimServer().start(host, args.port)
+        port = await SimServer(speed=args.speed).start(host, args.port)
         print(f"expo sim server on http://{'127.0.0.1' if not args.lan else '<this computer>'}:{port}/  "
               f"(watch only: /?view, receiver: ws://127.0.0.1:{port}/ws)", flush=True)
         await asyncio.Event().wait()

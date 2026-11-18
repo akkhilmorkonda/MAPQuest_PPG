@@ -21,58 +21,80 @@ static const char WEB_INDEX_HTML[] = R"EXPOHTML(<!doctype html>
 html, body { margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 body { padding: env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 16px); }
-header { display: flex; align-items: center; gap: 8px; padding: 10px 0; flex-wrap: wrap; }
+header { display: flex; align-items: center; gap: 6px; padding: 10px 0 6px; flex-wrap: wrap; }
 header h1 { font-size: 16px; margin: 0 auto 0 0; letter-spacing: .02em; }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
-  background: var(--panel); border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); }
 .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 10px 0; }
-#fault { background: var(--bad); color: #fff; border: 0; font-weight: 600; cursor: pointer; }
-#fault small { display: block; font-weight: 400; opacity: .9; }
+.mode { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { min-height: 36px; padding: 6px 12px; border: 0; border-radius: 0; font-weight: 600; background: #1d222b; }
+.seg button.on { background: var(--accent); color: #06101d; }
+.banner { border: 0; font-weight: 600; cursor: pointer; }
+.banner small { display: block; font-weight: 400; opacity: .9; margin-top: 2px; }
+#fault { background: var(--bad); color: #fff; }
+#notice { background: #3a2f12; color: var(--warn); border: 1px solid #5a4818; }
 .hero { text-align: center; }
 #stateLabel { font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 #stateLabel.INFLATE, #stateLabel.HOLD { color: var(--warn); }
 #stateLabel.DEFLATE { color: var(--accent); }
 #stateLabel.DUMP { color: var(--bad); }
 #stateLabel.IDLE { color: var(--ok); }
-.pressure { font-size: 88px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; margin: 6px 0 0; }
+#stateLabel.ANALYSING { color: var(--vol); }
+.pressure { font-size: 96px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; margin: 6px 0 0; }
 .pressure.ready { color: var(--ok); }
+.pressure.over { color: var(--bad); }
 .unit { font-size: 18px; color: var(--muted); margin-left: 4px; font-weight: 500; }
 #sub { color: var(--muted); min-height: 1.4em; margin-top: 4px; }
+#sub.bad { color: var(--bad); font-weight: 600; }
+#timer { color: var(--muted); font-size: 13px; min-height: 1.3em; font-variant-numeric: tabular-nums; }
+#timer.warn { color: var(--warn); }
+#result { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); min-height: 1.4em; font-weight: 600; }
+#result .flag { color: var(--warn); font-weight: 500; }
+#result.none { color: var(--muted); font-weight: 500; }
+#result:empty { display: none; }
 .lights { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; font-size: 11px; color: var(--muted); }
 .lights div::before { content: ""; display: block; width: 12px; height: 12px; border-radius: 50%; margin: 0 auto 4px; background: var(--bad); }
 .lights div.on::before { background: var(--ok); }
-canvas { width: 100%; height: 150px; display: block; }
-.plotTitle { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 button { font: inherit; font-weight: 650; border-radius: 12px; border: 1px solid var(--line); background: #222833;
   color: var(--text); padding: 14px 10px; min-height: 52px; touch-action: manipulation; }
 button:disabled { opacity: .35; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #06101d; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #06101d; font-size: 19px; min-height: 64px; }
 #btnDump { grid-column: 1 / -1; background: var(--dump); border-color: var(--dump); color: #fff;
-  font-size: 22px; letter-spacing: .2em; min-height: 76px; }
-.row { display: flex; gap: 8px; align-items: center; grid-column: 1 / -1; }
-.row label { color: var(--muted); font-size: 13px; white-space: nowrap; }
-.row input { flex: 1; min-width: 0; font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+  font-size: 24px; letter-spacing: .2em; min-height: 84px; }
+#why { grid-column: 1 / -1; min-height: 1.3em; color: var(--warn); font-size: 13px; text-align: center; }
+#why button { min-height: 34px; padding: 4px 12px; margin-left: 6px; font-size: 13px; }
+#toast { min-height: 1.3em; color: var(--warn); font-size: 13px; text-align: center; margin-top: 6px; }
+summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
+.form { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; margin-top: 10px; }
+.form label { color: var(--muted); font-size: 13px; }
+.form input { min-width: 0; font: inherit; padding: 10px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--bg); color: var(--text); }
-.row button { min-height: 46px; padding: 10px 14px; }
-#toast { grid-column: 1 / -1; min-height: 1.3em; color: var(--warn); font-size: 13px; }
-#btnClaim { width: 100%; margin-top: 10px; }
-dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 8px 0 0; font-size: 13px; }
+.form span { color: var(--muted); font-size: 12px; }
+.tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.tools button { min-height: 44px; padding: 8px; }
+.tools .wide { grid-column: 1 / -1; }
+h3 { font-size: 13px; color: var(--muted); margin: 14px 0 4px; font-weight: 600; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 4px 0 0; font-size: 13px; }
 dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
-summary { cursor: pointer; color: var(--muted); font-size: 13px; }
-#log { list-style: none; margin: 8px 0 0; padding: 0; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; max-height: 220px; overflow: auto; }
+#log { list-style: none; margin: 4px 0 0; padding: 0; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; max-height: 220px; overflow: auto; }
 #log li { padding: 2px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 #log li.err { color: var(--bad); } #log li.ev { color: var(--text); } #log li.me { color: var(--accent); }
 .hint { color: var(--muted); font-size: 12px; text-align: center; margin-top: 12px; }
+canvas { width: 100%; height: 150px; display: block; }
+.plotTitle { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+body:not(.view) .viewOnly { display: none !important; }
 body.view .controlOnly { display: none !important; }
 @media (min-width: 900px) {
-  body { max-width: 1400px; margin: 0 auto; padding: 0 24px 24px; }
-  main { display: grid; grid-template-columns: 380px 1fr; gap: 16px; align-items: start; }
-  canvas { height: 240px; }
+  body.view { max-width: 1400px; margin: 0 auto; padding: 0 24px 24px; }
+  body.view main { display: grid; grid-template-columns: 400px 1fr; gap: 16px; align-items: start; }
+  body.view canvas { height: 240px; }
   body.view .pressure { font-size: 140px; }
 }
+@media (min-width: 600px) { body:not(.view) { max-width: 520px; margin: 0 auto; } }
 </style>
 </head>
 <body>
@@ -80,9 +102,14 @@ body.view .controlOnly { display: none !important; }
   <h1>MAPQuest</h1>
   <span class="chip"><span id="linkDot" class="dot"></span><span id="linkText">Connecting…</span></span>
   <span class="chip" id="roleChip">—</span>
+  <span class="chip" title="The laptop results process"><span id="anaDot" class="dot"></span>Analyser</span>
 </header>
+<div class="mode">Monitor
+  <span class="seg"><button id="viewPublic">Public</button><button id="viewTech">Technical</button></span>
+</div>
 
-<div id="fault" class="panel" hidden role="alert"><span id="faultText"></span><small>Tap to acknowledge</small></div>
+<div id="fault" class="panel banner" hidden role="alert"><span id="faultText"></span><small>Tap when the visitor is OK. Start stays locked until then.</small></div>
+<div id="notice" class="panel banner" hidden><span id="noticeText"></span><small>Tap to dismiss</small></div>
 
 <main>
   <section>
@@ -90,6 +117,8 @@ body.view .controlOnly { display: none !important; }
       <div id="stateLabel">—</div>
       <div class="pressure" id="pressure">--<span class="unit">mmHg</span></div>
       <div id="sub"></div>
+      <div id="timer"></div>
+      <div id="result" class="none"></div>
     </div>
     <div class="panel lights" id="lights">
       <div>Cuff</div><div>Distal PPG</div><div>Prox PPG</div><div>Distal IMU</div><div>Prox IMU</div>
@@ -99,22 +128,28 @@ body.view .controlOnly { display: none !important; }
       <div class="controls">
         <button id="btnStart" class="primary">Start</button>
         <button id="btnRun" class="primary">Run</button>
+        <div id="why"></div>
         <button id="btnDump">DUMP</button>
-        <button id="btnZero">Zero cuff</button>
-        <button id="btnBlink">Blink LED</button>
-        <div class="row">
-          <label for="gate">Run at ≥</label>
-          <input id="gate" type="number" inputmode="numeric" min="50" max="270" step="5" value="140">
-          <button id="btnGate">Set</button>
-        </div>
-        <div id="toast"></div>
       </div>
-      <button id="btnClaim" hidden>Take control</button>
+      <div id="toast"></div>
     </div>
 
     <div class="panel">
-      <details id="linkPanel">
-        <summary>Link</summary>
+      <details id="drawer">
+        <summary>⚙ Settings, tools, link</summary>
+        <div class="form controlOnly">
+          <label for="inTarget">Pump to</label><input id="inTarget" type="number" inputmode="numeric" min="100" max="250" step="5"><span>mmHg (shown)</span>
+          <label for="inGate">Run at ≥</label><input id="inGate" type="number" inputmode="numeric" min="60" max="250" step="5"><span>mmHg (board)</span>
+          <label for="inHold">Hold</label><input id="inHold" type="number" inputmode="numeric" min="0" max="60" step="1"><span>s (board)</span>
+          <label for="inCap">Cap</label><input id="inCap" type="number" inputmode="numeric" min="120" max="270" step="5"><span>mmHg (red above)</span>
+        </div>
+        <div class="tools controlOnly">
+          <button id="btnApply" class="wide">Apply settings</button>
+          <button id="btnZero">Zero cuff</button>
+          <button id="btnBlink">Blink LED</button>
+          <button id="btnClaim" class="wide">Take control</button>
+        </div>
+        <h3>Link</h3>
         <dl>
           <dt>Lines/s</dt><dd id="kRates">—</dd>
           <dt>Data</dt><dd id="kData">—</dd>
@@ -123,13 +158,15 @@ body.view .controlOnly { display: none !important; }
           <dt>Board</dt><dd id="kBoard">—</dd>
           <dt>Firmware</dt><dd id="kFw">—</dd>
         </dl>
+        <h3>Events</h3>
+        <ol id="log"></ol>
       </details>
     </div>
   </section>
 
-  <section>
+  <section class="viewOnly">
     <div class="panel">
-      <div class="plotTitle"><span>Cuff pressure, last 60 s</span><span id="pLegend">mmHg</span></div>
+      <div class="plotTitle"><span>Cuff pressure, last 60 s</span><span>mmHg</span></div>
       <canvas id="plotP"></canvas>
     </div>
     <div class="panel">
@@ -137,15 +174,10 @@ body.view .controlOnly { display: none !important; }
       <canvas id="plotV"></canvas>
       <button id="btnZeroVol" style="margin-top:8px;min-height:40px;padding:8px 14px">Zero volume</button>
     </div>
-    <div class="panel">
-      <details id="logPanel" open>
-        <summary>Events</summary>
-        <ol id="log"></ol>
-      </details>
-    </div>
   </section>
 </main>
-<p class="hint controlOnly">Keep this screen on during a run. If this phone drops off while the cuff is inflating or holding, the board vents the cuff.</p>
+<p class="hint controlOnly">Keep this screen on during a run (set the phone's screen timeout to "never"). If this phone drops off while the cuff is inflating or holding, the board vents the cuff.</p>
+<p class="hint viewOnly">Watch only. T, Page Up / Page Down or the arrow keys switch the monitor mode.</p>
 
 <script>
 'use strict';
@@ -154,13 +186,20 @@ const qs = new URLSearchParams(location.search);
 const VIEW = qs.has('view');
 const WS_URL = qs.get('ws') || ('ws://' + location.host + '/ws');
 document.body.classList.toggle('view', VIEW);
-if (VIEW) $('linkPanel').open = true;
+if (VIEW) $('drawer').open = true;
+
+// ---- operator settings kept on this phone (the board keeps Run at and Hold) ----
+function load(key, dflt) { try { const v = localStorage.getItem('mq.' + key); return v === null ? dflt : +v; } catch (e) { return dflt; } }
+function save(key, v) { try { localStorage.setItem('mq.' + key, String(v)); } catch (e) {} }
+const LOCAL = { target: load('target', 160), cap: load('cap', 190) };   // DESIGN 4.2
 
 const WINDOW_S = 60;
+const VENTED_BELOW = 10;
 const S = {
   connected: false, myId: 0, controller: 0, state: '?', p: NaN, pref: NaN, rate: NaN,
-  sensors: '00000', zeroed: false, clients: 0, pRunMin: NaN, rateSet: NaN, holdS: NaN,
-  wsDropped: 0, loopMaxUs: 0, holdStart: 0, fault: null, firmware: '', lastMsg: 0,
+  sensors: '00000', zeroed: false, clients: 0, pRunMin: NaN, rateSet: NaN, holdS: NaN, holdTimeout: 120,
+  wsDropped: 0, loopMaxUs: 0, holdStart: 0, closedAt: 0, fault: null, notice: null, firmware: '',
+  lastMsg: 0, view: 'PUBLIC', analyser: 0, result: null,
 };
 const BENIGN_DUMPS = new Set(['user', 'reached stop pressure']);
 
@@ -175,7 +214,7 @@ function tsec(tus) {
   return (tus + tOff) / 1e6;
 }
 
-// ---- histories --------------------------------------------------------------
+// ---- histories (laptop view only) --------------------------------------------
 const pHist = [];   // [t, p, pref]
 const vHist = [];   // [t, mOD]
 let ir0 = NaN, irRecent = [], sDecim = 0, tNow = 0;
@@ -213,8 +252,7 @@ function connect() {
   ws.onmessage = (e) => {
     S.lastMsg = performance.now();
     frames++; bytes += e.data.length;
-    const lines = e.data.split('\n');
-    for (const line of lines) handle(line.trim());
+    for (const line of e.data.split('\n')) handle(line.trim());
   };
   ws.onclose = () => {
     if (S.connected) log('err', 'connection lost');
@@ -242,9 +280,13 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---- protocol ---------------------------------------------------------------
-function meta(body) {
+function pairsOf(body) {
   const pairs = {};
   for (const tok of body.split(/\s+/)) { const i = tok.indexOf('='); if (i > 0) pairs[tok.slice(0, i)] = tok.slice(i + 1); }
+  return pairs;
+}
+function meta(body) {
+  const pairs = pairsOf(body);
   if ('client_id' in pairs) { S.myId = +pairs.client_id; render(); }
   if ('echo' in pairs && +pairs.client === S.myId) {
     const t0 = echoSent.get(+pairs.echo);
@@ -253,11 +295,22 @@ function meta(body) {
   }
   if ('firmware' in pairs) S.firmware = pairs.firmware;
   if (body.startsWith('set ')) {
-    if ('p_run_min' in pairs) { S.pRunMin = +pairs.p_run_min; if (document.activeElement !== $('gate')) $('gate').value = Math.round(S.pRunMin); }
+    if ('p_run_min' in pairs) S.pRunMin = +pairs.p_run_min;
     if ('rate' in pairs) S.rateSet = +pairs.rate;
     if ('hold_s' in pairs) S.holdS = +pairs.hold_s;
+    if ('hold_timeout_s' in pairs) S.holdTimeout = +pairs.hold_timeout_s;
+    fillSettings();
   }
+  if (body.startsWith('result ')) setResult(pairs);                  // INFO repeats the latest
+  if ('view' in pairs) S.view = pairs.view;
+  if ('analyser' in pairs) S.analyser = +pairs.analyser;
   if ('controller' in pairs && !body.startsWith('controller_')) S.controller = +pairs.controller;
+}
+
+function setResult(pairs) {
+  const run = +pairs.run;
+  if (!run) return;
+  S.result = { run, mmhg: pairs.mmhg === '-' ? NaN : +pairs.mmhg, flag: pairs.flag || '' };
 }
 
 function handle(line) {
@@ -267,6 +320,7 @@ function handle(line) {
   switch (f[0]) {
     case 'S': {
       count('S'); idxCheck('S', +f[1]);
+      if (!VIEW) break;
       const t = tsec(+f[2]); tNow = Math.max(tNow, t);
       const ir = +f[3];
       irRecent.push(ir); if (irRecent.length > 25) irRecent.shift();
@@ -281,7 +335,7 @@ function handle(line) {
       const t = tsec(+f[2]); tNow = Math.max(tNow, t);
       setState(f[3]);
       S.p = parseFloat(f[4]); S.pref = parseFloat(f[5]); S.rate = parseFloat(f[6]);
-      pHist.push([t, S.p, S.pref]); trim(pHist);
+      if (VIEW) { pHist.push([t, S.p, S.pref]); trim(pHist); }
       break;
     }
     case 'ST': {
@@ -290,7 +344,9 @@ function handle(line) {
       S.sensors = f[3] || '00000'; S.zeroed = f[4] === '1'; S.controller = +f[5]; S.clients = +f[6];
       S.pRunMin = +f[7]; S.holdS = +f[8]; S.rateSet = +f[9];
       S.wsDropped = +f[11]; S.loopMaxUs = Math.max(+f[12] || 0, 0);
-      if (document.activeElement !== $('gate') && isFinite(S.pRunMin)) $('gate').value = Math.round(S.pRunMin);
+      if (f[13]) S.view = f[13];
+      if (f[14] !== undefined) S.analyser = +f[14];
+      fillSettings();
       break;
     }
     case 'EV': {
@@ -303,7 +359,11 @@ function handle(line) {
         if (!VIEW && S.connected && S.controller === 0) send('CLAIM');     // the slot freed up
       } else if (name === 'dump' && !BENIGN_DUMPS.has(detail)) {
         S.fault = detail;
-      }
+      } else if (name === 'warning' && detail.indexOf('controller lost during DEFLATE') >= 0) {
+        S.notice = 'The run kept going on the board while this phone was away. It ends by itself at the stop pressure.';
+      } else if (name === 'view') S.view = detail.split(' ')[0];
+      else if (name === 'analyser') { const tok = detail.split(' ')[0]; S.analyser = tok === 'none' ? 0 : +tok; }
+      else if (name === 'result') setResult(pairsOf(detail));
       if (name !== 'state' || detail !== 'IDLE') log('ev', name + (detail ? ': ' + detail : ''));
       break;
     }
@@ -320,6 +380,8 @@ function handle(line) {
 function setState(s) {
   if (!s || s === S.state) return;
   if (s === 'HOLD') S.holdStart = performance.now();
+  if (s === 'INFLATE') S.closedAt = performance.now();
+  if (s === 'IDLE' || s === 'DUMP') S.closedAt = 0;
   S.state = s;
 }
 
@@ -327,25 +389,51 @@ function setState(s) {
 function haveControl() { return S.connected && S.myId > 0 && S.controller === S.myId; }
 let lastUserCmd = -1e9;
 function cmd(text) { lastUserCmd = performance.now(); return send(text); }   // a button press
-$('btnStart').onclick = () => cmd('START');
+$('btnStart').onclick = () => { S.result = null; cmd('START'); keepAwake(); };
 $('btnRun').onclick = () => cmd('RUN');
-$('btnDump').onclick = () => { if (!cmd('DUMP')) toast('Not connected: open the bulb release screw'); };
+$('btnDump').onclick = () => { if (!cmd('DUMP')) toast('Not connected: open the bulb release screw now'); };
 $('btnZero').onclick = () => cmd('ZERO');
 $('btnBlink').onclick = () => cmd('BLINK');
-$('btnGate').onclick = () => {
-  const v = Math.round(+$('gate').value);
-  if (isFinite(v)) cmd('SET p_run_min ' + v);
-};
 $('btnClaim').onclick = () => {
   if (S.controller && S.controller !== S.myId) {
     if (!confirm('Device ' + S.controller + ' has control. Take it? (Only works when no run is active.)')) return;
     cmd('CLAIM FORCE');
   } else cmd('CLAIM');
 };
+$('btnApply').onclick = () => {
+  const target = Math.round(+$('inTarget').value), cap = Math.round(+$('inCap').value);
+  const gate = Math.round(+$('inGate').value), hold = Math.round(+$('inHold').value);
+  if (isFinite(target) && target > 0) { LOCAL.target = target; save('target', target); }
+  if (isFinite(cap) && cap > 0) { LOCAL.cap = cap; save('cap', cap); }
+  if (isFinite(gate) && gate !== Math.round(S.pRunMin)) cmd('SET p_run_min ' + gate);
+  if (isFinite(hold) && hold !== Math.round(S.holdS)) setTimeout(() => cmd('SET hold_s ' + hold), 120);
+  editing = false; fillSettings(true);
+};
+let editing = false;
+for (const id of ['inTarget', 'inGate', 'inHold', 'inCap']) $(id).addEventListener('input', () => { editing = true; });
+function fillSettings(force) {
+  if (editing && !force) return;
+  $('inTarget').value = LOCAL.target; $('inCap').value = LOCAL.cap;
+  if (isFinite(S.pRunMin)) $('inGate').value = Math.round(S.pRunMin);
+  if (isFinite(S.holdS)) $('inHold').value = Math.round(S.holdS);
+}
+function setView(mode) { if (mode !== S.view) cmd('VIEW ' + mode); }
+$('viewPublic').onclick = () => setView('PUBLIC');
+$('viewTech').onclick = () => setView('TECHNICAL');
+if (VIEW) document.addEventListener('keydown', (e) => {           // laptop key or presentation clicker
+  if (['t', 'T', 'PageUp', 'PageDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    e.preventDefault(); setView(S.view === 'TECHNICAL' ? 'PUBLIC' : 'TECHNICAL');
+  }
+});
 $('btnZeroVol').onclick = () => {
   if (irRecent.length) { ir0 = irRecent.reduce((a, b) => a + b, 0) / irRecent.length; vHist.length = 0; }
 };
 $('fault').onclick = () => { S.fault = null; render(); };
+$('notice').onclick = () => { S.notice = null; render(); };
+
+function keepAwake() {    // only on HTTPS; the board serves HTTP, so set the screen timeout too
+  try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
+}
 
 let toastTimer = null;
 function toast(msg) { $('toast').textContent = msg; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').textContent = ''; }, 5000); }
@@ -359,46 +447,116 @@ function log(cls, text) {
   while (ol.children.length > 40) ol.lastChild.remove();
 }
 
+// ---- what the operator reads ----------------------------------------------------
+const FAULT_TEXT = {   // DESIGN 8.2, the phone's version: what happened and what to do
+  'overpressure': 'Pressure passed the safety ceiling (280 mmHg). Ask how the arm feels.',
+  'hold timeout': 'The cuff was closed for over 2 minutes. Ask how the arm feels.',
+  'run timeout': 'Deflation took far longer than it should. Check the valve and tubing.',
+  'pressure dropout': 'The pressure sensor stopped reporting. Check its cable; do not run until it reads again.',
+  'pressure sensor integrity flag': 'The pressure sensor failed its self-check. It needs a full power cycle.',
+  'ppg dropout D': 'Lost the forearm light sensor. Check the distal band cable.',
+  'ppg dropout P': 'Lost the upper-arm light sensor. Check the proximal band cable.',
+  'controller lost': 'This phone dropped off the network during the run. Keep the screen on.',
+};
+const FLAG_TEXT = { arm_moved: 'arm moved', pulse_present: 'flow may not have fully stopped', incomplete: 'signal incomplete' };
+
+// One reason Start is locked, with its fix (DESIGN 8.1), or '' if it isn't.
+function startBlocker() {
+  if (!S.connected) return 'Not connected to the board';
+  if (!haveControl()) return S.controller ? 'Another device has control' : 'Take control first (settings)';
+  if (S.fault) return 'Tap the red banner first';
+  if (S.state !== 'IDLE') return '';
+  if (S.sensors[0] !== '1') return "Pressure sensor fault: can't run";
+  if (!S.zeroed) return 'ZERO';
+  if (!(S.p < VENTED_BELOW)) return 'Wait for the cuff to empty, or open the release screw';
+  if (S.sensors[1] !== '1' || S.sensors[2] !== '1') return 'A light-sensor band is not OK: check its cable';
+  return '';
+}
+
+function resultLine() {
+  const r = S.result;
+  if (!r) return ['', true];
+  if (r.flag === 'pending') return ['Analysing run ' + r.run + '…', true];
+  if (r.flag === 'no_onset') return ['Run ' + r.run + ': no clear reading. Try another run.', true];
+  if (r.flag === 'safety_stop') return ['Run ' + r.run + ': safety stop, no reading', true];
+  if (r.flag === 'stopped') return ['Run ' + r.run + ': stopped, no reading', true];
+  if (!isFinite(r.mmhg)) return ['Run ' + r.run + ': no reading', true];
+  return ['Return of flow: ' + Math.round(r.mmhg) + ' mmHg' + (FLAG_TEXT[r.flag] ? ' · ⚠ ' + FLAG_TEXT[r.flag] : '')
+    + ' (run ' + r.run + ')', false];
+}
+
 // ---- rendering ----------------------------------------------------------------
 function fmt(v, d) { return isFinite(v) ? v.toFixed(d) : '--'; }
 
 function render() {
   $('linkDot').className = 'dot' + (S.connected ? ' ok' : '');
   $('linkText').textContent = S.connected ? 'Live' : 'Connecting…';
+  $('anaDot').className = 'dot' + (S.connected && S.analyser ? ' ok' : '');
   const ctl = haveControl();
   $('roleChip').textContent = !S.connected ? '—' : VIEW ? 'Watching' : ctl ? 'You control'
     : S.controller ? ('Device ' + S.controller + ' controls') : 'No controller';
+  $('viewPublic').classList.toggle('on', S.view !== 'TECHNICAL');
+  $('viewTech').classList.toggle('on', S.view === 'TECHNICAL');
+  $('viewPublic').disabled = $('viewTech').disabled = !S.connected;
 
   const st = S.connected ? S.state : '?';
-  const label = { IDLE: 'Ready', INFLATE: 'Inflating', HOLD: 'Holding', DEFLATE: 'Deflating', DUMP: 'Venting' }[st] || 'Connecting';
+  const analysing = st === 'IDLE' && S.result && S.result.flag === 'pending';
+  const label = analysing ? 'Analysing'
+    : { IDLE: 'Ready', INFLATE: 'Inflating', HOLD: 'Holding', DEFLATE: 'Deflating', DUMP: 'Venting' }[st] || 'Connecting';
   $('stateLabel').textContent = label;
-  $('stateLabel').className = st;
-  const pEl = $('pressure');
-  pEl.firstChild.nodeValue = S.connected && isFinite(S.p) ? Math.round(S.p) : '--';
-  pEl.classList.toggle('ready', st === 'INFLATE' && S.p >= S.pRunMin);
+  $('stateLabel').className = analysing ? 'ANALYSING' : st;
 
-  let sub = '';
-  if (st === 'IDLE') sub = ctl ? 'Press Start to close the valve' : '';
-  else if (st === 'INFLATE') sub = S.p >= S.pRunMin ? 'Ready: press Run' : 'Run unlocks at ' + fmt(S.pRunMin, 0) + ' mmHg';
-  else if (st === 'HOLD') sub = 'Deflation starts in ' + Math.max(0, Math.ceil(S.holdS - (performance.now() - S.holdStart) / 1000)) + ' s';
+  const pEl = $('pressure');
+  const p = S.p;
+  pEl.firstChild.nodeValue = S.connected && isFinite(p) ? Math.round(p) : '--';
+  const over = isFinite(p) && p > LOCAL.cap && st !== 'IDLE';
+  pEl.classList.toggle('over', over);
+  pEl.classList.toggle('ready', !over && st === 'INFLATE' && p >= S.pRunMin);
+
+  let sub = '', subBad = false;
+  if (st === 'IDLE') sub = analysing ? 'Working out the return-of-flow pressure' : ctl ? 'Fit the cuff and bands, then Start' : '';
+  else if (st === 'INFLATE') {
+    if (over) { sub = 'Above ' + LOCAL.cap + ' mmHg: let some air out'; subBad = true; }
+    else if (p >= S.pRunMin) sub = 'Ready: press Run';
+    else sub = 'Pump to ' + LOCAL.target + ' · Run unlocks at ' + fmt(S.pRunMin, 0);
+  } else if (st === 'HOLD') sub = 'Deflation starts in ' + Math.max(0, Math.ceil(S.holdS - (performance.now() - S.holdStart) / 1000)) + ' s';
   else if (st === 'DEFLATE') sub = fmt(S.rate, 1) + ' mmHg/s (target −' + fmt(S.rateSet, 1) + ')';
   else if (st === 'DUMP') sub = 'Cuff venting';
   $('sub').textContent = sub;
+  $('sub').className = subBad ? 'bad' : '';
+
+  const closed = S.closedAt && (st === 'INFLATE' || st === 'HOLD' || st === 'DEFLATE');
+  const secs = closed ? (performance.now() - S.closedAt) / 1000 : 0;
+  $('timer').textContent = closed ? 'cuff closed ' + Math.floor(secs) + ' s' + (st !== 'DEFLATE' ? ' · vents at ' + Math.round(S.holdTimeout) + ' s' : '') : '';
+  $('timer').className = closed && st !== 'DEFLATE' && secs > S.holdTimeout - 30 ? 'warn' : '';
+
+  const [rText, rNone] = resultLine();
+  $('result').textContent = rText;
+  $('result').className = rNone ? 'none' : '';
 
   const lights = $('lights').children;
   for (let i = 0; i < 5; i++) lights[i].classList.toggle('on', S.connected && S.sensors[i] === '1');
 
-  const sensorsOk = S.sensors[0] === '1' && S.sensors[1] === '1' && S.sensors[2] === '1';
-  $('btnStart').disabled = !(ctl && st === 'IDLE' && S.zeroed && sensorsOk && S.p < 10);
-  $('btnRun').disabled = !(ctl && st === 'INFLATE' && S.p >= S.pRunMin);
+  const blocker = startBlocker();
+  $('btnStart').disabled = !(ctl && st === 'IDLE' && !blocker);
+  $('btnRun').disabled = !(ctl && st === 'INFLATE' && p >= S.pRunMin);
+  const why = $('why');
+  if (blocker === 'ZERO') {
+    if (!why.querySelector('button')) { why.innerHTML = 'Cuff not zeroed <button>Zero cuff</button>'; why.querySelector('button').onclick = () => cmd('ZERO'); }
+  } else {
+    const warn = !blocker && ctl && st === 'IDLE' && !S.analyser ? 'Analyser offline: the run is safe, but gets no result' : '';
+    if (why.textContent !== (blocker || warn)) why.textContent = blocker || warn;
+  }
   $('btnZero').disabled = !(ctl && st === 'IDLE');
   $('btnBlink').disabled = !ctl;
-  $('btnGate').disabled = !(ctl && (st === 'IDLE' || st === 'INFLATE'));
+  $('btnApply').disabled = !(ctl && (st === 'IDLE' || st === 'INFLATE'));
   $('btnDump').disabled = false;                       // always: says so if it cannot reach the board
   $('btnClaim').hidden = !S.connected || ctl;
 
   $('fault').hidden = !S.fault;
-  $('faultText').textContent = S.fault ? 'Cuff vented automatically: ' + S.fault : '';
+  $('faultText').textContent = S.fault ? 'Cuff vented automatically. ' + (FAULT_TEXT[S.fault] || S.fault) : '';
+  $('notice').hidden = !S.notice;
+  $('noticeText').textContent = S.notice || '';
 }
 
 function renderLink() {
@@ -460,6 +618,7 @@ function frame(ts) {
   if (ts - lastFrame < 50) return;                     // ~20 fps is plenty
   lastFrame = ts;
   render();
+  if (!VIEW) return;
   plot($('plotP'), [
     { pts: pHist, col: 2, color: C('--ref'), dash: [6, 4], width: 1.5 },
     { pts: pHist, col: 1, color: C('--trace') },
@@ -467,7 +626,8 @@ function frame(ts) {
   plot($('plotV'), [{ pts: vHist, col: 1, color: C('--vol') }], null, []);
 }
 
-render(); renderLink(); connect(); requestAnimationFrame(frame);
+fillSettings(true); render(); renderLink(); connect(); requestAnimationFrame(frame);
+setInterval(() => { if (document.hidden) render(); }, 500);   // keep state current in a background tab
 </script>
 </body>
 </html>

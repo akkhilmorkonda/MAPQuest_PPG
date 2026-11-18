@@ -18,7 +18,10 @@ EXPO = Path(__file__).resolve().parent.parent
 SOURCE = EXPO / "web" / "index.html"
 # Every sketch that serves the page gets its own copy (an Arduino sketch can
 # only include files from its own folder).
-TARGETS = [EXPO / "firmware" / "expo_link_sim" / "web_page.h"]
+TARGETS = [
+    EXPO / "firmware" / "expo_link_sim" / "web_page.h",
+    EXPO / "firmware" / "expo_fw" / "web_page.h",
+]
 DELIM = "EXPOHTML"
 
 

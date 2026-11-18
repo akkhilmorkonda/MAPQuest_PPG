@@ -1,4 +1,8 @@
-// MAPQuest IRB firmware (irb/DESIGN.md)
+// MAPQuest EXPO firmware (expo/README.md, expo/DESIGN.md)
+//
+// The IRB firmware (irb/firmware/irb_fw 0.2.1) plus the expo Wi-Fi link.
+// Sensors, valve, PI deflation control, watchdog and safety layer are the
+// IRB code unchanged; what is new is marked "expo".
 //
 // Board   : ESP32-WROOM-32D dev board, Arduino board "ESP32 Dev Module"
 // Sensors : TCA9548A mux 0x70
@@ -8,24 +12,41 @@
 // Valve   : Olimex AIR-E-VALVE-3V, normally open, GPIO25 -> MOSFET
 // Library : SparkFun BMI270 Arduino Library (Library Manager)
 //
-// Phase 2: streaming, the session state machine, PI deflation control and
-// the safety layer. NOT YET RUN ON HARDWARE: compile-checked only.
+// NOT YET RUN ON HARDWARE: compile-checked only.
 //
-// Serial 921600 baud, newline-terminated commands (DESIGN 4.4):
-//   INFO                    settings, limits and every sensor's status
-//   STREAM 1|0              data lines on / off
+// expo: the board is a WPA2 access point (secrets.h). The phone opens
+// http://192.168.4.1/ to run the cuff; the laptop watches. Every WebSocket
+// client receives the data lines whenever it is connected. Control rules
+// (expo/README.md, "Control rules"), as in the link simulator:
+//   - any client may watch, send DUMP, INFO, P, ECHO <n>, CLAIM, RELEASE;
+//   - one client at a time holds control and may also send START, RUN,
+//     ZERO, BLINK and SET rate|hold_s|p_stop|p_run_min;
+//   - the controller is lost if it disconnects or is silent for
+//     CONTROLLER_TIMEOUT_MS; during INFLATE or HOLD of a run it started,
+//     that dumps the cuff ("controller lost"); during DEFLATE it warns;
+//   - bench commands (DARK, AMP, R, SCAN, PPG, VALVE TEST, TEST HANG, STREAM,
+//     RADIO, and SET of gains and limits) are USB serial only.
+//
+// Serial 921600 baud, newline-terminated commands (irb/DESIGN.md 4.4):
+//   INFO                    settings, limits, every sensor's status, Wi-Fi
+//   STREAM 1|0              data lines on serial on / off (Wi-Fi always gets them)
 //   START | RUN | DUMP      session: close valve / hold then deflate / vent now
-//   ZERO                    pressure zero (IDLE, not streaming, cuff vented)
-//   DARK D|P                LED dark offsets for one band (IDLE, not streaming)
+//   ZERO                    pressure zero (IDLE, serial stream off, cuff vented)
+//   DARK D|P                LED dark offsets for one band (IDLE, serial stream off)
 //   AMP D|P IR|RED <0-255>  LED current (IDLE)
 //   SET <key> <value>       rate kp ki kd u0 hold_s p_stop p_run_min p_max hold_timeout_s
 //                           (IDLE; p_run_min also in INFLATE)
-//   R                       re-probe every sensor (IDLE, not streaming)
+//   R                       re-probe every sensor (IDLE, serial stream off)
 //   SCAN, PPG D|P, P        bring-up checks
-//   VALVE TEST, TEST HANG   valve click test; watchdog test (IDLE, not streaming)
+//   VALVE TEST, TEST HANG   valve click test; watchdog test (IDLE, serial stream off)
+//   BLINK, ECHO <n>         expo: flash the LED; link round-trip check
+//   RADIO 0|1               expo: Wi-Fi radio off / on (IDLE), for noise checks
 //
 // Device -> host lines: '#' metadata, S distal + pressure, SP proximal,
-// M IMU, C controller (10 Hz), EV events, E errors. Columns are in INFO.
+// M IMU, C controller (10 Hz), ST status (2 Hz, expo), EV events, E errors.
+// Columns are in INFO. A blocking command that runs while data is flowing
+// (ZERO, DARK, ...) advances the sample counters across the pause and sends
+// a stream_gap event: a gap is never spliced shut.
 
 #include <WiFi.h>
 #include <Wire.h>
@@ -34,13 +55,48 @@
 #include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
+#include <stdarg.h>
 #include <SparkFun_BMI270_Arduino_Library.h>
 
 #include "band.h"
 #include "config.h"
 #include "session.h"
+#include "wifi_link.h"
 
-static bool g_streaming = false;
+// ===========================================================================
+// Output (expo). Out goes to serial and every Wi-Fi client: metadata,
+// events, errors. dataLine() goes to serial only while serial streaming is
+// on (STREAM 1), and to Wi-Fi whenever a client is connected.
+// ===========================================================================
+
+class TeeOut : public Print {
+ public:
+  size_t write(uint8_t c) override { return write(&c, 1); }
+  size_t write(const uint8_t *buf, size_t n) override {
+    Serial.write(buf, n);
+    wifiWrite(buf, n);
+    return n;
+  }
+};
+
+static TeeOut Out;
+static bool   g_serial_stream = false;
+
+static bool dataWanted() { return g_serial_stream || wifiStreaming(); }
+
+static void dataLine(const char *fmt, ...) {
+  const bool toWifi = wifiStreaming();
+  if (!g_serial_stream && !toWifi) return;
+  char buf[192];
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  if (n <= 0) return;
+  if (n >= (int)sizeof(buf)) n = sizeof(buf) - 1;
+  if (g_serial_stream) Serial.write((const uint8_t *)buf, n);
+  if (toWifi) wifiWrite((const uint8_t *)buf, n);
+}
 
 // ===========================================================================
 // Events. EV lines go out whether or not data is streaming: a dump must
@@ -448,14 +504,14 @@ static void ppgDrain(Band &b) {
       const uint32_t i0 = Wire.read(), i1 = Wire.read(), i2 = Wire.read();
       const uint32_t red = ((r0 << 16) | (r1 << 8) | r2) & 0x03FFFF;
       const uint32_t ir  = ((i0 << 16) | (i1 << 8) | i2) & 0x03FFFF;
-      if (g_streaming) {
+      if (dataWanted()) {
         if (&b == &g_distal) {
-          Out.printf("S,%lu,%lu,%lu,%lu,%lu,%lu,%u\n", (unsigned long)b.ppg_idx,
-                        (unsigned long)t_us, (unsigned long)ir, (unsigned long)red,
-                        (unsigned long)g_p_idx, (unsigned long)g_p_raw, g_p_status);
+          dataLine("S,%lu,%lu,%lu,%lu,%lu,%lu,%u\n", (unsigned long)b.ppg_idx,
+                   (unsigned long)t_us, (unsigned long)ir, (unsigned long)red,
+                   (unsigned long)g_p_idx, (unsigned long)g_p_raw, g_p_status);
         } else {
-          Out.printf("SP,%lu,%lu,%lu,%lu\n", (unsigned long)b.ppg_idx,
-                        (unsigned long)t_us, (unsigned long)ir, (unsigned long)red);
+          dataLine("SP,%lu,%lu,%lu,%lu\n", (unsigned long)b.ppg_idx,
+                   (unsigned long)t_us, (unsigned long)ir, (unsigned long)red);
         }
       }
       b.ppg_idx++;
@@ -597,10 +653,8 @@ static void imuPoll(Band &b) {
   const uint32_t t_us = micros();
   int16_t v[6];
   for (int i = 0; i < 6; i++) v[i] = (int16_t)((uint16_t)raw[2 * i] | ((uint16_t)raw[2 * i + 1] << 8));
-  if (g_streaming) {
-    Out.printf("M,%lu,%lu,%c,%d,%d,%d,%d,%d,%d\n", (unsigned long)b.imu_idx,
-                  (unsigned long)t_us, b.tag, v[0], v[1], v[2], v[3], v[4], v[5]);
-  }
+  dataLine("M,%lu,%lu,%c,%d,%d,%d,%d,%d,%d\n", (unsigned long)b.imu_idx,
+           (unsigned long)t_us, b.tag, v[0], v[1], v[2], v[3], v[4], v[5]);
   b.imu_idx++;
   b.imu_last_ms = millis();
   if (b.imu_warned) {
@@ -789,6 +843,7 @@ static float     g_rate         = NAN;   // 1 s least-squares slope, mmHg/s
 static float     g_pref         = NAN;
 static uint32_t  g_c_idx        = 0;
 static uint32_t  g_next_win_ms  = 0;
+static uint32_t  g_next_status_ms = 0;   // expo: next ST line
 static bool      g_overp_warned = false;
 
 static float g_hist_t[RATE_HISTORY], g_hist_p[RATE_HISTORY];
@@ -925,10 +980,10 @@ static void controlWindow(uint32_t now) {
       break;
   }
 
-  if (g_streaming) {
+  if (dataWanted()) {
     const float dutyPct = (g_state == ST_DEFLATE) ? g_duty * 100.0f : (g_valve_closed ? 0.0f : 100.0f);
-    Out.printf("C,%lu,%lu,%s,%.2f,%.2f,%.3f,%.1f\n", (unsigned long)g_c_idx,
-                  (unsigned long)micros(), stateName(g_state), g_p_window, g_pref, g_rate, dutyPct);
+    dataLine("C,%lu,%lu,%s,%.2f,%.2f,%.3f,%.1f\n", (unsigned long)g_c_idx,
+             (unsigned long)micros(), stateName(g_state), g_p_window, g_pref, g_rate, dutyPct);
   }
   g_c_idx++;
 }
@@ -973,6 +1028,87 @@ static void safetyChecks(uint32_t now) {
 }
 
 // ===========================================================================
+// Controller (expo): one Wi-Fi client at a time may command the cuff
+// ===========================================================================
+
+static uint32_t g_controller  = 0;       // client id, 0 = none
+static bool     g_run_by_wifi = false;   // the active run was started over Wi-Fi
+
+static void setController(uint32_t id, const char *why) {
+  g_controller = id;
+  char d[48];
+  if (id) snprintf(d, sizeof(d), "%lu %s", (unsigned long)id, why);
+  else    snprintf(d, sizeof(d), "none %s", why);
+  event("controller", d);
+}
+
+// Every loop pass. Losing the controller during INFLATE or HOLD of a run it
+// started dumps the cuff: nobody would be left to press DUMP. During DEFLATE
+// the board's own limits finish the run, so it only warns.
+static void controllerService(uint32_t now) {
+  if (!g_controller) return;
+  // Signed difference: last-seen is stamped on the other core and can be a
+  // hair later than now.
+  const bool gone = !wifiConnected(g_controller) ||
+                    (int32_t)(now - wifiLastSeenMs(g_controller)) > (int32_t)CONTROLLER_TIMEOUT_MS;
+  if (!gone) return;
+  setController(0, "lost");
+  if (!g_run_by_wifi || !sessionActive()) return;
+  if (g_state == ST_INFLATE || g_state == ST_HOLD) dump("controller lost");
+  else event("warning", "controller lost during DEFLATE: the run finishes on the board's limits");
+}
+
+static void cmdClaim(uint32_t id, const char *arg) {
+  const bool force = arg && strcmp(arg, "FORCE") == 0;
+  if (g_controller == 0 || g_controller == id) { setController(id, "claimed"); return; }
+  if (force && !sessionActive()) {
+    char why[32];
+    snprintf(why, sizeof(why), "taken from %lu", (unsigned long)g_controller);
+    setController(id, why);
+    return;
+  }
+  Out.printf("E,CLAIM refused: client %lu has control%s\n", (unsigned long)g_controller,
+             force ? " and a run is active" : " (CLAIM FORCE takes it when no run is active)");
+}
+
+static void cmdRelease(uint32_t id) {
+  if (g_controller != id) { Out.println(F("E,RELEASE refused: this client does not have control")); return; }
+  if (sessionActive() && g_run_by_wifi) { Out.println(F("E,RELEASE refused while its run is active")); return; }
+  setController(0, "released");
+}
+
+// ===========================================================================
+// Blocking commands while data flows (expo). The IRB firmware refuses them
+// while streaming; here Wi-Fi clients always receive the stream, so they run
+// and the gap is accounted for. The FIFOs are cleared after the block, so
+// the samples produced during it are lost: advance every counter by the
+// time that passed, so idx / fs stays true time, and say so.
+// ===========================================================================
+
+static bool g_pass_blocked = false;   // this loop pass ran a blocking command
+
+static void endBlocking(const char *what, uint32_t t0_ms) {
+  const uint32_t now = millis();
+  if (dataWanted()) {
+    // Timed from the command, not the last drain: R re-probes the sensors
+    // and restarts their clocks. Good to a sample or two either way.
+    const uint32_t ms = now - t0_ms;
+    const uint32_t fsHz = SAMPLE_RATE_SPS / SAMPLE_AVERAGING;
+    for (Band &b : g_bands) {
+      if (b.ppg_ok) b.ppg_idx += ms * fsHz / 1000;
+      if (b.imu_ok) b.imu_idx += ms * IMU_ODR_HZ / 1000;
+    }
+    g_c_idx += ms / VALVE_WINDOW_MS;
+    char d[40];
+    snprintf(d, sizeof(d), "%s ms=%lu", what, (unsigned long)(now - t0_ms));
+    event("stream_gap", d);
+  }
+  ppgResyncAll();
+  g_next_win_ms = now;
+  g_pass_blocked = true;
+}
+
+// ===========================================================================
 // Reports
 // ===========================================================================
 
@@ -981,11 +1117,20 @@ static int sensorsOk() {
          (g_bands[0].imu_ok ? 1 : 0) + (g_bands[1].imu_ok ? 1 : 0);
 }
 
+static uint32_t g_loop_max_us = 0;        // since boot
+static uint32_t g_loop_win_max_us = 0;    // since the last ST line
+static uint32_t g_slow_passes = 0;
+
 static void printInfo() {
   Out.printf("# firmware=%s\n", FIRMWARE_VERSION);
   Out.println(F("# board=esp32-wroom-32d"));
   Out.printf("# reset_reason=%s\n", resetReasonName(esp_reset_reason()));
   Out.printf("# watchdog_ok=%d watchdog_ms=%lu\n", g_wdt_ok ? 1 : 0, (unsigned long)WDT_TIMEOUT_MS);
+  wifiPrintInfo(Out);
+  Out.printf("# controller=%lu controller_timeout_ms=%lu run_by_wifi=%d\n",
+             (unsigned long)g_controller, (unsigned long)CONTROLLER_TIMEOUT_MS, g_run_by_wifi ? 1 : 0);
+  Out.printf("# loop_max_us=%lu loop_slow_passes=%lu loop_warn_us=%lu\n", (unsigned long)g_loop_max_us,
+             (unsigned long)g_slow_passes, (unsigned long)LOOP_WARN_US);
   Out.printf("# i2c_hz=%lu sda=%d scl=%d\n", (unsigned long)I2C_CLOCK_HZ, PIN_SDA, PIN_SCL);
   Out.printf("# mux_ok=%d mux_addr=0x%02X\n", g_mux_ok ? 1 : 0, MUX_ADDR);
   for (Band &b : g_bands) {
@@ -1031,10 +1176,45 @@ static void printInfo() {
   Out.println(F("# columns_M=m_idx,t_us,band,ax,ay,az,gx,gy,gz"));
   Out.println(F("# columns_C=c_idx,t_us,state,p_mmhg,pref_mmhg,rate_mmhg_s,duty_pct"));
   Out.println(F("# columns_EV=t_us,name,detail"));
+  Out.println(F("# columns_ST=t_us,state,sensors,zeroed,controller,clients,p_run_min,hold_s,"
+                "rate,p_max,ws_dropped_bytes,loop_max_us"));
   Out.printf("# valve_pin=%d valve_type=normally_open valve=%s\n",
                 PIN_VALVE, g_valve_closed ? "CLOSED" : "open");
   Out.printf("# state=%s streaming=%d sensors_ok=%d/5\n", stateName(g_state),
-                g_streaming ? 1 : 0, sensorsOk());
+                g_serial_stream ? 1 : 0, sensorsOk());
+}
+
+// expo: compact status for the phone, every STATUS_PERIOD_MS. sensors is one
+// digit each for pressure, distal PPG, proximal PPG, distal IMU, proximal IMU.
+static uint32_t g_last_dropped = 0;
+static uint32_t g_last_slow = 0, g_last_failed = 0;
+
+static void statusLine() {
+  dataLine("ST,%lu,%s,%d%d%d%d%d,%d,%lu,%u,%.1f,%.1f,%.2f,%.1f,%lu,%lu\n", (unsigned long)micros(),
+           stateName(g_state), g_p_ok ? 1 : 0, g_bands[0].ppg_ok ? 1 : 0, g_bands[1].ppg_ok ? 1 : 0,
+           g_bands[0].imu_ok ? 1 : 0, g_bands[1].imu_ok ? 1 : 0, g_p_zeroed ? 1 : 0,
+           (unsigned long)g_controller, (unsigned)wifiClientCount(), S.p_run_min, S.hold_s, S.rate,
+           S.p_max, (unsigned long)wifiDroppedBytes(), (unsigned long)g_loop_win_max_us);
+  g_loop_win_max_us = 0;
+  const uint32_t dropped = wifiDroppedBytes();
+  if (dropped != g_last_dropped) {
+    char d[48];
+    snprintf(d, sizeof(d), "bytes=%lu total=%lu", (unsigned long)(dropped - g_last_dropped),
+             (unsigned long)dropped);
+    event("wifi_overflow", d);
+    g_last_dropped = dropped;
+  }
+  // A device closed by the board (it vanished or fell behind). The others
+  // lost nothing; this says why that one went.
+  const uint32_t slow = wifiSlowClosures(), failed = wifiSendFailures();
+  if (slow != g_last_slow || failed != g_last_failed) {
+    char d[64];
+    snprintf(d, sizeof(d), "too_slow=%lu send_failed=%lu", (unsigned long)(slow - g_last_slow),
+             (unsigned long)(failed - g_last_failed));
+    event("wifi_client_closed", d);
+    g_last_slow = slow;
+    g_last_failed = failed;
+  }
 }
 
 static void scanBus(const char *label) {
@@ -1099,14 +1279,16 @@ static bool requireIdle(const char *cmd, bool alsoNotStreaming) {
     Out.printf("E,%s refused: state is %s\n", cmd, stateName(g_state));
     return false;
   }
-  if (alsoNotStreaming && g_streaming) {
-    Out.printf("E,%s refused while streaming: send STREAM 0 first\n", cmd);
+  // expo: only the serial stream blocks these (a bench recording must not
+  // have holes). Wi-Fi clients get a stream_gap event instead.
+  if (alsoNotStreaming && g_serial_stream) {
+    Out.printf("E,%s refused while streaming on serial: send STREAM 0 first\n", cmd);
     return false;
   }
   return true;
 }
 
-static void cmdStart() {
+static void cmdStart(uint32_t src) {
   if (!requireIdle("START", false)) return;
   const char *why = nullptr;
   if (!g_p_ok)                                 why = "no pressure sensor";
@@ -1122,6 +1304,7 @@ static void cmdStart() {
   }
   g_close_ms = millis();
   g_hist_n = 0;
+  g_run_by_wifi = src != SRC_SERIAL;   // expo: ties the run to its controller
   valveAllowClose();
   valveWrite(true);
   setState(ST_INFLATE);
@@ -1143,10 +1326,17 @@ static void cmdRun() {
   setState(ST_HOLD);
 }
 
-static void cmdSet(char *arg) {
+static void cmdSet(char *arg, uint32_t src) {
   char *val = arg ? strchr(arg, ' ') : nullptr;
   if (!arg || !val) { Out.println(F("E,SET needs <key> <value>")); return; }
   *val++ = '\0';
+  // expo: a phone may change the run's shape, not the controller gains or
+  // the safety limits; those stay on the bench (USB serial).
+  if (src != SRC_SERIAL && strcmp(arg, "rate") != 0 && strcmp(arg, "hold_s") != 0 &&
+      strcmp(arg, "p_stop") != 0 && strcmp(arg, "p_run_min") != 0) {
+    Out.printf("E,SET %s is serial-only (Wi-Fi may set rate, hold_s, p_stop, p_run_min)\n", arg);
+    return;
+  }
   // Everything is set in IDLE, except the Run gate: the operator's Doppler
   // mark during INFLATE moves it (DESIGN 2.1). It is a gate, not a safety
   // limit, and its range check below still applies.
@@ -1208,32 +1398,46 @@ static void cmdAmp(char *arg) {
   event("amp", d);   // counts change with no change in blood: the host must re-zero
 }
 
+// expo: serial streaming only. Sample counters run from boot and are never
+// reset, because Wi-Fi clients may be receiving the same stream.
 static void cmdStream(const char *arg) {
   const bool on = arg && arg[0] == '1';
   if (on) {
-    for (Band &b : g_bands) { b.ppg_idx = 0; b.imu_idx = 0; }
-    g_c_idx = 0;
-    ppgResyncAll();
     printInfo();
     Out.println(F("# streaming=1"));
-    g_streaming = true;
+    g_serial_stream = true;
   } else {
-    g_streaming = false;
+    g_serial_stream = false;
     Out.println(F("# streaming=0"));
   }
 }
 
+// expo: Wi-Fi radio off / on for the noise comparison (README, "Owed").
+static void cmdRadio(const char *arg) {
+  if (!requireIdle("RADIO", false)) return;
+  if (!arg || (arg[0] != '0' && arg[0] != '1')) { Out.println(F("E,RADIO needs 0 or 1")); return; }
+  const bool on = arg[0] == '1';
+  if (!wifiRadio(on)) { Out.println(F("E,RADIO failed (is Wi-Fi up? see INFO)")); return; }
+  Out.printf("# wifi_radio=%d\n", on ? 1 : 0);
+  event("radio", on ? "on" : "off");
+}
+
+static uint32_t g_blink_until_ms = 0;
+
 static char    g_cmd[64];
 static uint8_t g_cmd_len = 0;
 
-static void handleCommand(char *line) {
+// src: SRC_SERIAL, or the Wi-Fi client id (handleWifiCommand has already
+// checked that client may send this).
+static void handleCommand(char *line, uint32_t src) {
   char *arg = strchr(line, ' ');
   if (arg) { *arg = '\0'; arg++; while (*arg == ' ') arg++; }
+  const uint32_t t0 = millis();
 
   if (strcmp(line, "DUMP") == 0) {
     dump("user");
   } else if (strcmp(line, "START") == 0) {
-    cmdStart();
+    cmdStart(src);
   } else if (strcmp(line, "RUN") == 0) {
     cmdRun();
   } else if (strcmp(line, "INFO") == 0) {
@@ -1241,26 +1445,39 @@ static void handleCommand(char *line) {
   } else if (strcmp(line, "STREAM") == 0) {
     cmdStream(arg);
   } else if (strcmp(line, "SET") == 0) {
-    cmdSet(arg);
+    cmdSet(arg, src);
   } else if (strcmp(line, "AMP") == 0) {
     cmdAmp(arg);
   } else if (strcmp(line, "P") == 0) {
     Out.printf("# p_mmhg=%.2f p_raw=%lu p_status=0x%02X zeroed=%d\n", g_p_mmhg,
                   (unsigned long)g_p_raw, g_p_status, g_p_zeroed ? 1 : 0);
   } else if (strcmp(line, "ZERO") == 0) {
-    if (requireIdle("ZERO", true)) { zeroPressure(); ppgResyncAll(); }
+    if (requireIdle("ZERO", true)) { zeroPressure(); endBlocking("ZERO", t0); }
   } else if (strcmp(line, "DARK") == 0) {
     Band *b = bandByTag(arg);
     if (!b) Out.println(F("E,DARK needs a band: D or P"));
-    else if (requireIdle("DARK", true)) { measureDark(*b); ppgResyncAll(); }
+    else if (requireIdle("DARK", true)) { measureDark(*b); endBlocking("DARK", t0); }
   } else if (strcmp(line, "R") == 0) {
-    if (requireIdle("R", true)) { bringUpAll(); printInfo(); }
+    if (requireIdle("R", true)) { bringUpAll(); endBlocking("R", t0); printInfo(); }
   } else if (strcmp(line, "SCAN") == 0) {
-    if (requireIdle("SCAN", true)) { scanAll(); ppgResyncAll(); }
+    if (requireIdle("SCAN", true)) { scanAll(); endBlocking("SCAN", t0); }
   } else if (strcmp(line, "PPG") == 0) {
-    if (requireIdle("PPG", true)) { ppgCheck(bandByTag(arg)); ppgResyncAll(); }
+    if (requireIdle("PPG", true)) { ppgCheck(bandByTag(arg)); endBlocking("PPG", t0); }
   } else if (strcmp(line, "VALVE") == 0 && arg && strcmp(arg, "TEST") == 0) {
-    if (requireIdle("VALVE TEST", true)) valveTest();
+    if (requireIdle("VALVE TEST", true)) { valveTest(); endBlocking("VALVE TEST", t0); }
+  } else if (strcmp(line, "BLINK") == 0) {
+    g_blink_until_ms = millis() + 1500;
+    Out.println(F("# blink"));
+  } else if (strcmp(line, "ECHO") == 0) {
+    Out.printf("# echo=%lu client=%lu\n", arg ? strtoul(arg, nullptr, 10) : 0UL, (unsigned long)src);
+  } else if (strcmp(line, "CLAIM") == 0) {
+    if (src == SRC_SERIAL) Out.println(F("E,CLAIM is for Wi-Fi clients"));
+    else cmdClaim(src, arg);
+  } else if (strcmp(line, "RELEASE") == 0) {
+    if (src == SRC_SERIAL) Out.println(F("E,RELEASE is for Wi-Fi clients"));
+    else cmdRelease(src);
+  } else if (strcmp(line, "RADIO") == 0) {
+    cmdRadio(arg);
   } else if (strcmp(line, "TEST") == 0 && arg && strcmp(arg, "HANG") == 0) {
     if (requireIdle("TEST HANG", true)) {
       valveLockOpen();
@@ -1280,13 +1497,67 @@ static void pollSerial() {
     if (c == '\n' || c == '\r') {
       if (g_cmd_len > 0) {
         g_cmd[g_cmd_len] = '\0';
-        handleCommand(g_cmd);
+        handleCommand(g_cmd, SRC_SERIAL);
         g_cmd_len = 0;
       }
     } else if (g_cmd_len < sizeof(g_cmd) - 1) {
       g_cmd[g_cmd_len++] = c;
     }
   }
+}
+
+// ===========================================================================
+// Wi-Fi commands (expo)
+// ===========================================================================
+
+static bool verbIs(const char *line, const char *verb) {
+  const size_t n = strlen(verb);
+  return strncmp(line, verb, n) == 0 && (line[n] == '\0' || line[n] == ' ');
+}
+
+// Watching, DUMP and the link checks are open to every client; the session
+// commands need control; everything else is a bench command, serial only.
+static void handleWifiCommand(WifiCommand &c) {
+  static const char *const kOpenToAll[] = {"INFO", "P", "ECHO", "CLAIM", "RELEASE", "DUMP"};
+  static const char *const kController[] = {"START", "RUN", "SET", "ZERO", "BLINK"};
+  for (const char *v : kOpenToAll) {
+    if (verbIs(c.line, v)) { handleCommand(c.line, c.client); return; }
+  }
+  const size_t n = strcspn(c.line, " ");
+  for (const char *v : kController) {
+    if (!verbIs(c.line, v)) continue;
+    if (c.client != g_controller) {
+      Out.printf("E,%.*s refused: client %lu does not have control (send CLAIM)\n", (int)n, c.line,
+                 (unsigned long)c.client);
+      return;
+    }
+    handleCommand(c.line, c.client);
+    return;
+  }
+  Out.printf("E,%.*s refused: bench commands are USB serial only\n", (int)n, c.line);
+}
+
+static void pollWifi() {
+  const uint32_t dumper = wifiTakeDumpRequest();   // out of band: never queued behind others
+  if (dumper) {
+    char d[24];
+    snprintf(d, sizeof(d), "client %lu", (unsigned long)dumper);
+    event("dump_request", d);
+    dump("user");
+  }
+  WifiCommand c;
+  for (int i = 0; i < 4 && wifiPollCommand(c); i++) handleWifiCommand(c);
+}
+
+// The LED shows the valve (lit = closed), or flashes for BLINK.
+static void serviceLed(uint32_t now) {
+  if (PIN_STATUS_LED < 0) return;
+  if ((int32_t)(g_blink_until_ms - now) > 0) {
+    digitalWrite(PIN_STATUS_LED, ((g_blink_until_ms - now) / 125) % 2 ? HIGH : LOW);
+    return;
+  }
+  g_blink_until_ms = 0;
+  digitalWrite(PIN_STATUS_LED, g_valve_closed ? HIGH : LOW);
 }
 
 // ===========================================================================
@@ -1303,8 +1574,8 @@ void setup() {
   args.name = "valve_close";
   esp_timer_create(&args, &g_close_timer);
 
-  WiFi.mode(WIFI_OFF);                        // radios add nothing but noise
-  btStop();
+  if (PIN_STATUS_LED >= 0) { pinMode(PIN_STATUS_LED, OUTPUT); digitalWrite(PIN_STATUS_LED, LOW); }
+  btStop();                                   // expo: Wi-Fi starts below; Bluetooth stays off
 
   Wire.begin(PIN_SDA, PIN_SCL, I2C_CLOCK_HZ);
   Wire.setTimeOut(I2C_TIMEOUT_MS);
@@ -1316,18 +1587,31 @@ void setup() {
   // Bring-up runs before the watchdog starts: the two BMI270 config loads
   // take a few hundred ms, and the valve is open throughout.
   bringUpAll();
+  // expo: the access point starts before the watchdog, with the valve open.
+  // Nobody can be connected yet, so the boot zero below has no audience.
+  const bool wifiUp = wifiBegin();
   startWatchdog();
   if (g_p_ok) zeroPressure();
   ppgResyncAll();
   g_next_win_ms = millis();
+  g_next_status_ms = millis();
   printInfo();
   Out.println(sensorsOk() == 5 ? F("# ready: all 5 sensors found")
                                   : F("# NOT ready: fix the wiring and send R, or SCAN to see the bus"));
+  if (wifiUp) {
+    Out.printf("# wifi ready: join \"%s\" and open http://%s/\n", WIFI_SSID,
+               WiFi.softAPIP().toString().c_str());
+  } else {
+    Out.println(F("# Wi-Fi did NOT start: the board runs on USB serial only"));
+  }
 }
 
 void loop() {
+  const uint32_t passStart = micros();
+  g_pass_blocked = false;
   feedWatchdog();
   pollSerial();
+  pollWifi();
   servicePressure();
 
   const uint32_t now = millis();
@@ -1351,4 +1635,28 @@ void loop() {
   }
 
   safetyChecks(millis());
+
+  // expo
+  controllerService(millis());
+  if ((int32_t)(now - g_next_status_ms) >= 0) {
+    g_next_status_ms = now + STATUS_PERIOD_MS;
+    statusLine();
+  }
+  serviceLed(millis());
+
+  if (!g_pass_blocked) {
+    const uint32_t passUs = micros() - passStart;
+    if (passUs > g_loop_max_us) g_loop_max_us = passUs;
+    if (passUs > g_loop_win_max_us) g_loop_win_max_us = passUs;
+    if (passUs > LOOP_WARN_US) {
+      g_slow_passes++;
+      static uint32_t lastWarnMs = 0;
+      if (millis() - lastWarnMs > 1000) {
+        lastWarnMs = millis();
+        char d[32];
+        snprintf(d, sizeof(d), "us=%lu", (unsigned long)passUs);
+        event("slow_loop", d);
+      }
+    }
+  }
 }

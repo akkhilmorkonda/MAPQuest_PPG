@@ -31,6 +31,11 @@ struct WifiCommand {
 bool     wifiBegin();
 bool     wifiOk();
 
+// Loop task only, IDLE only. Radio off drops every client (for the Wi-Fi
+// on/off sensor-noise comparison); on restarts the same access point.
+bool     wifiRadio(bool on);
+bool     wifiRadioOn();
+
 // Loop task only. Appends bytes to the outgoing ring if any WebSocket client
 // is connected. Never blocks and never drops data for a client that keeps up;
 // a client this write would overrun is closed instead.

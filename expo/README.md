@@ -7,7 +7,7 @@ shares no code paths with `irb/` or `host/` (it reuses `irb/host/irbtool` read-o
 
 > **Status (2026-11-18).** Step 1, the **link simulator**, is built: it runs on a bare
 > ESP32 with nothing wired and streams a simulated session at the real system's rates.
-> The phone page, laptop receiver and control rules pass **50 tests** against a Python
+> The phone page, laptop receiver and control rules pass **54 tests** against a Python
 > model of the board (`python -m pytest expo/tests`). **Flashed to the WROOM on COM7 on
 > 2026-11-18:** it boots (`wifi_ok=1`, slowest loop pass 0.18 ms), and a laptop scan sees
 > `MAPQuest-Expo` as WPA2-Personal on channel 6 at 95 % signal.
@@ -29,13 +29,13 @@ shares no code paths with `irb/` or `host/` (it reuses `irb/host/irbtool` read-o
 > (`wifi_client_closed` event); the others lose nothing. Compiles; needs a reflash and a
 > re-test (row 13).
 >
-> `firmware/expo_fw/` (the real firmware: IRB sensors + valve + this Wi-Fi link) is
-> **paused half-way and does not compile**. It continues once the link is proven.
+> `firmware/expo_fw/` (the real firmware: IRB sensors + valve + this Wi-Fi link + the
+> control rules) **compiles, never run on hardware**. It needs the rig wired; see "Step 2".
 
 | Step | State |
 |---|---|
 | 1 Link simulator on the ESP32 (no wiring) | **flashed; first phone + laptop link test passed.** Dead-client stall fixed in source, not flashed; rows 6, 8 and 13 owed |
-| 2 Real firmware over Wi-Fi (`expo_fw`) | started (forked from `irb_fw` 0.2.1), paused |
+| 2 Real firmware over Wi-Fi (`expo_fw`) | **compiles** (IRB `irb_fw` 0.2.1 + Wi-Fi link + control rules); not flashed, needs the wired rig |
 | 3 Presentation display | the page's `?view` layout for now; your design to come |
 
 ## Network
@@ -118,6 +118,43 @@ Then open `http://127.0.0.1:8765/` and `http://127.0.0.1:8765/?view`, or
 `python expo/host/expo_receiver.py --url ws://127.0.0.1:8765/ws`. `--lan` lets a phone on the
 same network reach it. Round trips here are localhost numbers, not radio numbers.
 
+## Step 2: the real firmware (`expo_fw`)
+
+The IRB firmware with the Wi-Fi link added. Sensors, valve, PI deflation control, the
+watchdog and the safety layer are the IRB code unchanged (a test checks the safety limits
+still match `irb_fw`). What is new:
+
+- **The radio is on.** The IRB firmware turns it off; this one starts the access point at
+  boot, before the watchdog, with the valve open. Bluetooth stays off.
+- **Data goes to Wi-Fi whenever a device is connected.** Serial gets data lines only after
+  `STREAM 1`, as on the bench. Sample counters run from boot and are never reset.
+- **The phone gets the session commands only.** Control rules as in the link simulator,
+  plus: the controller may send `START`, `RUN`, `ZERO`, `BLINK` and `SET` of `rate`,
+  `hold_s`, `p_stop`, `p_run_min`. Controller gains, safety limits and the bench commands
+  (`DARK`, `AMP`, `R`, `SCAN`, `PPG`, `VALVE TEST`, `TEST HANG`, `STREAM`, `RADIO`) are
+  **USB serial only**.
+- **Blocking commands no longer need the stream off** (only the serial stream). `ZERO`
+  from the phone blocks the loop ~2.5 s; the board advances the sample counters across
+  the pause and sends `stream_gap: ZERO ms=...`, so receivers see the gap as missing
+  samples instead of a splice.
+- **`RADIO 0|1`** (serial, IDLE) turns the radio off and on without a reboot, for the
+  noise comparison below.
+- The blue LED (GPIO2) shows the valve: lit = closed; `BLINK` flashes it.
+
+Flash it like the simulator, with `expo_fw` in place of `expo_link_sim` (it needs the
+SparkFun BMI270 library, as `irb_fw` does). It shares the simulator's `secrets.h`
+settings (copy the file across after changing the password).
+
+**Before visitors, with the rig wired** (serial at 921600, phone off the network):
+
+| # | Do | Pass when |
+|---|---|---|
+| F1 | Boot | `sensors_ok=5/5`, `wifi ready`, `reset_reason=power_on` |
+| F2 | `RADIO 0`, `DARK D`, `DARK P`, then `RADIO 1`, `DARK D`, `DARK P` | dark offsets agree within their usual spread |
+| F3 | `STREAM 1` for 30 s with `RADIO 0`, then 30 s with `RADIO 1`, cuff vented | MPRLS noise (`p_raw` spread) the same both ways; no `ppg_overflow` |
+| F4 | `VALVE TEST` with the radio on, a phone joined and watching | no reset (`INFO` uptime / `reset_reason` not `brownout`) |
+| F5 | Phone: rows 2-13 of the simulator checklist, on a real arm | as there; the cuff really vents in rows 7 and 8 |
+
 ## How the link works
 
 ```
@@ -174,7 +211,10 @@ expo/
     config.h                Wi-Fi, link and simulation settings
     secrets.example.h       copy to secrets.h (gitignored) and set the password
     web_page.h              GENERATED from web/index.html
-  firmware/expo_fw/         step 2: real firmware, paused, does not compile yet
+  firmware/expo_fw/         step 2: real firmware (compiles; not run on hardware)
+    expo_fw.ino             irb_fw + Wi-Fi output, control rules, ST line, stream gaps
+    wifi_link.h/.cpp        COPY of the simulator's (a test keeps them identical)
+    web_page.h              GENERATED, as above
   web/index.html            phone controls + display; ?view = laptop, watch only
   tools/embed_web.py        index.html -> web_page.h (run after editing the page)
   host/expo_receiver.py     laptop: watch and grade the link
@@ -188,8 +228,6 @@ if the header is out of date.
 
 ## Owed before the real system runs over Wi-Fi
 
-- **Radio noise on the real sensors.** The IRB firmware turns the radio off on purpose.
-  With sensors wired, compare the dark offsets and the MPRLS noise with Wi-Fi on and off,
-  and run `VALVE TEST` with Wi-Fi on to check for brownout resets.
-- **Finish `expo_fw`**: move `wifi_link` and the control rules from the simulator onto the IRB
-  firmware, keep its watchdog and safety layer unchanged, add the controller-lost dump.
+- **Radio noise and brownout on the real sensors** (Step 2, rows F1-F5). The IRB firmware
+  turns the radio off on purpose; nobody has measured what it does to this rig yet.
+- **`expo_fw` on hardware at all.** It compiles; nothing else about it is verified.

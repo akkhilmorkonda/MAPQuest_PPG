@@ -161,6 +161,8 @@ static const size_t   WS_FRAME_BYTES     = 2048;
 static const size_t   WS_RING_BYTES      = 16384;
 // A Wi-Fi send that blocks this long closes that client (seconds).
 static const uint16_t WS_SEND_TIMEOUT_S  = 1;
+// Commands waiting for the main loop.
+static const uint8_t  WS_CMD_QUEUE       = 16;
 
 // The controlling device must be heard from within this window (the page
 // sends PING every 250 ms). If it is lost during INFLATE or HOLD of a run it
@@ -169,3 +171,13 @@ static const uint32_t CONTROLLER_TIMEOUT_MS = 2000;
 
 // Compact status line (ST) for the phone, this often.
 static const uint32_t STATUS_PERIOD_MS = 500;
+
+// A main-loop pass longer than this is reported (slow_loop event). The Wi-Fi
+// stack runs on the other core and must never stall the sensor loop. Passes
+// that run a blocking bench command (ZERO, DARK, ...) are not counted.
+static const uint32_t LOOP_WARN_US = 20000;
+
+// The dev board's blue LED (GPIO2). Lit = valve closed; BLINK flashes it so
+// the phone can tell which board it is talking to. GPIO2 is a strapping pin
+// but only matters during reset, when it is not driven. -1 if there is none.
+static const int PIN_STATUS_LED = 2;

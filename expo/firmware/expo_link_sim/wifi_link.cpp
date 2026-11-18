@@ -5,6 +5,7 @@
 
 #include <WiFi.h>
 #include <esp_http_server.h>
+#include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -355,6 +356,21 @@ bool wifiBegin() {
   return true;
 }
 
+// Radio off / on without a reboot, for comparing sensor noise with and
+// without Wi-Fi (expo/README.md). Off drops every client; on restarts the
+// same access point. The server keeps running throughout.
+static bool g_radio_on = true;
+
+bool wifiRadio(bool on) {
+  if (!g_ok || on == g_radio_on) return g_ok;
+  const esp_err_t e = on ? esp_wifi_start() : esp_wifi_stop();
+  if (e != ESP_OK) return false;
+  if (on) WiFi.setTxPower((wifi_power_t)WIFI_TX_POWER_QDBM);   // reset by a restart
+  g_radio_on = on;
+  return true;
+}
+
+bool     wifiRadioOn()      { return g_ok && g_radio_on; }
 bool     wifiOk()           { return g_ok; }
 bool     wifiStreaming()    { return g_nclients > 0; }
 uint8_t  wifiClientCount()  { return g_nclients; }
@@ -391,9 +407,9 @@ uint32_t wifiLastSeenMs(uint32_t client) {
 }
 
 void wifiPrintInfo(Print &out) {
-  out.printf("# wifi=softap wifi_ok=%d wifi_ssid=%s wifi_ip=%s wifi_channel=%u "
+  out.printf("# wifi=softap wifi_ok=%d wifi_radio=%d wifi_ssid=%s wifi_ip=%s wifi_channel=%u "
              "wifi_tx_qdbm=%d wifi_stations=%u wifi_max_stations=%u\n",
-             g_ok ? 1 : 0, WIFI_SSID, WiFi.softAPIP().toString().c_str(), WIFI_CHANNEL,
+             g_ok ? 1 : 0, wifiRadioOn() ? 1 : 0, WIFI_SSID, WiFi.softAPIP().toString().c_str(), WIFI_CHANNEL,
              WIFI_TX_POWER_QDBM, (unsigned)WiFi.softAPgetStationNum(), WIFI_MAX_STATIONS);
   out.printf("# ws_clients=%u ws_max_clients=%u ws_flush_ms=%lu ws_ring_bytes=%u "
              "ws_dropped_bytes=%lu ws_commands_dropped=%lu ws_send_failures=%lu "

@@ -184,6 +184,52 @@ def test_open_commands_match_firmware():
     assert tuple(re.findall(r'"([A-Z]+)"', m.group(1))) == hubmod.OPEN_TO_ALL
 
 
+# ---- expo_fw, the real firmware, keeps the same contract -------------------------
+
+FW = EXPO / "firmware" / "expo_fw"
+
+
+def _fw():
+    return (FW / "expo_fw.ino").read_text(encoding="utf-8")
+
+
+def test_both_sketches_carry_the_same_wifi_link():
+    for name in ("wifi_link.h", "wifi_link.cpp"):
+        assert (FW / name).read_bytes() == (SIM / name).read_bytes(), \
+            f"copy expo_link_sim/{name} to expo_fw/ (an Arduino sketch only builds its own folder)"
+
+
+def test_expo_fw_rules_match_the_link_simulator():
+    m = re.search(r"kOpenToAll\[\] = \{([^}]*)\}", _fw())
+    assert tuple(re.findall(r'"([A-Z]+)"', m.group(1))) == hubmod.OPEN_TO_ALL
+    m = re.search(r"kController\[\] = \{([^}]*)\}", _fw())
+    controller = set(re.findall(r'"([A-Z]+)"', m.group(1)))
+    # Exactly what the phone page sends beyond the open commands, nothing more.
+    page = (EXPO / "web" / "index.html").read_text(encoding="utf-8")
+    sent = set(re.findall(r"(?:cmd|send)\('([A-Z]+)", page)) - set(hubmod.OPEN_TO_ALL) - {"PING"}
+    assert controller == sent
+    for bench in ("DARK", "AMP", "SCAN", "VALVE", "TEST", "STREAM", "RADIO"):
+        assert bench not in controller
+
+
+def test_expo_fw_status_columns_and_timeout_match():
+    m = re.search(r'columns_ST=([a-z_,]+)"\s*\n\s*"([a-z_,]+)"', _fw())
+    assert (m.group(1) + m.group(2)).split(",") == list(hubmod.ST_COLUMNS)
+    cfg = (FW / "config.h").read_text(encoding="utf-8")
+    assert int(re.search(r"CONTROLLER_TIMEOUT_MS\s*=\s*(\d+)", cfg).group(1)) == int(hubmod.CONTROLLER_TIMEOUT_S * 1000)
+    st = re.search(r'dataLine\("ST,([^"]*)\\n"', _fw()).group(1)
+    assert st.count(",") + 1 == len(hubmod.ST_COLUMNS)   # one format field per column
+
+
+def test_expo_fw_keeps_the_irb_safety_limits():
+    irb = (EXPO.parent / "irb" / "firmware" / "irb_fw" / "config.h").read_text(encoding="utf-8")
+    fw = (FW / "config.h").read_text(encoding="utf-8")
+    for key in ("P_MAX_HARD_MMHG", "HOLD_TIMEOUT_HARD_S", "VENTED_BELOW_MMHG", "PRESSURE_DROPOUT_MS",
+                "PPG_DROPOUT_MS", "WDT_TIMEOUT_MS", "PIN_VALVE", "DEFAULT_P_STOP"):
+        pat = rf"{key}\s*=\s*([^;]+);"
+        assert re.search(pat, fw).group(1) == re.search(pat, irb).group(1), key
+
+
 def test_secrets_are_not_tracked_but_the_example_is():
     gi = (EXPO.parent / ".gitignore").read_text(encoding="utf-8")
     assert "expo/firmware/*/secrets.h" in gi

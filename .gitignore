@@ -36,3 +36,7 @@ host/.last_trial_info.json
 
 # IRB human-subject recordings never go into git (irb/DESIGN.md section 6).
 irb_data/
+
+# Expo board Wi-Fi password (expo/README.md). Only secrets.example.h is tracked.
+expo/firmware/*/secrets.h
+expo/firmware/**/build/

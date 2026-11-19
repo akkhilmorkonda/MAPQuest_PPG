@@ -23,17 +23,49 @@ static_assert(sizeof(WIFI_SSID) - 1 >= 1 && sizeof(WIFI_SSID) - 1 <= 32,
               "WIFI_SSID must be 1 to 32 characters");
 
 // ---------------------------------------------------------------------------
-// Pins. Avoid on the WROOM: GPIO 0, 2, 5, 12, 15 (boot strapping), 6-11
-// (flash), 34-39 (input only).
+// Pins, per board. The build picks them from the board selected in the IDE
+// (or arduino-cli's --fqbn):
+//   ESP32 Dev Module (WROOM-32D)  esp32:esp32:esp32
+//   Seeed XIAO ESP32S3            esp32:esp32:XIAO_ESP32S3
+//
+// The valve: MOSFET gate via 220 ohm, 10k gate-to-GND pull-down. The valve
+// (Olimex AIR-E-VALVE-3V) is NORMALLY OPEN: HIGH energises it and CLOSES the
+// cuff. While the chip is in reset the pin floats, the pull-down holds the
+// MOSFET off, and the cuff vents.
 // ---------------------------------------------------------------------------
 
+#if defined(CONFIG_IDF_TARGET_ESP32)
+// WROOM-32D. Avoid GPIO 0, 2, 5, 12, 15 (boot strapping), 6-11 (flash),
+// 34-39 (input only).
+#define BOARD_NAME "esp32-wroom-32d"
 static const int PIN_SDA   = 21;
 static const int PIN_SCL   = 22;
-// MOSFET gate via 220 ohm, 10k gate-to-GND pull-down. The valve (Olimex
-// AIR-E-VALVE-3V) is NORMALLY OPEN: HIGH energises it and CLOSES the cuff.
-// While the ESP32 is in reset the pin floats, the pull-down holds the MOSFET
-// off, and the cuff vents.
 static const int PIN_VALVE = 25;
+// The MPRLS sits on the main bus, upstream of the mux (the IRB wiring).
+static const int8_t MUX_CH_PRESSURE = -1;
+// The dev board's blue LED. GPIO2 is a strapping pin but only matters during
+// reset, when it is not driven.
+static const int  PIN_STATUS_LED   = 2;
+static const bool STATUS_LED_ON_HIGH = true;
+
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+// Seeed XIAO ESP32S3. Pads D0-D10 are GPIO 1, 2, 3, 4, 5, 6, 43, 44, 7, 8, 9.
+// Avoid D2 (GPIO3, a boot strapping pin) and D6/D7 (GPIO43/44, the UART).
+// I2C on D4/D5, the board's default and the wiring of the 2026-11-18 rig.
+#define BOARD_NAME "xiao-esp32s3"
+static const int PIN_SDA   = 5;    // D4
+static const int PIN_SCL   = 6;    // D5
+static const int PIN_VALVE = 4;    // D3: not a strapping pin, input (off) through reset
+// The MPRLS is behind the mux on channel 2 (SD2/SC2), next to the bands on
+// channels 0 and 1. A mux fault then also loses pressure, which dumps the cuff.
+static const int8_t MUX_CH_PRESSURE = 2;
+// The XIAO's orange user LED, wired to 3V3: LOW lights it.
+static const int  PIN_STATUS_LED   = 21;
+static const bool STATUS_LED_ON_HIGH = false;
+
+#else
+#error "expo_fw has pins for the ESP32 Dev Module and the XIAO ESP32S3 only (config.h)"
+#endif
 
 // ---------------------------------------------------------------------------
 // I2C
@@ -177,7 +209,5 @@ static const uint32_t STATUS_PERIOD_MS = 500;
 // that run a blocking bench command (ZERO, DARK, ...) are not counted.
 static const uint32_t LOOP_WARN_US = 20000;
 
-// The dev board's blue LED (GPIO2). Lit = valve closed; BLINK flashes it so
-// the phone can tell which board it is talking to. GPIO2 is a strapping pin
-// but only matters during reset, when it is not driven. -1 if there is none.
-static const int PIN_STATUS_LED = 2;
+// The status LED (pins above): lit = valve closed; BLINK flashes it so the
+// phone can tell which board it is talking to.

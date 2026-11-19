@@ -157,6 +157,42 @@ Flash it like the simulator, with `expo_fw` in place of `expo_link_sim` (it need
 SparkFun BMI270 library, as `irb_fw` does). It shares the simulator's `secrets.h`
 settings (copy the file across after changing the password).
 
+### Two boards
+
+`expo_fw` builds for either board; `config.h` picks the pins from the board selected.
+
+| | ESP32 Dev Module (WROOM-32D) | Seeed XIAO ESP32S3 (the rig since 2026-11-18) |
+|---|---|---|
+| FQBN | `esp32:esp32:esp32` | `esp32:esp32:XIAO_ESP32S3` |
+| I2C (mux) | SDA GPIO21, SCL GPIO22 | SDA **D4** (GPIO5), SCL **D5** (GPIO6) |
+| Valve MOSFET gate | GPIO25 | **D3** (GPIO4) |
+| Pressure (MPRLS) | main bus, beside the mux | **mux channel 2** (SD2/SC2) |
+| Bands | mux ch0 distal, ch1 proximal | the same |
+| Status LED | GPIO2 | GPIO21 (lit when low) |
+| Serial | USB bridge, 921600 baud | the chip's own USB (any baud); writes are dropped, never waited on, when no computer is reading |
+
+Build and upload in **one** command per board. The two builds share a cache folder, so a
+plain `upload` after building for the other board sends the wrong image:
+
+```powershell
+& "C:\Program Files\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe" compile --fqbn esp32:esp32:XIAO_ESP32S3 --upload --port COM8 expo/firmware/expo_fw
+```
+
+**First run on the XIAO (2026-11-18),** mux plus the distal breakout only: mux at 0x70,
+MAX30101 and BMI270 on ch0, `sensors_ok=2/5` (no proximal band, no pressure sensor yet,
+so Start stays locked). With `STREAM 1`: S 100.0, M 50.8, C 10.0, ST 2.0 lines/s and no
+overflow. One `ppg_overflow` at boot (the FIFO fills during Wi-Fi start-up), before any run.
+
+That first run found a **PPG FIFO bug** in the code inherited from `irb_fw`: a full FIFO
+looked nearly empty (its pointers can't show "full"), so it was drained one sample at a
+time while samples kept being lost, and the sample counter ran at twice true time. Now an
+overflow reads the whole FIFO out (only a read clears the chip's overflow counter), counts
+it as one reported gap, and draining resumes. `irb_fw` still has the bug.
+
+`firmware/xiao_bus_test/` is a standalone check of a XIAO's bus: line levels, a scan of the
+main bus and every mux channel, the PPG streaming 1 s at 100 Hz and the IMU's chip ID, then
+`RESULT: PASS/FAIL`. It drives no valve. Flash it, open the serial monitor, send any line.
+
 **Before visitors, with the rig wired** (serial at 921600, phone off the network):
 
 | # | Do | Pass when |

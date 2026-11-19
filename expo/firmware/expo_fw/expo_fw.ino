@@ -4,12 +4,14 @@
 // Sensors, valve, PI deflation control, watchdog and safety layer are the
 // IRB code unchanged; what is new is marked "expo".
 //
-// Board   : ESP32-WROOM-32D dev board, Arduino board "ESP32 Dev Module"
+// Board   : ESP32-WROOM-32D dev board, Arduino board "ESP32 Dev Module", or
+//           Seeed XIAO ESP32S3, Arduino board "XIAO_ESP32S3" (pins: config.h)
 // Sensors : TCA9548A mux 0x70
 //             ch0 distal band   : MAX30101 0x57 + BMI270 0x68
 //             ch1 proximal band : MAX30101 0x57 + BMI270 0x68
-//           MPRLS 0x18 on the main bus (not behind the mux)
-// Valve   : Olimex AIR-E-VALVE-3V, normally open, GPIO25 -> MOSFET
+//           MPRLS 0x18 on the main bus (WROOM) or mux ch2 (XIAO): MUX_CH_PRESSURE
+// Valve   : Olimex AIR-E-VALVE-3V, normally open, PIN_VALVE -> MOSFET
+//           (GPIO25 on the WROOM, D3 = GPIO4 on the XIAO)
 // Library : SparkFun BMI270 Arduino Library (Library Manager)
 //
 // NOT YET RUN ON HARDWARE: compile-checked only.
@@ -467,6 +469,22 @@ static uint32_t g_p_raw    = 0;
 static uint8_t  g_p_status = 0;
 static uint32_t g_p_idx    = 0;
 
+// Read n samples out of the FIFO and throw them away (each read pops one).
+static bool ppgDiscard(Band &b, uint8_t n) {
+  const uint8_t perChunk = (uint8_t)(I2C_CHUNK_BYTES / BYTES_PER_SAMPLE);
+  while (n > 0) {
+    const uint8_t k = n < perChunk ? n : perChunk;
+    const uint8_t want = k * BYTES_PER_SAMPLE;
+    if (!muxSelect(b.ch)) return false;
+    Wire.beginTransmission(MAX30101_ADDR);
+    Wire.write(REG_FIFO_DATA);
+    if (Wire.endTransmission(false) != 0 || Wire.requestFrom(MAX30101_ADDR, (size_t)want) != want) return false;
+    while (Wire.available()) Wire.read();
+    n -= k;
+  }
+  return true;
+}
+
 static void ppgDrain(Band &b) {
   if (!b.ppg_ok) return;
   uint8_t wr = 0, rd = 0;
@@ -474,19 +492,36 @@ static void ppgDrain(Band &b) {
     ppgFailure(b, "FIFO pointer read failed");
     return;
   }
-  uint8_t nSamples = (uint8_t)((wr - rd) & 0x1F);
-  if (nSamples == 0) return;
-
+  // Overflow first (expo fix, 2026-11-18, found on hardware). A full FIFO
+  // holds 32 unread samples, but the pointers can't show that (wr == rd), so
+  // the old order (pointers, then overflow) read too few and the FIFO stayed
+  // full, losing samples every pass. And on the MAX30101 the overflow counter
+  // clears only when a sample is READ out: writing the pointers back to 0
+  // leaves it saturated (tried on the XIAO: no samples at all). So read the
+  // whole FIFO out, discard it, and count it with the overflow as lost: one
+  // reported gap, then normal draining. idx / fs stays true time.
   uint8_t ovf = 0;
   if (ppgRead(b, REG_OVF_COUNTER, ovf) && ovf > 0) {
-    // Lost before we got here. Advance the index past them so idx / fs stays
-    // the true time, and say so: a gap must never be spliced shut.
-    Out.printf("E,band %c FIFO overflow, %u samples lost\n", b.tag, ovf);
+    if (!ppgDiscard(b, 32)) { ppgFailure(b, "FIFO data read failed"); return; }
+    uint32_t lost = (uint32_t)ovf + 32;              // the overflow plus the stale FIFO
+    if (ovf >= 0x1F) {                               // the counter saturated: use the clock
+      const uint32_t byTime = (millis() - b.ppg_last_ms) * (SAMPLE_RATE_SPS / SAMPLE_AVERAGING) / 1000;
+      if (byTime > lost) lost = byTime;
+    }
+    b.ppg_idx += lost;
+    b.ppg_last_ms = millis();
+    uint8_t after = 0;
+    ppgRead(b, REG_OVF_COUNTER, after);
+    Out.printf("E,band %c FIFO overflow, %lu samples lost (wr=%u rd=%u ovf_after=%u)\n", b.tag,
+               (unsigned long)lost, wr, rd, after);
     char d[32];
-    snprintf(d, sizeof(d), "%c lost=%u", b.tag, ovf);
+    snprintf(d, sizeof(d), "%c lost=%lu", b.tag, (unsigned long)lost);
     event("ppg_overflow", d);
-    b.ppg_idx += ovf;
+    return;
   }
+
+  uint8_t nSamples = (uint8_t)((wr - rd) & 0x1F);
+  if (nSamples == 0) return;
 
   const uint32_t t_us = micros();
   const uint8_t perChunk = (uint8_t)(I2C_CHUNK_BYTES / BYTES_PER_SAMPLE);
@@ -696,7 +731,16 @@ static float countsToAbsMmhg(uint32_t counts) {
   return psi * MMHG_PER_PSI;
 }
 
+// Route the bus to the pressure sensor (config.h MUX_CH_PRESSURE): its mux
+// channel, or nothing to do when it is on the main bus. muxSelect() writes
+// the mux only when the channel changes.
+static bool pressureBus() {
+  if (MUX_CH_PRESSURE < 0) return true;
+  return g_mux_ok && muxSelect((uint8_t)MUX_CH_PRESSURE);
+}
+
 static bool mprlsStart() {
+  if (!pressureBus()) return false;
   Wire.beginTransmission(MPRLS_ADDR);
   Wire.write(0xAA);
   Wire.write(0x00);
@@ -728,6 +772,7 @@ static void servicePressure() {
   }
 
   if (now - g_p_start_us < 1000) return;      // not worth polling before ~1 ms
+  if (!pressureBus()) { pressureFailure("mux channel select failed"); return; }
   if (Wire.requestFrom(MPRLS_ADDR, (size_t)1) != 1) { pressureFailure("no reply"); return; }
   if (Wire.read() & MPRLS_ST_BUSY) {
     if (now - g_p_start_us > MPRLS_TIMEOUT_US) pressureFailure("conversion timeout");
@@ -759,6 +804,7 @@ static bool mprlsReadBlocking(uint32_t &counts, uint8_t &status) {
   const uint32_t t0 = micros();
   while (true) {
     delayMicroseconds(500);
+    if (!pressureBus()) return false;
     if (Wire.requestFrom(MPRLS_ADDR, (size_t)1) != 1) return false;
     if (!(Wire.read() & MPRLS_ST_BUSY)) break;
     if (micros() - t0 > MPRLS_TIMEOUT_US) return false;
@@ -777,8 +823,10 @@ static void pressureBringUp() {
   g_p_fails = 0;
   g_p_status = 0;
   g_p_integrity_bad = false;
-  if (!i2cProbe(MPRLS_ADDR)) {
-    Out.println(F("E,no MPRLS at 0x18 on the main bus: check VIN=3V3, GND, SDA, SCL"));
+  if (!pressureBus() || !i2cProbe(MPRLS_ADDR)) {
+    if (MUX_CH_PRESSURE < 0) Out.println(F("E,no MPRLS at 0x18 on the main bus: check VIN=3V3, GND, SDA, SCL"));
+    else Out.printf("E,no MPRLS at 0x18 on mux channel %d: check VIN=3V3, GND, SD%d, SC%d\n",
+                    MUX_CH_PRESSURE, MUX_CH_PRESSURE, MUX_CH_PRESSURE);
     return;
   }
   if (Wire.requestFrom(MPRLS_ADDR, (size_t)1) == 1) g_p_status = Wire.read();
@@ -1205,7 +1253,8 @@ static uint32_t g_slow_passes = 0;
 
 static void printInfo() {
   Out.printf("# firmware=%s\n", FIRMWARE_VERSION);
-  Out.println(F("# board=esp32-wroom-32d"));
+  Out.printf("# board=%s valve_pin=%d status_led_pin=%d pressure_mux_ch=%d\n", BOARD_NAME, PIN_VALVE,
+             PIN_STATUS_LED, MUX_CH_PRESSURE);
   Out.printf("# reset_reason=%s\n", resetReasonName(esp_reset_reason()));
   Out.printf("# watchdog_ok=%d watchdog_ms=%lu\n", g_wdt_ok ? 1 : 0, (unsigned long)WDT_TIMEOUT_MS);
   wifiPrintInfo(Out);
@@ -1319,7 +1368,8 @@ static void scanAll() {
     for (uint8_t ch = 0; ch < 8; ch++) {
       if (!muxSelect(ch)) continue;
       char label[56];
-      const char *who = ch == MUX_CH_DISTAL ? " distal" : ch == MUX_CH_PROXIMAL ? " proximal" : "";
+      const char *who = ch == MUX_CH_DISTAL ? " distal" : ch == MUX_CH_PROXIMAL ? " proximal"
+                      : ch == MUX_CH_PRESSURE ? " pressure" : "";
       snprintf(label, sizeof(label), "mux ch%u%s (main-bus devices also show)", ch, who);
       scanBus(label);
     }
@@ -1642,14 +1692,17 @@ static void pollWifi() {
 }
 
 // The LED shows the valve (lit = closed), or flashes for BLINK.
+static void setLed(bool lit) {
+  if (PIN_STATUS_LED >= 0) digitalWrite(PIN_STATUS_LED, lit == STATUS_LED_ON_HIGH ? HIGH : LOW);
+}
+
 static void serviceLed(uint32_t now) {
-  if (PIN_STATUS_LED < 0) return;
   if ((int32_t)(g_blink_until_ms - now) > 0) {
-    digitalWrite(PIN_STATUS_LED, ((g_blink_until_ms - now) / 125) % 2 ? HIGH : LOW);
+    setLed(((g_blink_until_ms - now) / 125) % 2);
     return;
   }
   g_blink_until_ms = 0;
-  digitalWrite(PIN_STATUS_LED, g_valve_closed ? HIGH : LOW);
+  setLed(g_valve_closed);
 }
 
 // ===========================================================================
@@ -1660,13 +1713,19 @@ void setup() {
 
   Serial.setTxBufferSize(8192);               // printing never stalls the loop
   Serial.begin(SERIAL_BAUD);
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && ARDUINO_USB_CDC_ON_BOOT
+  // XIAO: Serial is the chip's own USB port. With no computer reading it (a
+  // USB charger, a closed monitor) a write would wait for the host; drop it
+  // instead, so the sensor loop and the watchdog never wait on USB.
+  Serial.setTxTimeoutMs(0);
+#endif
 
   esp_timer_create_args_t args = {};
   args.callback = &onCloseTimer;
   args.name = "valve_close";
   esp_timer_create(&args, &g_close_timer);
 
-  if (PIN_STATUS_LED >= 0) { pinMode(PIN_STATUS_LED, OUTPUT); digitalWrite(PIN_STATUS_LED, LOW); }
+  if (PIN_STATUS_LED >= 0) { pinMode(PIN_STATUS_LED, OUTPUT); setLed(false); }
   btStop();                                   // expo: Wi-Fi starts below; Bluetooth stays off
 
   Wire.begin(PIN_SDA, PIN_SCL, I2C_CLOCK_HZ);

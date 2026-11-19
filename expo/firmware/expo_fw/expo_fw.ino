@@ -290,7 +290,7 @@ static bool muxNone() {
 static void bringUpMux() {
   g_mux_sel = MUX_UNKNOWN;
   g_mux_ok = i2cProbe(MUX_ADDR) && muxNone();
-  if (!g_mux_ok) Out.println(F("E,no TCA9548A at 0x70: check SDA=GPIO21, SCL=GPIO22, 3V3, GND"));
+  if (!g_mux_ok) Out.printf("E,no TCA9548A at 0x70: check SDA=GPIO%d, SCL=GPIO%d, 3V3, GND\n", PIN_SDA, PIN_SCL);
 }
 
 // ===========================================================================
@@ -719,6 +719,10 @@ static uint32_t g_p_start_us      = 0;
 static uint8_t  g_p_fails         = 0;
 static uint32_t g_p_last_good_ms  = 0;
 static bool     g_p_integrity_bad = false;
+
+// The integrity flag blocks START and dumps the cuff unless the build ignores
+// it (config.h IGNORE_PRESSURE_INTEGRITY, a temporary bench setting).
+static bool pressureIntegrityBlocks() { return g_p_integrity_bad && !IGNORE_PRESSURE_INTEGRITY; }
 static bool     g_p_zeroed        = false;
 static float    g_p_zero_abs      = 0.0f;   // absolute mmHg with the cuff vented
 static float    g_p_mmhg          = NAN;    // latest good reading, cuff-relative
@@ -1037,18 +1041,31 @@ static void controlWindow(uint32_t now) {
   g_c_idx++;
 }
 
+static bool g_prox_warned = false;   // the proximal-dropout warning was sent this run
+
 // Every loop pass. Each check names its reason in the EV line.
 static void safetyChecks(uint32_t now) {
   if (sessionActive()) {
     if (!g_p_ok || now - g_p_last_good_ms > PRESSURE_DROPOUT_MS) { dump("pressure dropout"); return; }
-    if (g_p_integrity_bad) { dump("pressure sensor integrity flag"); return; }
+    if (pressureIntegrityBlocks()) { dump("pressure sensor integrity flag"); return; }
     if (g_p_mmhg > S.p_max) { dump("overpressure"); return; }
     for (Band &b : g_bands) {
-      if (!b.ppg_ok || now - b.ppg_last_ms > PPG_DROPOUT_MS) {
+      const bool lost = !b.ppg_ok || now - b.ppg_last_ms > PPG_DROPOUT_MS;
+      if (!lost) {
+        if (&b != &g_distal) g_prox_warned = false;
+        continue;
+      }
+      // expo: only the bands the result needs dump the cuff (config.h
+      // REQUIRE_PROXIMAL_BAND). Losing the proximal band is reported once.
+      if (&b == &g_distal || REQUIRE_PROXIMAL_BAND) {
         char r[24];
         snprintf(r, sizeof(r), "ppg dropout %c", b.tag);
         dump(r);
         return;
+      }
+      if (b.ppg_ok && !g_prox_warned) {          // it was working at Start and stopped
+        g_prox_warned = true;
+        event("warning", "proximal PPG dropout: the run continues (not used by the result)");
       }
     }
   } else if (g_p_ok && g_p_zeroed && g_p_mmhg > S.p_max && !g_overp_warned) {
@@ -1426,11 +1443,12 @@ static void cmdStart(uint32_t src) {
   if (!requireIdle("START", false)) return;
   const char *why = nullptr;
   if (!g_p_ok)                                 why = "no pressure sensor";
-  else if (g_p_integrity_bad)                  why = "pressure sensor integrity flag set";
+  else if (pressureIntegrityBlocks())          why = "pressure sensor integrity flag set";
   else if (!g_p_zeroed)                        why = "pressure not zeroed: send ZERO";
   else if (millis() - g_p_last_good_ms > PRESSURE_DROPOUT_MS) why = "no fresh pressure reading";
   else if (g_p_mmhg >= VENTED_BELOW_MMHG)      why = "cuff not vented";
-  else if (!g_bands[0].ppg_ok || !g_bands[1].ppg_ok) why = "a PPG band is not OK";
+  else if (!g_bands[0].ppg_ok)                 why = "distal PPG band is not OK";
+  else if (REQUIRE_PROXIMAL_BAND && !g_bands[1].ppg_ok) why = "proximal PPG band is not OK";
   if (why) {
     Out.printf("E,START refused: %s\n", why);
     event("start_refused", why);
@@ -1442,6 +1460,9 @@ static void cmdStart(uint32_t src) {
   valveAllowClose();
   valveWrite(true);
   setState(ST_INFLATE);
+  if (g_p_integrity_bad) {   // only reachable with IGNORE_PRESSURE_INTEGRITY
+    event("warning", "pressure integrity flag ignored: readings unverified (bench build)");
+  }
   if (g_view_technical) setView(false, "start");   // every new run opens on the public screen
 }
 
@@ -1747,8 +1768,10 @@ void setup() {
   g_next_win_ms = millis();
   g_next_status_ms = millis();
   printInfo();
-  Out.println(sensorsOk() == 5 ? F("# ready: all 5 sensors found")
-                                  : F("# NOT ready: fix the wiring and send R, or SCAN to see the bus"));
+  const bool runnable = g_p_ok && g_bands[0].ppg_ok && (!REQUIRE_PROXIMAL_BAND || g_bands[1].ppg_ok);
+  if (sensorsOk() == 5)  Out.println(F("# ready: all 5 sensors found"));
+  else if (runnable)     Out.printf("# ready to run: %d/5 sensors (pressure and distal PPG present)\n", sensorsOk());
+  else                   Out.println(F("# NOT ready: fix the wiring and send R, or SCAN to see the bus"));
   if (wifiUp) {
     Out.printf("# wifi ready: join \"%s\" and open http://%s/\n", WIFI_SSID,
                WiFi.softAPIP().toString().c_str());

@@ -356,6 +356,10 @@ function handle(line) {
         S.fault = detail;
       } else if (name === 'warning' && detail.indexOf('controller lost during DEFLATE') >= 0) {
         S.notice = 'The run kept going on the board while this phone was away. It ends by itself at the stop pressure.';
+      } else if (name === 'warning' && detail.indexOf('pressure integrity flag ignored') >= 0) {
+        S.notice = 'Bench build: the pressure sensor failed its self-check and is being used anyway. Check its readings against a gauge.';
+      } else if (name === 'warning' && detail.indexOf('proximal PPG dropout') >= 0) {
+        S.notice = 'Lost the upper-arm light sensor. The run continues: the reading uses the forearm sensor only.';
       } else if (name === 'view') S.view = detail.split(' ')[0];
       else if (name === 'analyser') { const tok = detail.split(' ')[0]; S.analyser = tok === 'none' ? 0 : +tok; }
       else if (name === 'result') setResult(pairsOf(detail));
@@ -464,7 +468,9 @@ function startBlocker() {
   if (S.sensors[0] !== '1') return "Pressure sensor fault: can't run";
   if (!S.zeroed) return 'ZERO';
   if (!(S.p < VENTED_BELOW)) return 'Wait for the cuff to empty, or open the release screw';
-  if (S.sensors[1] !== '1' || S.sensors[2] !== '1') return 'A light-sensor band is not OK: check its cable';
+  // The result uses the forearm (distal) band only; the upper-arm band's light
+  // is shown but doesn't block Start (firmware REQUIRE_PROXIMAL_BAND).
+  if (S.sensors[1] !== '1') return 'The forearm light sensor is not OK: check its cable';
   return '';
 }
 

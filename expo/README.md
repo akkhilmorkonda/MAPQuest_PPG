@@ -140,6 +140,11 @@ still match `irb_fw`). What is new:
   boot, before the watchdog, with the valve open. Bluetooth stays off.
 - **Data goes to Wi-Fi whenever a device is connected.** Serial gets data lines only after
   `STREAM 1`, as on the bench. Sample counters run from boot and are never reset.
+- **Only the distal (forearm) band is required** (`REQUIRE_PROXIMAL_BAND = false` in
+  `config.h`, since 2026-11-18). The result reads the distal band only, so START needs
+  pressure and the distal PPG; the upper-arm band still shows on the phone and dashboard
+  when present, and losing it mid-run sends one warning instead of dumping the cuff. Set
+  it to `true` when a model that uses the proximal band is in.
 - **The phone gets the session commands only.** Control rules as in the link simulator,
   plus: the controller may send `START`, `RUN`, `ZERO`, `BLINK` and `SET` of `rate`,
   `hold_s`, `p_stop`, `p_run_min`. Controller gains, safety limits and the bench commands

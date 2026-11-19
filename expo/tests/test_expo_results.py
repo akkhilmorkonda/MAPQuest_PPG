@@ -133,6 +133,51 @@ def test_every_flag_has_phone_text():
     assert set(FLAG_TEXT) | {"pending"} == set(hubmod.RESULT_FLAGS)
 
 
+# ---- the proximal band is optional (REQUIRE_PROXIMAL_BAND = false) ------------------
+
+def test_start_runs_without_the_proximal_band_and_still_reads():
+    board = ArmBoard(realtime=False)
+    board.fail("ppg_P")                           # upper-arm band not connected
+    s = Session(board)
+    res = analyse(s.run(), 1)
+    assert res.flag == "ok" and abs(res.mmhg - SBP) < 5      # the result uses the distal band
+    # Still shown as missing: pressure, distal PPG, proximal PPG, distal IMU, proximal IMU.
+    assert s.hub.status_line().split(",")[3] == "11011"
+
+
+def test_start_is_refused_without_the_distal_band():
+    board = ArmBoard(realtime=False)
+    board.fail("ppg_D")
+    s = Session(board)
+    s.until(lambda: s.t >= 1.0)
+    s.say("START")
+    s.step()
+    assert s.hub.board.state == "IDLE"
+    assert any("START refused: a PPG band is not OK" in ln for ln in s.lines)
+
+
+def test_losing_the_proximal_band_mid_run_warns_and_the_run_finishes():
+    s = Session()
+    s.until(lambda: s.t >= 16.0)
+    s.say("START")
+    s.until(lambda: s.hub.board.p >= hubmod.P_RUN_MIN)
+    s.say("RUN")
+    s.until(lambda: s.hub.board.state == "DEFLATE")
+    s.hub.board.fail("ppg_P")
+    s.until(lambda: s.completed())
+    assert any(",warning,proximal PPG dropout" in ln for ln in s.lines)
+    assert analyse(s.completed()[0], 1).flag == "ok"          # it reached p_stop, no dump
+
+
+def test_proximal_rule_matches_the_firmware_and_the_phone():
+    cfg = (EXPO / "firmware" / "expo_fw" / "config.h").read_text(encoding="utf-8")
+    m = re.search(r"REQUIRE_PROXIMAL_BAND\s*=\s*(true|false)", cfg)
+    assert (m.group(1) == "true") == hubmod.REQUIRE_PROXIMAL_BAND
+    page = (EXPO / "web" / "index.html").read_text(encoding="utf-8")
+    blocker = page[page.index("function startBlocker"):page.index("function resultLine")]
+    assert "S.sensors[1] !== '1'" in blocker and "S.sensors[2]" not in blocker
+
+
 # ---- the manager: numbering, pending, the anonymous file, replay ---------------------
 
 def _manager(tmp_path, **kw):

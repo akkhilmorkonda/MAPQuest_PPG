@@ -109,6 +109,21 @@ static const uint16_t IMU_ACC_RANGE_G   = 4;     // -> 8192 LSB/g
 static const uint16_t IMU_GYR_RANGE_DPS = 500;   // -> 65.536 LSB/(deg/s)
 static const uint32_t IMU_POLL_MS       = 10;
 
+// expo: the result (host/mapquest, refill onset) reads the DISTAL band only.
+// START needs the distal PPG; the proximal band is shown when present but
+// neither blocks START nor dumps the cuff if it drops out (a warning only).
+// Set true when a model that uses the proximal band is in use.
+static const bool REQUIRE_PROXIMAL_BAND = false;
+
+// TEMPORARY (2026-11-18, bench testing): the rig's MPRLS reports its
+// memory-integrity flag (status 0x44) even after a full power cycle. While
+// true, that flag neither refuses START nor dumps the cuff; every other limit
+// (over-pressure, pressure dropout, hold and run timeouts) still applies, and
+// each START logs a warning. The pressure readings are NOT verified: check
+// them against a reference gauge. Set false (or replace the sensor) before
+// visitors.
+static const bool IGNORE_PRESSURE_INTEGRITY = true;
+
 // Consecutive I2C failures before a sensor is declared lost. One glitch on a
 // long band cable should not end a run; a dead sensor should.
 static const uint8_t I2C_FAIL_LIMIT = 3;

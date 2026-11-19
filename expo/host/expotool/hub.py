@@ -19,7 +19,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from irbtool.mock import ROOM_ABS_MMHG, MockBoard, _abs_to_counts
+from irbtool.mock import PPG_DROPOUT_S, ROOM_ABS_MMHG, MockBoard, _abs_to_counts
 
 FIRMWARE = "mapquest-expo-linksim-pysim"
 CONTROLLER_TIMEOUT_S = 2.0          # config.h CONTROLLER_TIMEOUT_MS (also the analyser's)
@@ -32,6 +32,7 @@ ST_COLUMNS = ("t_us", "state", "sensors", "zeroed", "controller", "clients", "p_
 SENSOR_ORDER = ("pressure", "ppg_D", "ppg_P", "imu_D", "imu_P")
 RESULT_FLAGS = ("pending", "ok", "no_onset", "arm_moved", "pulse_present", "incomplete",
                 "safety_stop", "stopped")   # kResultFlags in both sketches
+REQUIRE_PROXIMAL_BAND = False       # expo_fw config.h: the result reads the distal band only
 
 
 class ArmBoard(MockBoard):
@@ -43,6 +44,38 @@ class ArmBoard(MockBoard):
     as on a real arm. Everything else is MockBoard unchanged."""
 
     RIPPLE = 0.05
+    _prox_at_start = True
+    _prox_warned = False
+
+    # -- expo_fw's band rule (REQUIRE_PROXIMAL_BAND): only the distal band is
+    # needed. A missing proximal band doesn't refuse START, and losing it
+    # mid-run warns once instead of dumping the cuff. MockBoard checks both.
+
+    def _start(self) -> None:
+        if REQUIRE_PROXIMAL_BAND or "ppg_P" not in self.failed:
+            self._prox_at_start, self._prox_warned = True, False
+            return super()._start()
+        self.failed.discard("ppg_P")
+        try:
+            super()._start()
+        finally:
+            self.failed.add("ppg_P")
+        self._prox_at_start, self._prox_warned = False, False
+
+    def _safety(self) -> None:
+        if REQUIRE_PROXIMAL_BAND:
+            return super()._safety()
+        active = self.state in ("INFLATE", "HOLD", "DEFLATE")
+        stale = self.t - self.last["ppg_P"] > PPG_DROPOUT_S
+        if active and stale and self._prox_at_start and not self._prox_warned:
+            self._prox_warned = True
+            self._event("warning", "proximal PPG dropout: the run continues (not used by the result)")
+        saved = self.last["ppg_P"]
+        self.last["ppg_P"] = self.t                # the base check must not dump for it
+        try:
+            super()._safety()
+        finally:
+            self.last["ppg_P"] = saved
 
     def _pulse_scale(self) -> float:
         if self.p >= self.sbp:

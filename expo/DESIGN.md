@@ -296,7 +296,7 @@ The phone greys Start out and shows **one** reason with its fix. The public moni
 |---|---|
 | cuff not vented | wait for the cuff to empty, or open the release screw |
 | pressure not zeroed | Zero cuff (highlighted) |
-| a PPG band is not OK | check the band cable; re-check |
+| distal PPG band is not OK | check the forearm band cable; re-check (the upper-arm band does not block Start while the result ignores it: `REQUIRE_PROXIMAL_BAND`) |
 | no pressure sensor / integrity flag | pressure sensor fault: can't run |
 | (phone) fault not acknowledged | tap the banner first |
 | (phone) not in control | Take control |

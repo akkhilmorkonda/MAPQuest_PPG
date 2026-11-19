@@ -115,14 +115,12 @@ static const uint32_t IMU_POLL_MS       = 10;
 // Set true when a model that uses the proximal band is in use.
 static const bool REQUIRE_PROXIMAL_BAND = false;
 
-// TEMPORARY (2026-11-18, bench testing): the rig's MPRLS reports its
-// memory-integrity flag (status 0x44) even after a full power cycle. While
-// true, that flag neither refuses START nor dumps the cuff; every other limit
-// (over-pressure, pressure dropout, hold and run timeouts) still applies, and
-// each START logs a warning. The pressure readings are NOT verified: check
-// them against a reference gauge. Set false (or replace the sensor) before
-// visitors.
-static const bool IGNORE_PRESSURE_INTEGRITY = true;
+// Bench override for the MPRLS memory-integrity flag (status bit 0x04: the
+// sensor's factory calibration fails its own check, so its readings can't be
+// trusted). false: the flag refuses START and dumps the cuff. true: it only
+// logs a warning on each START; every other limit still applies. Keep false.
+// It was true 2026-11-18..19 for a faulty sensor (status 0x44), since replaced.
+static const bool IGNORE_PRESSURE_INTEGRITY = false;
 
 // Consecutive I2C failures before a sensor is declared lost. One glitch on a
 // long band cable should not end a run; a dead sensor should.

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MAPQuest Dashboard</title>
+<link rel="icon" href="logo.webp" type="image/webp">
 <!-- Served by expo/host/expo_results.py to the laptop's own browser (DESIGN 3, 6).
      No external resources: the booth laptop is on the board's network, offline.
      Designs: the "Chosen" page of the dashboard canvas (B3-Live, B3-Result, B3c-Technical). -->
@@ -26,6 +27,8 @@ html, body { margin: 0; height: 100%; background: #0d1020; overflow: hidden; }
 #tech { padding: 22px 32px; gap: 12px; }
 .card { background: var(--card); border: 1.5px solid var(--line); border-radius: 24px; }
 .wordmark { font-family: var(--display); font-weight: 700; color: var(--crimson); line-height: 1; }
+.brand { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.logo { display: block; width: auto; }
 .label { font-size: 13px; font-weight: 700; color: var(--ink2); }
 .big { font-weight: 800; font-variant-numeric: tabular-nums; }
 .head { display: flex; align-items: center; gap: 28px; }
@@ -70,9 +73,12 @@ svg text { font-family: var(--sans); }
 <!-- ======================= PUBLIC (B3) ======================= -->
 <section class="screen on" id="pub" aria-label="Public view">
   <div class="head">
-    <div style="display: flex; flex-direction: column; gap: 2px">
-      <div class="wordmark" style="font-size: 42px">MAPQuest</div>
-      <div style="font-size: 13px; color: var(--ink2); font-weight: 600">Blood pressure without a pulse</div>
+    <div class="brand">
+      <img class="logo" src="logo.webp" alt="" style="height: 64px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <div class="wordmark" style="font-size: 42px">MAPQuest</div>
+        <div style="font-size: 13px; color: var(--ink2); font-weight: 600">Blood pressure without a pulse</div>
+      </div>
     </div>
     <div class="steps" id="pSteps"></div>
     <div style="display: flex; align-items: center; gap: 14px">
@@ -133,7 +139,7 @@ svg text { font-family: var(--sans); }
 <!-- ======================= TECHNICAL (B3c) ======================= -->
 <section class="screen" id="tech" aria-label="Technical view">
   <div style="display: flex; align-items: center; gap: 16px">
-    <div class="wordmark" style="font-size: 32px">MAPQuest</div>
+    <div class="brand" style="gap: 10px"><img class="logo" src="logo.webp" alt="" style="height: 42px"><div class="wordmark" style="font-size: 32px">MAPQuest</div></div>
     <div style="font-size: 16px; font-weight: 800">Finding the moment blood came back</div>
     <div id="tSteps" style="flex-grow: 1; display: flex; justify-content: center; gap: 4px"></div>
     <span id="tRunLine" style="font-size: 13px; font-weight: 600; color: var(--ink2)"></span>

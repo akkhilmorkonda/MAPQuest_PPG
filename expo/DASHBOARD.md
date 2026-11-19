@@ -70,6 +70,7 @@ clinical arrangement (white cards, crimson used sparingly).
 | Role | Face | Weight · size |
 |---|---|---|
 | Wordmark "MAPQuest" | Fredoka | 700 · 42 px public, 32 px technical, crimson |
+| Logo (`web/logo.webp`) | image | left of the wordmark: 64 px tall public, 42 px technical; also the tab icon. Served by `dashserve.py` (its only asset route) |
 | Tagline "Blood pressure without a pulse" | Inter | 600 · 13 px |
 | Big numbers (pressure, result) | Inter | 800 · 120–200 px, tabular figures, tight letter-spacing |
 | Card titles | Inter | 800 · 22–38 px |

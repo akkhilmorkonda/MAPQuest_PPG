@@ -350,6 +350,16 @@ def test_dashboard_catch_up_is_in_order_and_only_view_goes_back():
         time.sleep(0.2)
         page = urllib_get(f"http://127.0.0.1:{port}/")
         assert "<title>MAPQuest Dashboard</title>" in page
+        import urllib.error
+        import urllib.request
+        logo = urllib.request.urlopen(f"http://127.0.0.1:{port}/logo.webp", timeout=5)
+        assert logo.headers["Content-Type"] == "image/webp" and logo.read(4) == b"RIFF"
+        for other in ("/index.html.bak", "/../host/expo_results.py", "/secrets.h"):
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}{other}", timeout=5)
+                raise AssertionError(f"served {other}")
+            except urllib.error.HTTPError as e:
+                assert e.code == 404
         ws = WSClient(f"ws://127.0.0.1:{port}/ws")
         got = _collect(ws, lambda g: any('"kind":"result"' in ln for ln in g) and g.count(g[-1]) and len(g) >= 6, 3)
         # The latest messages first, then everything in the order it happened.

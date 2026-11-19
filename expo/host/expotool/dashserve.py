@@ -28,6 +28,7 @@ from .ws import OP_CLOSE, OP_TEXT, FrameDecoder, ProtocolError, accept_key, enco
 PAGE = Path(__file__).resolve().parents[2] / "web" / "dashboard.html"
 HISTORY_S = 120.0
 ALLOWED = ("VIEW PUBLIC", "VIEW TECHNICAL")
+ASSETS = {"/logo.webp": "image/webp"}         # files next to the page it may serve, and nothing else
 
 
 class DashServer:
@@ -113,6 +114,11 @@ class DashServer:
             body = self.page.read_bytes()        # read on every load: edits show on refresh
             writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                          b"Cache-Control: no-store\r\nConnection: close\r\n"
+                         + f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+        elif path in ASSETS and (self.page.parent / path[1:]).is_file():
+            body = (self.page.parent / path[1:]).read_bytes()
+            writer.write(f"HTTP/1.1 200 OK\r\nContent-Type: {ASSETS[path]}\r\n".encode()
+                         + b"Cache-Control: max-age=3600\r\nConnection: close\r\n"
                          + f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
         else:
             writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")

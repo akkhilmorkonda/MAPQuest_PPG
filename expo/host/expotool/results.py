@@ -51,6 +51,18 @@ MOTION_AFTER_ONSET_S = 5.0           # motion this long after the onset still ma
 MIN_UNCUFFED_S = 4.0                 # pre-roll needed to judge the uncuffed pulse
 DUMP_WAIT_S = 20.0                   # give up waiting for IDLE after a dump
 
+# Pressure glitches (DESIGN 7.2): single MPRLS readings that sit far off their
+# neighbours. On the rig they read low by 3-20 mmHg, one or two readings at a
+# time: the valve's switch-off spike corrupts the conversion it lands in, and
+# bus errors add more. A cuff can't move that far in 50 ms and come back.
+GLITCH_HALF = 5                      # median over 11 readings (~110 ms at 100 Hz)
+GLITCH_MMHG = 3.0                    # off that median by more than this: dropped
+GLITCH_MAX_FRACTION = 0.25           # dropping more than this: the trace itself is suspect
+# What's left still wobbles ~1.3 mmHg (the valve's flow ripple at the sensor;
+# the cuff itself can only lose air while deflating). A centred mean over this
+# span halves it and, centred, adds no lag or bias on the 2 mmHg/s ramp.
+PRESSURE_SMOOTH_S = 0.5
+
 # Flag order when several apply: the first is sent, all are logged.
 FLAG_ORDER = ("incomplete", "arm_moved", "pulse_present")
 FLAG_TEXT = {
@@ -281,11 +293,13 @@ def _analyse_complete(run: Run, number: int) -> Result:
         raise ValueError("no good pressure readings")
     absolute = counts_to_mmhg(p_raw[good])
     t_p = t[good]
+    glitch = pressure_glitches(absolute)
+    absolute, t_p = absolute[~glitch], t_p[~glitch]
     zero = run.zero_abs
     if zero is None:                                  # pre-roll is vented
         early = t_p < t_infl
         zero = float(np.median(absolute[early])) if early.any() else float(absolute[0])
-    p_mmhg = absolute - zero
+    p_mmhg = smooth_pressure(absolute - zero, t_p)
 
     def pressure(at_s):
         return float(np.interp(at_s, t_p, p_mmhg))
@@ -308,12 +322,15 @@ def _analyse_complete(run: Run, number: int) -> Result:
         "windows": {"inflate": t_infl, "hold": t_hold, "deflate": t_defl, "dump": t_dump,
                     "ref": ref},
         "p_deflate_start": pressure(t_defl), "hinge_power": d.hinge_power,
+        "pressure_glitches": int(glitch.sum()), "pressure_readings": int(glitch.size),
     }
 
     # -- signal incomplete: holes in the stream, or light on a rail ----------
     holes = [g for g in run.gaps]
     if run.missing:
         holes.append(f"{run.missing} samples missing")
+    if glitch.mean() > GLITCH_MAX_FRACTION:
+        holes.append(f"pressure sensor glitched on {glitch.mean() * 100:.0f} % of readings")
     span = (t >= t_defl) & (t <= t_dump)
     railed = 0.0
     if span.any():
@@ -379,6 +396,31 @@ def _analyse_complete(run: Run, number: int) -> Result:
     flag = next((f for f in FLAG_ORDER if f in flags), "ok")
     mmhg = round(pressure(onset), 1)
     return Result(number, mmhg, flag, "; ".join(reasons), flags, markers, detail)
+
+
+def pressure_glitches(p: np.ndarray, half: int = GLITCH_HALF, limit: float = GLITCH_MMHG) -> np.ndarray:
+    """True for readings more than ``limit`` mmHg off the median of the
+    ``2 * half + 1`` readings around them. A median follows ramps and steps
+    (inflation, deflation, the dump) exactly, so only isolated readings that
+    jump away and straight back are caught; up to ``half`` in a row."""
+    p = np.asarray(p, dtype=float)
+    if p.size < 2 * half + 1:
+        return np.zeros(p.size, dtype=bool)
+    windows = np.lib.stride_tricks.sliding_window_view(np.pad(p, half, mode="edge"), 2 * half + 1)
+    return np.abs(p - np.median(windows, axis=1)) > limit
+
+
+def smooth_pressure(p: np.ndarray, t: np.ndarray, span_s: float = PRESSURE_SMOOTH_S) -> np.ndarray:
+    """Centred moving mean over ``span_s`` (readings counted from their own
+    rate, so dropped glitches don't stretch the window much)."""
+    p = np.asarray(p, dtype=float)
+    if p.size < 3:
+        return p
+    rate = (p.size - 1) / max(float(t[-1] - t[0]), 1e-9)
+    n = int(round(span_s * rate)) | 1                 # odd, so the window is centred
+    if n < 3 or p.size < n:
+        return p
+    return np.convolve(np.pad(p, n // 2, mode="edge"), np.ones(n) / n, mode="valid")
 
 
 TRACE_HZ = 10.0

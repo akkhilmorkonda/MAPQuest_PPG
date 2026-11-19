@@ -263,6 +263,24 @@ The expo board announces each state change (`EV,state`), so the laptop knows the
 
 This is a small adapter in front of `derive()`; the analysis itself stays unchanged.
 
+**Cuff pressure is cleaned before use** (`results.py`), for the reading, the markers and the
+dashboard traces alike. On the rig the MPRLS returns single readings 3–20 mmHg low: in run 1
+almost every valve closing corrupted the conversion it landed in (the coil's switch-off spike),
+and run 2 added bus errors in every phase, about 9 % of readings in all. Plotted against
+pressure, each one threw the close-up sideways. Two steps:
+
+1. **Drop glitches:** a reading more than 3 mmHg off the median of the 11 around it (~110 ms)
+   is dropped. A median follows inflation, deflation and the dump step exactly, so only
+   readings that jump away and straight back go. More than 25 % dropped flags the run
+   `incomplete`.
+2. **Smooth:** a centred 0.5 s mean of what's left. The remaining ~1.3 mmHg wobble is the
+   valve's flow ripple at the sensor (a deflating cuff can only lose air); centred, the mean
+   adds no lag or bias on the 2 mmHg/s ramp.
+
+Run 2 replayed: 1,028 of 11,254 readings dropped, 114.2 → 114.6 mmHg. This hides the
+symptom; the fixes are a flyback diode across the valve and a clean bus (the breakout's 1.7 V
+I2C lines, §10).
+
 ### 7.3 Headline marker
 
 **Refill onset (hinge)** (D43), the analysis default. It handles the soft refill starts that
@@ -374,6 +392,13 @@ The phone greys Start out and shows **one** reason with its fix. The public moni
   every device for ~1–2 s. Fixed in source 2026-11-18 (one sender per device); not yet
   flashed or re-tested (README checklist row 13).
 - **Radio noise on the real sensors** and the valve with Wi-Fi on (README, Owed).
+- **The bus and the valve corrupt pressure readings** (found 2026-11-19, §7.2). The PPG+IMU
+  breakout pulls SDA/SCL to its 1.7 V rail, below the ~2.3 V the 3.3 V mux and MPRLS need to
+  read a high: the mux dropped out within a second whenever the breakout's channel was
+  selected, and pressure readings glitch low. Fix: power the TCA9548A from the breakout's
+  1.7 V rail (it then translates levels), with the XIAO side pulled up to 3.3 V, or a PCA9306
+  per band. Separately, each valve closing corrupts a reading: a flyback diode across the
+  valve coil. The analysis now drops glitches, but the hardware should be fixed first.
 
 ---
 

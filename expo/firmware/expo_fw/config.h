@@ -72,6 +72,8 @@ static const bool STATUS_LED_ON_HIGH = false;
 // ---------------------------------------------------------------------------
 
 static const uint32_t I2C_CLOCK_HZ   = 400000;  // drop to 100000 if a band cable errors
+// A 120-byte PPG chunk takes ~3 ms at 400 kHz, ~11 ms at 100 kHz: at 100 kHz
+// raise this to 25, or full-FIFO reads time out.
 static const uint16_t I2C_TIMEOUT_MS = 10;      // a stuck transaction fails fast
 
 // TCA9548A mux. Each band (MAX30101 + BMI270) sits on its own channel; the

@@ -12,7 +12,9 @@ import pytest
 
 from expotool import hub as hubmod
 from expotool.hub import ArmBoard, LinkSimHub
-from expotool.results import FLAG_TEXT, ResultsLog, RunRecorder, analyse
+import numpy as np
+
+from expotool.results import FLAG_TEXT, ResultsLog, RunRecorder, analyse, pressure_glitches
 from expotool.ws import WSClient
 from irbtool.mock import MockBoard
 
@@ -101,6 +103,56 @@ def test_a_hole_in_the_stream_is_flagged_incomplete():
     res = result_of(Session(drop=(40.0, 40.5)))
     assert res.flag == "incomplete"
     assert "samples missing" in res.reason
+
+
+def test_glitch_filter_keeps_ramps_and_steps_and_drops_lone_readings():
+    t = np.arange(0, 20, 0.01)
+    p = np.where(t < 5, 0.0, np.where(t < 8, (t - 5) * 60.0, np.maximum(180.0 - (t - 8) * 2.0, 40.0)))
+    p[t > 18] = 5.0                                          # the dump: a step down
+    assert not pressure_glitches(p).any()                    # inflation, deflation, the dump: all kept
+    bad = p.copy()
+    hits = [300, 900, 901, 1500]                             # lone readings, one pair
+    bad[hits] -= 12.0
+    bad[1200] += 6.0
+    assert np.flatnonzero(pressure_glitches(bad)).tolist() == sorted(hits + [1200])
+
+
+class GlitchySession(Session):
+    """Every ``every``-th pressure reading comes back ``drop`` mmHg low, the way
+    the rig's MPRLS does on a valve switch-off or a bus error."""
+
+    def __init__(self, every, drop=12.0, **kw):
+        self.every, self.drop_counts = every, int(drop * (15099494 - 1677722) / (25 * 51.71493))
+        super().__init__(**kw)
+        feed = self.rec.line
+
+        def mangled(ln):
+            f = ln.split(",")
+            if f[0] == "S" and len(f) >= 8 and int(f[5]) % self.every == 0:
+                f[6] = str(int(f[6]) - self.drop_counts)
+                ln = ",".join(f)
+            return feed(ln)
+        self.rec.line = mangled
+
+
+def test_pressure_glitches_are_dropped_before_the_reading():
+    clean = result_of(Session())
+    res = result_of(GlitchySession(every=7))                 # 7: never in step with the 10 Hz trace
+    assert res.flag == "ok", res.reason
+    assert abs(res.mmhg - clean.mmhg) < 1.0, (res.mmhg, clean.mmhg)
+    assert res.detail["pressure_glitches"] > 0.12 * res.detail["pressure_readings"]
+    tr, w = res.detail["traces"], res.detail["windows"]      # the close-up's x axis is clean too
+    t = np.array(tr["t"])
+    p = np.array([np.nan if v is None else v for v in tr["p"]])
+    defl = (t > w["deflate"] - w["inflate"]) & (t < w["dump"] - w["inflate"])
+    assert defl.sum() > 100
+    assert np.nanmax(np.abs(np.diff(p[defl]))) < 2.0         # 2 mmHg/s at 10 Hz is 0.2 a step
+
+
+def test_a_mostly_glitching_pressure_sensor_is_flagged_incomplete():
+    res = result_of(GlitchySession(every=3))
+    assert res.flag == "incomplete"
+    assert "pressure sensor glitched" in res.reason
 
 
 def test_no_refill_means_no_number():

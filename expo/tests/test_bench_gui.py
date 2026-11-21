@@ -1,0 +1,29 @@
+"""The bench GUI names its recordings by run number, sharing the expo results' numbering."""
+import bench_gui as g
+
+
+def _tree(tmp_path, results_last=5, raw=(5,), bench=()):
+    (tmp_path / "raw").mkdir(parents=True)
+    (tmp_path / "bench").mkdir()
+    (tmp_path / "expo_results.csv").write_text(
+        "run,time,mmhg,flag,reason\n" + (f"{results_last},t,1,ok,\n" if results_last else ""), encoding="utf-8")
+    for n in raw:
+        (tmp_path / "raw" / f"run_{n:04d}.txt").write_text("", encoding="utf-8")
+    for name in bench:
+        (tmp_path / "bench" / name).mkdir()
+    return tmp_path / "bench", tmp_path
+
+
+def test_runs_count_on_from_the_results_file_and_the_bench_folders(tmp_path):
+    assert g.highest_run(*_tree(tmp_path / "a")) == 5                       # results file and raw
+    assert g.highest_run(*_tree(tmp_path / "b", bench=("run_0006", "run_0007"))) == 7
+    assert g.highest_run(*_tree(tmp_path / "c", bench=("run_0008-0009",))) == 9   # two runs in one folder
+    ignored = ("no_run_20261121_140000", "rec_20261121_132235", "run_0012_extra", "cleared_runs_1-4")
+    assert g.highest_run(*_tree(tmp_path / "d", bench=ignored)) == 5
+    assert g.highest_run(*_tree(tmp_path / "e", results_last=0, raw=(3, 11))) == 11
+
+
+def test_a_finished_recording_is_named_by_its_runs():
+    assert g.run_folder_name(8, [8]) == "run_0008"
+    assert g.run_folder_name(8, [8, 9]) == "run_0008-0009"
+    assert g.run_folder_name(8, []).startswith("no_run_")                    # its number is reused

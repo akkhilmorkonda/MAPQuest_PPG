@@ -19,7 +19,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from irbtool.mock import PPG_DROPOUT_S, ROOM_ABS_MMHG, MockBoard, _abs_to_counts
+from irbtool.mock import PPG_DROPOUT_S, ROOM_ABS_MMHG, VENTED_BELOW, MockBoard, _abs_to_counts
 
 FIRMWARE = "mapquest-expo-linksim-pysim"
 CONTROLLER_TIMEOUT_S = 2.0          # config.h CONTROLLER_TIMEOUT_MS (also the analyser's)
@@ -33,6 +33,8 @@ SENSOR_ORDER = ("pressure", "ppg_D", "ppg_P", "imu_D", "imu_P")
 RESULT_FLAGS = ("pending", "ok", "no_onset", "arm_moved", "pulse_present", "incomplete",
                 "safety_stop", "stopped")   # kResultFlags in both sketches
 REQUIRE_PROXIMAL_BAND = False       # expo_fw config.h: the result reads the distal band only
+IDLE_VENT_ABOVE = 20.0              # expo_fw config.h IDLE_VENT_ABOVE_MMHG
+IDLE_CLOSE_SETTLE_S = 3.0           # IDLE_CLOSE_SETTLE_MS
 
 
 class ArmBoard(MockBoard):
@@ -76,6 +78,40 @@ class ArmBoard(MockBoard):
             super()._safety()
         finally:
             self.last["ppg_P"] = saved
+
+    # -- expo_fw's IDLE valve (idleValve()): held closed once the cuff has read
+    # empty for IDLE_CLOSE_SETTLE_S; opened when the pressure sensor is gone or
+    # the cuff holds pressure outside a run. Any dump restarts the wait.
+
+    _idle_empty_t: float | None = None
+
+    def _dump(self, reason: str) -> None:
+        super()._dump(reason)
+        self._idle_empty_t = None
+
+    def _window(self) -> None:
+        was = self.state
+        super()._window()
+        if self.state != "IDLE":
+            return
+        if was != "IDLE":
+            self._idle_empty_t = None
+        why = ("no pressure reading" if "pressure" in self.failed
+               else "cuff pressurised outside a run" if self.p > IDLE_VENT_ABOVE else None)
+        if why:
+            self._idle_empty_t = None
+            if self.valve_closed:
+                self.valve_closed = False
+                self._event("valve", f"open in IDLE: {why}")
+            return
+        if self.p >= VENTED_BELOW:
+            self._idle_empty_t = None
+            return
+        if self._idle_empty_t is None:
+            self._idle_empty_t = self.t
+        if not self.valve_closed and self.t - self._idle_empty_t >= IDLE_CLOSE_SETTLE_S:
+            self.valve_closed = True
+            self._event("valve", "closed in IDLE")
 
     def _pulse_scale(self) -> float:
         if self.p >= self.sbp:
@@ -216,15 +252,15 @@ class LinkSimHub:
             self._emit("# blink")
         elif verb == "STREAM":
             self._emit("E,STREAM is serial-only: Wi-Fi clients always receive the stream")
-        elif verb == "ZERO":
+        elif verb in ("ZERO", "R"):                  # blocking: Wi-Fi gets a stream gap instead
             if b.state != "IDLE":
-                self._emit(f"E,ZERO refused: state is {b.state}")
+                self._emit(f"E,{verb} refused: state is {b.state}")
                 return
-            b.streaming = False                      # MockBoard refuses ZERO while streaming
-            b.command("ZERO")
+            b.streaming = False                      # MockBoard refuses these while streaming
+            b.command(verb)
             b.streaming = True
             self._flush_board()
-            self._event("stream_gap", "ZERO")
+            self._event("stream_gap", verb)
         elif verb == "START":
             b.command("START")
             if b.state == "INFLATE":

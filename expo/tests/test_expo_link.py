@@ -212,6 +212,43 @@ def test_expo_fw_rules_match_the_link_simulator():
         assert bench not in controller
 
 
+def test_idle_valve_settings_match_the_link_simulator():
+    cfg = (FW / "config.h").read_text(encoding="utf-8")
+    assert float(re.search(r"IDLE_VENT_ABOVE_MMHG\s*=\s*([\d.]+)", cfg).group(1)) == hubmod.IDLE_VENT_ABOVE
+    assert int(re.search(r"IDLE_CLOSE_SETTLE_MS\s*=\s*(\d+)", cfg).group(1)) == int(hubmod.IDLE_CLOSE_SETTLE_S * 1000)
+    fw = _fw()
+    assert "idleValve(now, pAvg)" in fw                        # called from the IDLE control window
+    # Every opening restarts the settle wait: valveLockOpen() clears it.
+    lock_open = re.search(r"static void valveLockOpen\(\) \{(.*?)\n\}", fw, re.S).group(1)
+    assert "g_idle_empty_ms = 0" in lock_open
+    # The settle start is never later than `now` (an unsigned difference would wrap).
+    body = re.search(r"static void idleValve\(.*?\n\}", fw, re.S).group(0)
+    start = re.search(r"g_idle_empty_ms == 0\) g_idle_empty_ms = ([^;]+);", body).group(1)
+    assert "|" not in start and "+" not in start, start
+
+
+def test_refresh_reprobes_the_sensors_for_the_controller_only():
+    hub = LinkSimHub()
+    a, b = hub.connect(0.0), hub.connect(0.0)
+    hub.receive(a, "CLAIM", 0.0)
+    hub.tick(0.1)
+    hub.receive(b, "R", 0.2)
+    lines, _ = hub.tick(0.3)
+    assert any("R refused: client" in ln for ln in lines)
+    hub.receive(a, "R", 0.4)
+    lines, _ = hub.tick(0.5)
+    assert not any("refused" in ln for ln in lines), lines
+    assert any(ln.startswith("# band=D") for ln in lines)        # INFO: every sensor's status
+    assert any(",stream_gap,R" in ln for ln in lines)
+
+
+def test_phone_refresh_never_reconnects_during_a_run():
+    page = (EXPO / "web" / "index.html").read_text(encoding="utf-8")
+    body = re.search(r"\$\('btnRefresh'\)\.onclick = \(\) => \{(.*?)\n\};", page, re.S).group(1)
+    i_run, i_close, i_r = body.index("S.state !== 'IDLE'"), body.index("ws.close()"), body.index("cmd('R')")
+    assert i_run < i_close and i_run < i_r                     # the run check comes first
+
+
 def test_expo_fw_status_columns_and_timeout_match():
     m = re.search(r'columns_ST=([a-z_,]+)"\s*\n\s*"([a-z_,]+)"', _fw())
     assert (m.group(1) + m.group(2)).split(",") == list(hubmod.ST_COLUMNS)

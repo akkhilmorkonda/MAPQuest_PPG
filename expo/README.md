@@ -145,11 +145,18 @@ still match `irb_fw`). What is new:
   pressure and the distal PPG; the upper-arm band still shows on the phone and dashboard
   when present, and losing it mid-run sends one warning instead of dumping the cuff. Set
   it to `true` when a model that uses the proximal band is in.
+- **The valve is closed except to deflate and to dump** (since 2026-11-20). INFLATE and
+  HOLD close it as before; in IDLE it is held closed (energised) once the cuff has read
+  below 10 mmHg for 3 s, so it closes again 3 s after every run, dump, zero or valve test.
+  It opens in IDLE, by the same path as a dump, whenever the pressure sensor is missing,
+  unzeroed, stale or flagged, or the cuff holds more than 20 mmHg outside a run
+  (`IDLE_VENT_ABOVE_MMHG`, `IDLE_CLOSE_SETTLE_MS`; `EV,valve` lines). A reset, crash or
+  power loss still vents: the pin goes low.
 - **The phone gets the session commands only.** Control rules as in the link simulator,
-  plus: the controller may send `START`, `RUN`, `ZERO`, `BLINK` and `SET` of `rate`,
-  `hold_s`, `p_stop`, `p_run_min`. Controller gains, safety limits and the bench commands
-  (`DARK`, `AMP`, `R`, `SCAN`, `PPG`, `VALVE TEST`, `TEST HANG`, `STREAM`, `RADIO`) are
-  **USB serial only**.
+  plus: the controller may send `START`, `RUN`, `ZERO`, `BLINK`, `R` (re-probe every
+  sensor: the phone's Refresh) and `SET` of `rate`, `hold_s`, `p_stop`, `p_run_min`.
+  Controller gains, safety limits and the bench commands (`DARK`, `AMP`, `SCAN`, `PPG`,
+  `VALVE TEST`, `TEST HANG`, `STREAM`, `RADIO`) are **USB serial only**.
 - **Blocking commands no longer need the stream off** (only the serial stream). `ZERO`
   from the phone blocks the loop ~2.5 s; the board advances the sample counters across
   the pause and sends `stream_gap: ZERO ms=...`, so receivers see the gap as missing
@@ -171,7 +178,7 @@ settings (copy the file across after changing the password).
 | FQBN | `esp32:esp32:esp32` | `esp32:esp32:XIAO_ESP32S3` |
 | I2C (mux) | SDA GPIO21, SCL GPIO22 | SDA **D4** (GPIO5), SCL **D5** (GPIO6) |
 | Valve MOSFET gate | GPIO25 | **D3** (GPIO4) |
-| Pressure (MPRLS) | main bus, beside the mux | **mux channel 2** (SD2/SC2) |
+| Pressure (MPRLS) | main bus, beside the mux | **mux channel 7** (SD7/SC7) |
 | Bands | mux ch0 distal, ch1 proximal | the same |
 | Status LED | GPIO2 | GPIO21 (lit when low) |
 | Serial | USB bridge, 921600 baud | the chip's own USB (any baud); writes are dropped, never waited on, when no computer is reading |
@@ -303,6 +310,10 @@ is the same page, watch only, with the plots.
   screw" if it cannot reach the board.
 - **Automatic vent:** a red banner with the reason and what to do; Start stays locked until
   it is tapped. A deliberate DUMP needs no tap.
+- **↻ Refresh** (top bar), between runs only: not connected, it reconnects now; with
+  control, the board re-probes every sensor (`R`, about a second); without control, it
+  drops and redoes the link. Never during a run: a reconnect drops control, and losing the
+  controller in INFLATE or HOLD dumps the cuff.
 - **Settings drawer:** Pump-to target and cap (kept on the phone), Run threshold and hold
   (set on the board, IDLE), Zero cuff, Blink LED, Take control, link diagnostics, event log.
 
@@ -343,7 +354,7 @@ default), cap **190**, hold **10 s**.
 | Who | May |
 |---|---|
 | Any device on the network | watch; **DUMP**; `INFO`, `P`, `ECHO <n>`; `CLAIM`, `RELEASE`; the display commands below |
-| The controller (one at a time) | `START`, `RUN`, `SET`, `ZERO`, `BLINK` (`expo_fw`: bench commands stay on serial) |
+| The controller (one at a time) | `START`, `RUN`, `SET`, `ZERO`, `BLINK`, `R` (`expo_fw`: bench commands stay on serial) |
 | USB serial | everything, as on the bench (`STREAM 1` for data on serial) |
 
 **Display commands** never touch the cuff (no valve, settings or session state); the board

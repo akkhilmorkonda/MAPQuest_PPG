@@ -540,6 +540,7 @@ static void handleCommand(char *line, uint32_t src) {
   else if (strcmp(line, "START") == 0)    cmdStart(src);
   else if (strcmp(line, "RUN") == 0)      cmdRun();
   else if (strcmp(line, "INFO") == 0)     printInfo();
+  else if (strcmp(line, "R") == 0)        { Out.println(F("# refresh: simulated sensors, nothing to re-probe")); printInfo(); }
   else if (strcmp(line, "SET") == 0)      cmdSet(arg);
   else if (strcmp(line, "ZERO") == 0)     cmdZero();
   else if (strcmp(line, "P") == 0)        Out.printf("# p_mmhg=%.2f zeroed=1 simulated=1\n", g_p_meas);

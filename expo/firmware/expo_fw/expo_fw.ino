@@ -9,7 +9,7 @@
 // Sensors : TCA9548A mux 0x70
 //             ch0 distal band   : MAX30101 0x57 + BMI270 0x68
 //             ch1 proximal band : MAX30101 0x57 + BMI270 0x68
-//           MPRLS 0x18 on the main bus (WROOM) or mux ch2 (XIAO): MUX_CH_PRESSURE
+//           MPRLS 0x18 on the main bus (WROOM) or mux ch7 (XIAO): MUX_CH_PRESSURE
 // Valve   : Olimex AIR-E-VALVE-3V, normally open, PIN_VALVE -> MOSFET
 //           (GPIO25 on the WROOM, D3 = GPIO4 on the XIAO)
 // Library : SparkFun BMI270 Arduino Library (Library Manager)
@@ -23,11 +23,12 @@
 //   - any client may watch, send DUMP, INFO, P, ECHO <n>, CLAIM, RELEASE, and
 //     the display commands VIEW, RESULT, ANALYSER (never touch the cuff);
 //   - one client at a time holds control and may also send START, RUN,
-//     ZERO, BLINK and SET rate|hold_s|p_stop|p_run_min;
+//     ZERO, BLINK, R (re-probe the sensors: the phone's Refresh) and
+//     SET rate|hold_s|p_stop|p_run_min;
 //   - the controller is lost if it disconnects or is silent for
 //     CONTROLLER_TIMEOUT_MS; during INFLATE or HOLD of a run it started,
 //     that dumps the cuff ("controller lost"); during DEFLATE it warns;
-//   - bench commands (DARK, AMP, R, SCAN, PPG, VALVE TEST, TEST HANG, STREAM,
+//   - bench commands (DARK, AMP, SCAN, PPG, VALVE TEST, TEST HANG, STREAM,
 //     RADIO, and SET of gains and limits) are USB serial only.
 //
 // Serial 921600 baud, newline-terminated commands (irb/DESIGN.md 4.4):
@@ -113,6 +114,11 @@ static void event(const char *name, const char *detail) {
 // ===========================================================================
 // Valve. NORMALLY OPEN: low = de-energised = open = cuff vents.
 //
+// expo: open only to deflate (PWM) and to dump. INFLATE and HOLD close it,
+// and IDLE holds it closed once the cuff reads empty (idleValve()), so it is
+// energised while the board idles. A reset, a crash or a power loss still
+// opens it: the pin goes low.
+//
 // The PWM close comes from an esp_timer callback, which runs in another task
 // (possibly on the other core). A dump could otherwise race it: the dump
 // opens the valve, then a callback already in flight closes it again. So
@@ -128,6 +134,10 @@ static volatile bool      g_valve_closed    = false;
 static esp_timer_handle_t g_close_timer     = nullptr;
 static float              g_carry_us        = 0.0f;   // sub-minimum open time carried forward
 static float              g_duty            = 1.0f;   // fraction of the window open, last applied
+// expo: when the cuff started reading empty in IDLE; 0 = not yet. Every
+// valveLockOpen() clears it, so after any opening (a dump, a zero, the valve
+// test, a fault) the valve stays open IDLE_CLOSE_SETTLE_MS before closing.
+static uint32_t           g_idle_empty_ms   = 0;
 
 static void valveWrite(bool closed) {
   portENTER_CRITICAL(&g_valve_lock);
@@ -151,6 +161,7 @@ static void valveLockOpen() {
   if (g_close_timer) esp_timer_stop(g_close_timer);   // error if idle: harmless
   g_carry_us = 0.0f;
   g_duty = 1.0f;
+  g_idle_empty_ms = 0;
 }
 
 static void valveAllowClose() {
@@ -922,6 +933,37 @@ static void setState(SessState s) {
   event("state", stateName(s));
 }
 
+// expo: the valve in IDLE (config.h IDLE_VENT_ABOVE_MMHG). Closed once the
+// cuff has read empty for IDLE_CLOSE_SETTLE_MS; open whenever the pressure
+// can't be trusted or the cuff holds pressure outside a run. Opening is
+// valveLockOpen(), the same path as a dump. Every control window, IDLE only.
+static void idleValve(uint32_t now, float pAvg) {
+  const char *why = nullptr;
+  if (!g_p_ok || !g_p_zeroed)                          why = "no zeroed pressure sensor";
+  else if (pressureIntegrityBlocks())                  why = "pressure sensor integrity flag";
+  else if (now - g_p_last_good_ms > PRESSURE_DROPOUT_MS || isnan(pAvg)) why = "no pressure reading";
+  else if (pAvg > IDLE_VENT_ABOVE_MMHG)                why = "cuff pressurised outside a run";
+  if (why) {
+    g_idle_empty_ms = 0;
+    if (g_valve_may_close) {
+      valveLockOpen();
+      char d[64];
+      snprintf(d, sizeof(d), "open in IDLE: %s", why);
+      event("valve", d);
+    }
+    return;
+  }
+  if (pAvg >= VENTED_BELOW_MMHG) { g_idle_empty_ms = 0; return; }   // 10-20: stay as it is
+  // Never in the future of `now`: an unsigned now - g_idle_empty_ms would wrap
+  // and close at once (`now | 1` did exactly that on every even millisecond).
+  if (g_idle_empty_ms == 0) g_idle_empty_ms = now ? now : 1u;
+  if (!g_valve_may_close && now - g_idle_empty_ms >= IDLE_CLOSE_SETTLE_MS) {
+    valveAllowClose();
+    valveWrite(true);
+    event("valve", "closed in IDLE");
+  }
+}
+
 static void dump(const char *reason) {
   valveLockOpen();
   const bool wasActive = sessionActive();
@@ -979,6 +1021,7 @@ static void controlWindow(uint32_t now) {
 
   switch (g_state) {
     case ST_IDLE:
+      idleValve(now, pAvg);
       break;
 
     case ST_INFLATE:
@@ -1027,6 +1070,7 @@ static void controlWindow(uint32_t now) {
     case ST_DUMP:
       if ((!isnan(pAvg) && pAvg < VENTED_BELOW_MMHG) || now - g_dump_ms > DUMP_SETTLE_MAX_MS) {
         if (isnan(pAvg) || pAvg >= VENTED_BELOW_MMHG) event("warning", "left DUMP without a vented reading");
+        g_idle_empty_ms = 0;           // idleValve closes it IDLE_CLOSE_SETTLE_MS after empty
         g_state = ST_IDLE;
         event("state", "IDLE");
       }
@@ -1069,8 +1113,9 @@ static void safetyChecks(uint32_t now) {
       }
     }
   } else if (g_p_ok && g_p_zeroed && g_p_mmhg > S.p_max && !g_overp_warned) {
-    g_overp_warned = true;        // valve already open; say so once
-    event("warning", "over-pressure reading while the valve is open");
+    g_overp_warned = true;        // say so once; open the valve if IDLE held it closed
+    if (g_valve_may_close) valveLockOpen();
+    event("warning", "over-pressure reading outside a run: valve open");
   } else if (g_p_mmhg < S.p_max) {
     g_overp_warned = false;
   }
@@ -1084,9 +1129,11 @@ static void safetyChecks(uint32_t now) {
     }
   }
 
-  // Invariant: outside INFLATE / HOLD / DEFLATE the valve is open. Re-assert
-  // it every pass: a register write, and the timer callback cannot close the
-  // valve while g_valve_may_close is clear.
+  // Invariant: the valve may be closed only in INFLATE / HOLD / DEFLATE, and in
+  // IDLE once idleValve() has allowed it (cuff empty, pressure trusted). DUMP,
+  // every fault and every other moment keep it open. Re-assert that every
+  // pass: a register write, and the timer callback cannot close the valve
+  // while g_valve_may_close is clear.
   if (!g_valve_may_close) {
     if (g_valve_closed) valveLockOpen();
     else gpio_set_level((gpio_num_t)PIN_VALVE, 0);
@@ -1405,7 +1452,7 @@ static void valveTest() {
     valveLockOpen();
     safeDelay(400);
   }
-  Out.println(F("# valve click test done (valve left open)"));
+  Out.println(F("# valve click test done (valve open; IDLE closes it again once the cuff reads empty)"));
 }
 
 static void bringUpAll() {
@@ -1682,7 +1729,7 @@ static bool verbIs(const char *line, const char *verb) {
 static void handleWifiCommand(WifiCommand &c) {
   static const char *const kOpenToAll[] = {"INFO", "P", "ECHO", "CLAIM", "RELEASE", "DUMP",
                                            "VIEW", "RESULT", "ANALYSER"};
-  static const char *const kController[] = {"START", "RUN", "SET", "ZERO", "BLINK"};
+  static const char *const kController[] = {"START", "RUN", "SET", "ZERO", "BLINK", "R"};
   for (const char *v : kOpenToAll) {
     if (verbIs(c.line, v)) { handleCommand(c.line, c.client); return; }
   }

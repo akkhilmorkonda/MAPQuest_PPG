@@ -56,9 +56,10 @@ static const bool STATUS_LED_ON_HIGH = true;
 static const int PIN_SDA   = 5;    // D4
 static const int PIN_SCL   = 6;    // D5
 static const int PIN_VALVE = 4;    // D3: not a strapping pin, input (off) through reset
-// The MPRLS is behind the mux on channel 2 (SD2/SC2), next to the bands on
-// channels 0 and 1. A mux fault then also loses pressure, which dumps the cuff.
-static const int8_t MUX_CH_PRESSURE = 2;
+// The MPRLS is behind the mux on channel 7 (SD7/SC7; moved from 2 on
+// 2026-11-21), the bands on channels 0 and 1. A mux fault then also loses
+// pressure, which dumps the cuff.
+static const int8_t MUX_CH_PRESSURE = 7;
 // The XIAO's orange user LED, wired to 3V3: LOW lights it.
 static const int  PIN_STATUS_LED   = 21;
 static const bool STATUS_LED_ON_HIGH = false;
@@ -168,6 +169,15 @@ static const float    HOLD_TIMEOUT_HARD_S  = 120.0f;
 static const float    HOLD_TIMEOUT_ABOVE   = 20.0f;   // the hold clock only counts above this
 static const float    VENTED_BELOW_MMHG    = 10.0f;
 static const uint32_t DUMP_SETTLE_MAX_MS   = 15000;   // leave DUMP even if pressure is unknown
+
+// expo: the valve is held CLOSED in IDLE once the cuff is empty (it is open
+// only to deflate and to dump). It opens in IDLE whenever the pressure sensor
+// is missing, unzeroed, stale or flagged, or the cuff holds more than
+// IDLE_VENT_ABOVE_MMHG outside a run, and closes again only after reading
+// below VENTED_BELOW_MMHG for IDLE_CLOSE_SETTLE_MS. A normally-open valve
+// held closed is energised the whole time the board idles.
+static const float    IDLE_VENT_ABOVE_MMHG = 20.0f;
+static const uint32_t IDLE_CLOSE_SETTLE_MS = 3000;
 static const uint32_t PRESSURE_DROPOUT_MS  = 250;
 static const uint32_t PPG_DROPOUT_MS       = 500;
 static const uint32_t IMU_DROPOUT_MS       = 500;

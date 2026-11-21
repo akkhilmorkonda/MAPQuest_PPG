@@ -155,6 +155,53 @@ def test_a_mostly_glitching_pressure_sensor_is_flagged_incomplete():
     assert "pressure sensor glitched" in res.reason
 
 
+# ---- the valve between runs (expo_fw idleValve) --------------------------------
+
+def _valve_events(s):
+    return [ln.split(",", 3)[3] for ln in s.lines if ln.startswith("EV,") and ",valve," in ln]
+
+
+def test_valve_is_closed_in_idle_once_the_cuff_is_empty():
+    s = Session()
+    s.until(lambda: s.hub.board.valve_closed, limit=6.0)       # boot: empty cuff, closes after the settle
+    assert s.t >= hubmod.IDLE_CLOSE_SETTLE_S
+    s.say("DUMP")                                              # a dump in IDLE opens it ...
+    s.step()
+    assert not s.hub.board.valve_closed
+    t_open = s.t
+    s.until(lambda: s.hub.board.valve_closed, limit=s.t + 6.0)  # ... for the settle time, then closes
+    assert s.t - t_open >= hubmod.IDLE_CLOSE_SETTLE_S - 0.1
+
+
+def test_valve_closes_again_after_a_run():
+    s = Session()
+    s.run()
+    b = s.hub.board
+    assert b.state == "IDLE"
+    s.until(lambda: b.valve_closed, limit=s.t + 6.0)
+    assert _valve_events(s)[-1] == "closed in IDLE"
+    # It was open for the whole dump: no close between the dump and IDLE.
+    lines = s.lines
+    i_dump = max(i for i, ln in enumerate(lines) if ",state,DUMP" in ln)
+    i_idle = max(i for i, ln in enumerate(lines) if ",state,IDLE" in ln)
+    assert not any(",valve,closed" in ln for ln in lines[i_dump:i_idle])
+
+
+def test_idle_valve_opens_for_pressure_outside_a_run_or_a_lost_sensor():
+    s = Session()
+    b = s.hub.board
+    s.until(lambda: b.valve_closed, limit=6.0)
+    b.p = 60.0                                                 # someone pumped without Start
+    s.step(0.2)
+    assert not b.valve_closed
+    assert _valve_events(s)[-1] == "open in IDLE: cuff pressurised outside a run"
+    s.until(lambda: b.valve_closed, limit=s.t + 10.0)          # vents, then closes again
+    b.failed.add("pressure")
+    s.step(0.2)
+    assert not b.valve_closed
+    assert _valve_events(s)[-1] == "open in IDLE: no pressure reading"
+
+
 def test_no_refill_means_no_number():
     res = result_of(Session(ArmBoard(realtime=False, sbp=30.0)))   # flow returns below p_stop
     assert res.flag == "no_onset" and res.mmhg is None

@@ -8,7 +8,7 @@ display commands (VIEW, RESULT, ANALYSER; expo/DESIGN.md 3.1). The board
 underneath is ``irbtool.mock.MockBoard`` (read-only reuse), which already
 follows the IRB firmware's session rules and emits its line formats and rates.
 
-It is what ``sim_server.py`` serves, so the phone page, the laptop receiver
+It is what ``sim_server.py`` serves, so the iPad page, the laptop receiver
 and the results process can be exercised without the ESP32. Passing tests
 here prove the host side and the protocol contract, not the firmware.
 """
@@ -144,6 +144,7 @@ class ArmBoard(MockBoard):
 class _Client:
     last_rx: float
     direct: list[str] = field(default_factory=list)
+    host: str = ""                 # its address, as the board reads it from the socket
 
 
 class LinkSimHub:
@@ -159,6 +160,7 @@ class LinkSimHub:
         self.blinks = 0
         self.view_technical = False
         self.analyser = 0
+        self.analyser_url = ""               # ws://<analyser's address>:<port>/ws (ANALYSER <port>)
         self.result = ""
         self._now = now
         self._next_status = now
@@ -166,10 +168,10 @@ class LinkSimHub:
 
     # -- connections -------------------------------------------------------
 
-    def connect(self, now: float) -> int:
+    def connect(self, now: float, host: str = "") -> int:
         cid = self.next_id
         self.next_id += 1
-        self.clients[cid] = _Client(now, [f"# client_id={cid}"])
+        self.clients[cid] = _Client(now, [f"# client_id={cid}"], host)
         return cid
 
     def disconnect(self, cid: int) -> None:
@@ -242,8 +244,13 @@ class LinkSimHub:
         elif verb == "RESULT":
             self._result(arg)
         elif verb == "ANALYSER":
+            # As the firmware's cmdAnalyser: a port is paired with the
+            # client's own address, never an address it sends.
             self.analyser = cid
-            self._event("analyser", f"{cid} joined")
+            host = self.clients[cid].host if cid in self.clients else ""
+            ok = arg.isdigit() and 0 < int(arg) < 65536 and re.fullmatch(r"\d+\.\d+\.\d+\.\d+", host)
+            self.analyser_url = f"ws://{host}:{int(arg)}/ws" if ok else ""
+            self._event("analyser", f"{cid} joined" + (f" {self.analyser_url}" if self.analyser_url else ""))
         elif verb == "ECHO":
             n = int(arg) if arg.isdigit() else 0
             self._emit(f"# echo={n} client={cid}")
@@ -306,7 +313,8 @@ class LinkSimHub:
         self._emit(f"# controller={self.controller} "
                    f"controller_timeout_ms={int(CONTROLLER_TIMEOUT_S * 1000)} "
                    f"run_by_wifi={int(self.run_by_wifi)}")
-        self._emit(f"# view={'TECHNICAL' if self.view_technical else 'PUBLIC'} analyser={self.analyser}")
+        url = f" analyser_url={self.analyser_url}" if self.analyser_url else ""
+        self._emit(f"# view={'TECHNICAL' if self.view_technical else 'PUBLIC'} analyser={self.analyser}{url}")
         if self.result:
             self._emit(f"# result {self.result}")
         self._emit("# columns_ST=" + ",".join(ST_COLUMNS))
@@ -356,6 +364,7 @@ class LinkSimHub:
     def _analyser_check(self, now: float) -> None:
         if self.analyser and self._gone(self.analyser, now):
             self.analyser = 0
+            self.analyser_url = ""
             self._event("analyser", "none lost")
 
     def _controller_check(self, now: float) -> None:

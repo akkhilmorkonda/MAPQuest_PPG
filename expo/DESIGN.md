@@ -7,6 +7,15 @@ is what the demo does and what each screen shows.
 the laptop process between them. It builds on the link simulator and the paused `expo_fw`
 (README), which are forked from the IRB firmware ([`irb/DESIGN.md`](../irb/DESIGN.md)).
 
+> **2026-11-23: the operator's phone is replaced by an iPad.** Read "phone" below as the
+> iPad. The board serves the iPad the dashboard (§6) in board mode: the visitor's screens
+> plus an operator panel (Zero, Start, Deflate = RUN, Stop = DUMP, connections) and a
+> Run/Technical switch of its own; the technical traces come from the laptop over the board's
+> Wi-Fi (the laptop names its address with `ANALYSER <port>`). The phone page of §5, its
+> settings drawer and `/?view` are gone; settings change over USB serial. The control rules
+> are unchanged: the iPad is the one controller, pings every 250 ms, and losing it in INFLATE
+> or HOLD dumps the cuff. See [`README.md`](README.md), "The iPad page".
+
 ---
 
 ## 1. What the demo does

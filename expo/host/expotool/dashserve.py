@@ -7,6 +7,11 @@ technical view draws, link up/down), and takes back exactly one command,
 ``VIEW PUBLIC|TECHNICAL`` (the mode switch). Nothing a dashboard sends can
 reach the cuff.
 
+expo (iPad): the server can also listen on the board's Wi-Fi, so the iPad
+page (served by the board) can open this WebSocket for the technical view's
+traces. Those connections are read-only: only a browser on this laptop
+(loopback) may send the mode switch.
+
 Messages to the dashboard are WebSocket text frames: either board lines as
 received (``S,...``, ``C,...``, ``EV,...``), or one line ``A,<json>`` from the
 results process. A dashboard that opens mid-session first gets the latest
@@ -28,7 +33,33 @@ from .ws import OP_CLOSE, OP_TEXT, FrameDecoder, ProtocolError, accept_key, enco
 PAGE = Path(__file__).resolve().parents[2] / "web" / "dashboard.html"
 HISTORY_S = 120.0
 ALLOWED = ("VIEW PUBLIC", "VIEW TECHNICAL")
-ASSETS = {"/logo.webp": "image/webp"}         # files next to the page it may serve, and nothing else
+# Files next to the page it may serve, and nothing else. The fonts ship with the page
+# because the booth laptop is offline (no web fonts).
+ASSETS = {"/logo.webp": "image/webp"} | {
+    f"/fonts/{name}.woff2": "font/woff2" for name in (
+        "bricolage-grotesque-latin", "bricolage-grotesque-latin-ext",
+        "atkinson-hyperlegible-mono-latin", "atkinson-hyperlegible-mono-latin-ext",
+        "fredoka-700-latin", "fredoka-700-latin-ext")}
+
+
+BOARD_MARK = ('<html lang="en">', '<html lang="en" data-host="board">')
+
+
+def board_page(html: str) -> str:
+    """The page as the board serves it to the iPad: marked, so it adds the
+    operator panel and reads the analysis from the laptop (web/dashboard.html)."""
+    if BOARD_MARK[0] not in html:
+        raise ValueError(f"the page has no {BOARD_MARK[0]} to mark for the board")
+    return html.replace(BOARD_MARK[0], BOARD_MARK[1], 1)
+
+
+def may_command(peer) -> bool:
+    """Only a browser on this laptop may switch the mode. ``peer`` is the
+    socket's peername; anything else on the network only watches."""
+    host = peer[0] if isinstance(peer, (tuple, list)) and peer else ""
+    if host.startswith("::ffff:"):
+        host = host[7:]
+    return host == "::1" or host.startswith("127.")
 
 
 class DashServer:
@@ -138,6 +169,7 @@ class DashServer:
         for i in range(0, len(backlog), 200):
             writer.write(encode_frame(OP_TEXT, "\n".join(backlog[i:i + 200]).encode(), mask=False))
         self.writers.add(writer)
+        local = may_command(writer.get_extra_info("peername"))
         dec = FrameDecoder()
         try:
             while True:
@@ -147,7 +179,7 @@ class DashServer:
                 for op, payload in dec.feed(data):
                     if op == OP_CLOSE:
                         raise ConnectionError
-                    if op == OP_TEXT:
+                    if op == OP_TEXT and local:     # the iPad and other devices only watch
                         cmd = payload.decode("utf-8", "replace").strip().upper()
                         if cmd in ALLOWED:          # the mode switch, nothing else
                             self.on_command(cmd)

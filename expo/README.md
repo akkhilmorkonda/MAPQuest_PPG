@@ -1,10 +1,17 @@
 # expo/: wireless prototype for the exposition
 
-The ESP32 makes its own password-protected Wi-Fi network. A **phone** joins it to run the
-cuff and watch the data; a **laptop** joins it as the presentation display. This folder
+The ESP32 makes its own password-protected Wi-Fi network. An **iPad** joins it to run the
+cuff and show the visitor the run; a **laptop** joins it to analyse each run and drive the
+monitor. This folder
 shares no code paths with `irb/` or `host/` (it reuses `irb/host/irbtool` read-only, the way
 `irb/` reuses `host/mapquest`).
 
+> **2026-11-23: the iPad replaces the phone.** The board serves the dashboard to the iPad
+> with an operator panel (Start, Deflate, Stop, Zero, connections) and a Run/Technical
+> switch of its own; the technical traces come from the laptop over the board's Wi-Fi.
+> Desk-tested on the stand-in, not flashed. The phone page and the USB phone bridge are gone;
+> the notes below from 2026-11-18 are kept as the history of the link.
+>
 > **Status (2026-11-18).** Step 1, the **link simulator**, is built: it runs on a bare
 > ESP32 with nothing wired and streams a simulated session at the real system's rates.
 > The phone page, laptop receiver, results manager and control rules pass **74 tests**
@@ -47,7 +54,7 @@ shares no code paths with `irb/` or `host/` (it reuses `irb/host/irbtool` read-o
 | 1 Link simulator on the ESP32 (no wiring) | **flashed; first phone + laptop link test passed.** Dead-client stall fixed in source, not flashed; rows 6, 8 and 13 owed |
 | 2 Real firmware over Wi-Fi (`expo_fw`) | **compiles** (IRB `irb_fw` 0.2.1 + Wi-Fi link + control rules); not flashed, needs the wired rig |
 | 3 Results manager (`host/expo_results.py`) | **built, tested on the stand-in**; thresholds marked provisional need team dry runs |
-| 4 Phone page (DESIGN §5) | **built** (controls + pressure, result line, fault banner, mode switch, settings drawer); not flashed |
+| 4 iPad page (the dashboard in board mode) | **built** (operator panel + run and technical screens); desk-tested on the stand-in, not flashed. Replaced the phone page 2026-11-23 |
 | 5 Presentation dashboard | **built** (the chosen B3 public + B3c technical screens), served by `expo_results.py`; tested on the stand-in only |
 
 ## Network
@@ -60,12 +67,12 @@ clone, copy `secrets.example.h` to `secrets.h` first, or the sketch refuses to c
 | | |
 |---|---|
 | Network | `MAPQuest-Expo` (WPA2) |
-| Phone (controls) | `http://192.168.4.1/` |
-| Laptop (watch only) | `http://192.168.4.1/?view`, or `expo_receiver.py` |
+| iPad (controls + screens) | `http://192.168.4.1/` |
+| Laptop | `expo_results.py` (analysis; monitor at `http://127.0.0.1:8800/`), or `expo_receiver.py` |
 | Channel | 6 (`WIFI_CHANNEL` in `config.h`; use 1, 6 or 11, whichever is quietest at the venue) |
 | Transmit power | 8.5 dBm (`WIFI_TX_POWER_QDBM`): booth range, smaller current spikes on the 3V3 rail |
 
-The network has no internet. iPhones show "No Internet Connection" and stay joined; Android
+The network has no internet. iPads and iPhones show "No Internet Connection" and stay joined; Android
 asks whether to stay connected (say yes). The laptop loses internet over Wi-Fi while it is
 joined, so the presentation pages must work offline, and they do.
 
@@ -99,18 +106,18 @@ Paste the receiver's report and anything odd into the session log.
 | # | Do | Pass when |
 |---|---|---|
 | 1 | Reset the board, Serial Monitor at 921600 | `# ready: join Wi-Fi "MAPQuest-Expo" and open http://192.168.4.1/` |
-| 2 | Phone: join the network, open `http://192.168.4.1/` | header shows **Live** and **You control**; five green lights; pressure 0 (Analyser lights only with `expo_results.py` running) |
-| 3 | **Blink LED** | the board's LED flashes for ~1.5 s |
-| 4 | Laptop: join the network, open `http://192.168.4.1/?view` | same numbers as the phone; header says **Watching**; Link panel shows 2 clients |
-| 5 | Phone: **Start** | LED on; pressure climbs to 165 on both screens; readout turns green and **Run** unlocks at 150 |
-| 6 | **Run** | Holding 10 s, then Deflating at −2.0 mmHg/s; at 40 the cuff vents, LED off, back to Ready. No red banner |
-| 7 | Start again, then **DUMP** while inflating | LED off at once; Venting, then Ready |
-| 8 | Start, then lock the phone or turn its Wi-Fi off | within ~2 s: LED off, laptop shows red **Cuff vented automatically: controller lost** |
-| 9 | Unlock the phone | it reconnects and takes control again by itself |
-| 10 | **Zero cuff** (blocks the board for 2.5 s, like the real ZERO) | phone keeps control; event log shows `stream_gap: ZERO` |
-| 11 | Laptop: `python expo/host/expo_receiver.py --seconds 120` while the phone runs a session | `RESULT: PASS` |
-| 12 | Walk the phone to the far side of the booth | Link panel: missing stays 0, round trip stays well under 250 ms |
-| 13 | Laptop and phone both watching, then turn the **laptop's** Wi-Fi off | phone's Link panel: missing stays 0, no freeze; event log shows `wifi_client_closed` within ~2 s |
+| 2 | iPad: join the network, open `http://192.168.4.1/` in landscape | panel shows **Board live** and **Control this iPad**; the sensors; pressure 0 (**Laptop** is green only with `expo_results.py` running) |
+| 3 | Laptop: join the network, run `expo_results.py`, open `http://127.0.0.1:8800/` | iPad panel: **Laptop linked**; the monitor shows the same numbers |
+| 4 | iPad: **Start** | pressure climbs to 165 on both screens; **Deflate** unlocks at 150 |
+| 5 | **Deflate** | Holding 10 s, then the release at 2 mmHg/s; at 40 the cuff vents and the result shows on both screens |
+| 6 | Start again, then **Stop** while inflating | vents at once; both screens show "Run stopped" |
+| 7 | Start, then lock the iPad or turn its Wi-Fi off | within ~2 s the cuff vents; the monitor shows the safety stop "The operator’s iPad disconnected" |
+| 8 | Unlock the iPad | it reconnects and takes control again by itself |
+| 9 | **Zero** (blocks the board for 2.5 s, like the real ZERO) | the iPad keeps control; the technical view's event log shows `stream_gap ZERO` |
+| 10 | iPad: **Technical**, then **Run** | only the iPad switches; the monitor stays on its view |
+| 11 | Laptop: `python expo/host/expo_receiver.py --seconds 120` while the iPad runs a session | `RESULT: PASS` |
+| 12 | Walk the iPad to the far side of the booth | technical view, Link and events: missing stays 0 |
+| 13 | Turn the **laptop's** Wi-Fi off | iPad: **Laptop offline**, no freeze; event log shows `wifi_client_closed` within ~2 s |
 
 `expo_receiver.py` grades the link: every stream within ±3 % of its rate (S, SP 100 Hz,
 M 50 Hz per band, C 10 Hz, ST 2 Hz), **zero missing samples**, zero bytes dropped on the
@@ -126,8 +133,8 @@ model of the simulator's wireless rules over the IRB mock board:
 python expo/host/sim_server.py
 ```
 
-Then open `http://127.0.0.1:8765/` and `http://127.0.0.1:8765/?view`, or
-`python expo/host/expo_receiver.py --url ws://127.0.0.1:8765/ws`. `--lan` lets a phone on the
+Then open `http://127.0.0.1:8765/` (the iPad page), or
+`python expo/host/expo_receiver.py --url ws://127.0.0.1:8765/ws`. `--lan` lets an iPad on the
 same network reach it. Round trips here are localhost numbers, not radio numbers.
 
 ## Step 2: the real firmware (`expo_fw`)
@@ -142,7 +149,7 @@ still match `irb_fw`). What is new:
   `STREAM 1`, as on the bench. Sample counters run from boot and are never reset.
 - **Only the distal (forearm) band is required** (`REQUIRE_PROXIMAL_BAND = false` in
   `config.h`, since 2026-11-18). The result reads the distal band only, so START needs
-  pressure and the distal PPG; the upper-arm band still shows on the phone and dashboard
+  pressure and the distal PPG; the upper-arm band still shows on the iPad and monitor
   when present, and losing it mid-run sends one warning instead of dumping the cuff. Set
   it to `true` when a model that uses the proximal band is in.
 - **The valve is closed except to deflate and to dump** (since 2026-11-20). INFLATE and
@@ -152,13 +159,29 @@ still match `irb_fw`). What is new:
   unzeroed, stale or flagged, or the cuff holds more than 20 mmHg outside a run
   (`IDLE_VENT_ABOVE_MMHG`, `IDLE_CLOSE_SETTLE_MS`; `EV,valve` lines). A reset, crash or
   power loss still vents: the pin goes low.
-- **The phone gets the session commands only.** Control rules as in the link simulator,
+- **Automatic LED level** (since 2026-11-23): `R` (the bench GUI's Refresh)
+  and the serial command `LEVEL [D|P]` set each band's IR and red LED current so its
+  light sits near half scale (0.8–25.4 mA; it warns when a band stays dim at the top
+  current, i.e. is probably not on the skin). Never at Start: a change between the
+  pre-roll and the hold would skew the "flow fully stopped" check. So: fit the bands,
+  Refresh, then Start.
+- **A missing pressure sensor is found again by itself**: in IDLE the board probes for it
+  every 2 s and, when it answers, brings it up and zeroes the cuff (the valve has been
+  open while it was missing). If the mux was lost too, every sensor is brought up.
+- **A band plugged in while the board runs is found by itself** (since 2026-11-23): in IDLE
+  each missing PPG, and the IMU of a working band, gets one silent address probe every 3 s;
+  one that answers is brought up and LED-levelled (`band_found` event). Not while streaming
+  on USB (the bench GUI's Refresh covers that). The iPad's **Refresh** sends `R` at once.
+- **IMU at 200 Hz, ±2 g** (was 50 Hz, ±4 g), read from the BMI270's FIFO so no sample
+  is missed: 16384 counts = 1 g. Meant for trying to sense the pulse mechanically; the
+  "arm moved" check uses the gyro (unchanged, ±500 °/s).
+- **The iPad gets the session commands only.** Control rules as in the link simulator,
   plus: the controller may send `START`, `RUN`, `ZERO`, `BLINK`, `R` (re-probe every
-  sensor: the phone's Refresh) and `SET` of `rate`, `hold_s`, `p_stop`, `p_run_min`.
+  sensor) and `SET` of `rate`, `hold_s`, `p_stop`, `p_run_min`.
   Controller gains, safety limits and the bench commands (`DARK`, `AMP`, `SCAN`, `PPG`,
   `VALVE TEST`, `TEST HANG`, `STREAM`, `RADIO`) are **USB serial only**.
 - **Blocking commands no longer need the stream off** (only the serial stream). `ZERO`
-  from the phone blocks the loop ~2.5 s; the board advances the sample counters across
+  from the iPad blocks the loop ~2.5 s; the board advances the sample counters across
   the pause and sends `stream_gap: ZERO ms=...`, so receivers see the gap as missing
   samples instead of a splice.
 - **`RADIO 0|1`** (serial, IDLE) turns the radio off and on without a reboot, for the
@@ -205,15 +228,15 @@ it as one reported gap, and draining resumes. `irb_fw` still has the bug.
 main bus and every mux channel, the PPG streaming 1 s at 100 Hz and the IMU's chip ID, then
 `RESULT: PASS/FAIL`. It drives no valve. Flash it, open the serial monitor, send any line.
 
-**Before visitors, with the rig wired** (serial at 921600, phone off the network):
+**Before visitors, with the rig wired** (serial at 921600, iPad off the network):
 
 | # | Do | Pass when |
 |---|---|---|
 | F1 | Boot | `sensors_ok=5/5`, `wifi ready`, `reset_reason=power_on` |
 | F2 | `RADIO 0`, `DARK D`, `DARK P`, then `RADIO 1`, `DARK D`, `DARK P` | dark offsets agree within their usual spread |
 | F3 | `STREAM 1` for 30 s with `RADIO 0`, then 30 s with `RADIO 1`, cuff vented | MPRLS noise (`p_raw` spread) the same both ways; no `ppg_overflow` |
-| F4 | `VALVE TEST` with the radio on, a phone joined and watching | no reset (`INFO` uptime / `reset_reason` not `brownout`) |
-| F5 | Phone: rows 2-13 of the simulator checklist, on a real arm | as there; the cuff really vents in rows 7 and 8 |
+| F4 | `VALVE TEST` with the radio on, the iPad joined and watching | no reset (`INFO` uptime / `reset_reason` not `brownout`) |
+| F5 | iPad: rows 2-13 of the simulator checklist, on a real arm | as there; the cuff really vents in rows 6 and 7 |
 
 ## Results: the laptop process (`host/expo_results.py`)
 
@@ -224,19 +247,19 @@ python expo/host/expo_results.py
 ```
 
 It watches like any other device (it never takes control), announces itself with `ANALYSER`
-so the phone's **Analyser** light comes on, and for every run (expo/DESIGN.md §7):
+so the iPad's **Laptop** light comes on, and for every run (expo/DESIGN.md §7):
 
 1. **Records it in memory:** from START to the vent, plus 15 s of stream before it (the
    uncuffed pulse).
 2. **Numbers it** once it reaches DEFLATE. A run vented before that is not a run.
-3. **When it is dumped at `p_stop`,** posts `RESULT <n> - pending` (the phone shows
+3. **When it is dumped at `p_stop`,** posts `RESULT <n> - pending` (the iPad shows
    "Analysing…"). When the cuff has vented, runs `host/mapquest`'s `derive()` **unchanged**,
    with the windows taken from the board's own state events instead of guessed from the
    pressure trace (§7.2), and posts `RESULT <n> <mmHg> <flag>`.
 4. **Grades it** (§7.4): the headline is the **refill onset (hinge)**; intersect and pulse
    return are computed for the technical view.
 
-| Flag | When | Phone shows |
+| Flag | When | Result |
 |---|---|---|
 | `ok` | | "Return of flow: 121 mmHg (run 4)" |
 | `incomplete` | missing samples, a `stream_gap`/overflow, the link lost, or the light sensor on a rail for > 1 % of the deflation | number + "signal incomplete" |
@@ -265,9 +288,8 @@ python expo/host/sim_server.py --speed 3
 python expo/host/expo_results.py --url ws://127.0.0.1:8765/ws --results expo/results/sim_results.csv
 ```
 
-Then the phone page at `http://127.0.0.1:8765/` and the dashboard at `http://127.0.0.1:8800/`.
-The stand-in's arm has a systolic of 120 mmHg, so a run should read about 120. (The phone's
-timers count real seconds while the stand-in runs at 3×.)
+Then the iPad page at `http://127.0.0.1:8765/` and the monitor at `http://127.0.0.1:8800/`.
+The stand-in's arm has a systolic of 120 mmHg, so a run should read about 120.
 
 ## The monitor dashboard (`web/dashboard.html`)
 
@@ -283,49 +305,65 @@ with the analysis traces. It draws the chosen designs from the dashboard canvas 
 | **Technical** | pipeline strip (raw light → ΔOD → blood volume live; low-pass, dV/dt and the onset after the vent), the onset close-up against cuff pressure (hinge fit, sloped trend, pulse return, intersect), confidence checks, heartbeat vs its stopped level, arm motion, cuff controller, safety margins, hardware, link and events |
 
 - **Switch modes** with **T**, Page Up/Down or the arrow keys (a presentation clicker works),
-  or the phone's Monitor switch; the last press wins and every new run starts on public.
+  the last press wins and every new run starts on public. (The iPad's own switch changes
+  only the iPad.)
   That key press is the **only** thing the dashboard can send, and it can't touch the cuff.
 - The outcome stays up for 2 minutes, then the idle screen returns (or at the next Start).
 - Opened late, or reloaded, it catches up on the last two minutes at once.
-- **Offline:** no web fonts or CDN (the laptop is on the board's network). Fredoka, Inter
-  and JetBrains Mono are used if installed on the laptop, otherwise rounded / Segoe UI
-  fallbacks; install them for the poster look.
+- **The iPad (2026-11-23, desk-tested on the stand-in, not flashed):** the board now serves
+  this same page at `http://192.168.4.1/`, marked `data-host="board"` by `tools/embed_web.py`.
+  That adds an operator panel under the screen: **Zero**, **Start**, **Deflate** (RUN: hold
+  10 s, then the release; unlocks at p_run_min), **Stop** (DUMP, always enabled), the
+  connections (board, laptop, pressure, both PPGs, both IMUs, control), one line saying what
+  to do next or why Start is locked, and a **Run / Technical** switch that changes the iPad
+  only. The iPad takes control when it connects and pings every 250 ms. The analysis and its
+  traces come from the laptop (below); the board's own `result` event still shows the number
+  if the laptop can't be reached. iPad set-up: join the board's Wi-Fi, open
+  `http://192.168.4.1/` in landscape, set Auto-Lock to Never and use Guided Access.
+- The laptop side: the server also listens on the board's Wi-Fi
+  (`--dash-host`, default `0.0.0.0`; `127.0.0.1` keeps it on the laptop), so the iPad page can
+  read the technical traces from it. Those connections are **read-only**: only a browser on the
+  laptop itself may switch the mode. `expo_results.py` announces the port with `ANALYSER 8800`
+  and prints the address the iPad will use (`iPad technical view reads ws://…:8800/ws`).
+  The board pairs that port with the laptop's own address, read from its socket (never one
+  it is sent), and repeats it as `analyser_url=ws://…:8800/ws` in INFO and in the
+  `analyser … joined` event; it is cleared when the laptop goes quiet. The board also serves
+  the page's files (`/logo.webp`, `/fonts/*`) from flash: `tools/embed_web.py` writes them
+  into each sketch's `web_assets.h` (the dashboard server's `ASSETS` list, ~140 KB).
+  Windows asks once whether Python may accept connections: allow it, including on **Public**
+  networks (the board's network shows up as Public), or the iPad can't reach it.
+- **Offline:** no web fonts or CDN (the laptop is on the board's network). Its fonts
+  (Bricolage Grotesque, Atkinson Hyperlegible Mono for the log, Fredoka for the wordmark) ship in `web/fonts/` and
+  are served by the results process.
 - `--dash-port 0` turns it off.
 
-The phone's `/?view` page (watch only, with plots) is still there for link tests.
+## The iPad page (`web/dashboard.html`, board mode)
 
-## The phone page
+The board serves the dashboard to the iPad at `http://192.168.4.1/`, marked
+`data-host="board"`. The visitor's screen is the same as the monitor's; under it is a dark
+operator panel (2026-11-23; it replaced the phone page):
 
-Controls and pressure for one hand while the other pumps (DESIGN §5); the laptop's `?view`
-is the same page, watch only, with the plots.
+- **Buttons:** **Zero** (IDLE), **Start** (locked with one reason until it may run),
+  **Deflate** (RUN: hold 10 s, then the release; unlocks at the Run threshold, 150),
+  **Stop** (DUMP: always enabled, vents the cuff now).
+- **One line of guidance:** why Start is locked; "Recording the resting pulse: keep the arm
+  still (n s)" before a run (the "flow fully stopped" check needs 4 s of it); "Pump to 160 ·
+  Deflate unlocks at 150"; "Above 190 mmHg: let some air out"; the hold and the release.
+- **Connections:** board, laptop, pressure (and zero), forearm and upper-arm light, both
+  IMUs, and who has control (**Take** claims it back, never during a run). The upper-arm
+  band and the IMUs show grey "not fitted" when absent: they never block a run.
+- **Run / Technical:** switches the iPad only. The technical traces come from the laptop.
+- Board errors (a refused Start, a lost sensor) show in red for 8 s.
 
-- **Header:** link, who controls, the **Analyser** light; the **Monitor Public | Technical**
-  switch (any device; `T`, Page Up/Down or the arrows on the laptop; back to public at each
-  Start).
-- **Readout:** state, pressure (green from the Run threshold, red above the cap), "Pump to
-  160", the hold countdown, how long the cuff has been closed against the 120 s vent, and
-  the result line.
-- **Start / Run / DUMP.** Start shows the **one** reason it is locked, with its fix (Zero
-  cuff appears right there when needed). DUMP is always live and says "open the bulb release
-  screw" if it cannot reach the board.
-- **Automatic vent:** a red banner with the reason and what to do; Start stays locked until
-  it is tapped. A deliberate DUMP needs no tap.
-- **↻ Refresh** (top bar), between runs only: not connected, it reconnects now; with
-  control, the board re-probes every sensor (`R`, about a second); without control, it
-  drops and redoes the link. Never during a run: a reconnect drops control, and losing the
-  controller in INFLATE or HOLD dumps the cuff.
-- **Settings drawer:** Pump-to target and cap (kept on the phone), Run threshold and hold
-  (set on the board, IDLE), Zero cuff, Blink LED, Take control, link diagnostics, event log.
-
-The run profile is the expo one: pump to **160**, Run unlocks at **150** (now the firmware
-default), cap **190**, hold **10 s**.
+The run profile is the expo one: pump to **160**, Deflate unlocks at **150** (the firmware
+default), cap **190**, hold **10 s**. No settings on the iPad: change them over USB serial.
 
 ## How the link works
 
 ```
  sensor loop (core 1)                      core 0
  ┌──────────────────┐  whole lines   ┌───────────────┐  own read position,   ┌───────────┐
- │ samples, control ├──────────────► │ 16 KB ring    ├──► one sender task ──►│ phone     │
+ │ samples, control ├──────────────► │ 16 KB ring    ├──► one sender task ──►│ iPad      │
  │ safety, commands │                │ (shared)      ├──► per client ───────►│ laptop    │
  └────────▲─────────┘                └───────────────┘  one frame / 40 ms    └─────┬─────┘
           │ command queue (DUMP out of band)    HTTP server task ◄── frames ──────┘
@@ -333,14 +371,14 @@ default), cap **190**, hold **10 s**.
 ```
 
 - **Same lines as serial.** Every client gets the IRB firmware's text lines (`S`, `SP`,
-  `M`, `C`, `EV`, `E`, `#`) plus `ST`, a 2 Hz status line for the phone. About 12 kB/s.
+  `M`, `C`, `EV`, `E`, `#`) plus `ST`, a 2 Hz status line for the iPad. About 12 kB/s.
 - **The loop never waits on Wi-Fi.** It appends whole lines to a shared ring buffer; on the
   other core, one sender task per client batches them from that client's own read position
   into one WebSocket frame every 40 ms.
 - **A slow or vanished device only hurts itself.** It falls behind on its own position.
   Once it is a whole ring (~1.3 s) behind, or a send to it blocks for 1 s, the board closes
   it (`ws_slow_closures`, `ws_send_failures`, `wifi_client_closed` event) and everyone else
-  carries on without a gap. A closed phone reconnects by itself, but if it was the
+  carries on without a gap. A closed iPad reconnects by itself, but if it was the
   controller during INFLATE or HOLD, the cuff has already been dumped (controller lost).
 - **Loss is never hidden.** Each stream keeps its own sample counter, so a receiver counts
   missing samples. Blocking commands report a `stream_gap` event.
@@ -367,13 +405,13 @@ keeps the latest values, repeats them in `ST` (`view`, `analyser` columns) and i
 | `RESULT <run> <mmHg\|-> <flag>` | the latest result, from the laptop; `EV,result,run=N mmhg=V flag=F` |
 | `ANALYSER` | this client is the results process; lost like a controller (2 s of silence) |
 
-- The phone page claims control when it connects. A second phone is refused while the first
+- The iPad page claims control when it connects. A second device is refused while the first
   holds it. `CLAIM FORCE` takes it over, but only when no run is active.
 - The controller must be heard from every 2 s (`CONTROLLER_TIMEOUT_MS`; the page pings every
   250 ms). If it disconnects or goes quiet **during INFLATE or HOLD of a run it started,
   the cuff is dumped** ("controller lost"). During DEFLATE the run finishes on the board's
-  own limits and a warning is logged. A run started over USB serial is not tied to a phone.
-- **Keep the phone screen on during a run.** A locked phone stops pinging, and that vents
+  own limits and a warning is logged. A run started over USB serial is not tied to a device.
+- **Keep the iPad screen on during a run** (Auto-Lock Never, Guided Access). A locked iPad stops pinging, and that vents
   the cuff (by design). The bulb release screw stays the fallback when nothing else works.
 
 ## Layout
@@ -385,14 +423,15 @@ expo/
     wifi_link.h/.cpp        access point, page, WebSocket, ring buffer, per-client senders
     config.h                Wi-Fi, link and simulation settings
     secrets.example.h       copy to secrets.h (gitignored) and set the password
-    web_page.h              GENERATED from web/index.html
+    web_page.h, web_assets.h GENERATED from web/ (the iPad page, logo, fonts)
   firmware/expo_fw/         step 2: real firmware (compiles; not run on hardware)
     expo_fw.ino             irb_fw + Wi-Fi output, control rules, ST line, stream gaps
     wifi_link.h/.cpp        COPY of the simulator's (a test keeps them identical)
     web_page.h              GENERATED, as above
-  web/index.html            phone controls + display; ?view = watch only, with plots
-  web/dashboard.html        the monitor dashboard (served by host/expo_results.py, not the board)
-  tools/embed_web.py        index.html -> web_page.h (run after editing the page)
+  web/dashboard.html        the screens: the monitor (served by host/expo_results.py) and,
+                            in board mode, the iPad's page with the operator panel
+  tools/embed_web.py        dashboard.html -> web_page.h, logo + fonts -> web_assets.h (run after editing web/)
+  host/usb_bridge.py        SerialLink: the board's USB serial, for host/bench_gui.py
   host/expo_results.py      laptop: the results manager (run -> return-of-flow pressure)
   host/expo_receiver.py     laptop: watch and grade the link
   host/sim_server.py        laptop: stand-in for the board, no hardware (--speed N)
@@ -403,7 +442,7 @@ expo/
   tests/                    python -m pytest expo/tests
 ```
 
-After editing `web/index.html`, run `python expo/tools/embed_web.py` and reflash. A test fails
+After editing `web/dashboard.html`, run `python expo/tools/embed_web.py` and reflash. A test fails
 if the header is out of date.
 
 ## Owed before the real system runs over Wi-Fi

@@ -10,10 +10,10 @@ the whole session:
 What it does (expo/DESIGN.md section 7):
 
 1. Connects to the board as a watcher and announces itself (ANALYSER), so the
-   phone's Analyser light comes on. It never takes control of the cuff.
+   iPad's Laptop light comes on. It never takes control of the cuff.
 2. Records every run in memory: START to the vent, plus 15 s before it.
 3. When a run that reached DEFLATE is dumped, gives it the next run number
-   and posts ``RESULT <n> - pending`` (the phone shows "Analysing...").
+   and posts ``RESULT <n> - pending`` (the iPad shows "Analysing...").
 4. When the cuff has vented, runs host/mapquest unchanged on the run, grades
    it (no onset / incomplete / arm moved / pulse never stopped) and posts
    ``RESULT <n> <mmHg> <flag>`` through the board to every screen.
@@ -22,6 +22,10 @@ What it does (expo/DESIGN.md section 7):
 6. Serves the monitor dashboard on this laptop (http://127.0.0.1:8800/,
    web/dashboard.html): it relays the board's stream to it, adds run numbers
    and results with their traces, and passes back only its mode switch.
+   expo (iPad): the same server listens on the board's Wi-Fi too, read-only,
+   and ``ANALYSER <port>`` tells the board where it is, so the iPad page can
+   fetch the technical view's traces from it. ``--dash-host 127.0.0.1`` keeps
+   it on this laptop.
 
 ``--save-raw DIR`` keeps each run's lines for TEAM dry runs only (to check a
 missed onset afterwards). Never use it with visitors: it is the raw signal.
@@ -47,6 +51,7 @@ from expotool.ws import WSClient  # noqa: E402
 
 DEFAULT_URL = "ws://192.168.4.1/ws"
 DASH_PORT = 8800
+DASH_HOST = "0.0.0.0"              # the board's Wi-Fi too (read-only there), for the iPad
 DEFAULT_RESULTS = Path(__file__).resolve().parents[1] / "results" / "expo_results.csv"
 PING_S = 0.5                       # the board drops a silent analyser after 2 s
 RETRY_S = 2.0
@@ -135,6 +140,14 @@ class Manager:
             self._tell("hello", next_run=self.log.last_run + 1)
 
 
+def analyser_command(dash) -> str:
+    """``ANALYSER <dashboard port>``: the board pairs the port with this
+    laptop's address so the iPad can reach the dashboard server. Without a
+    dashboard, plain ``ANALYSER``. Older firmware ignores the port."""
+    port = getattr(dash, "port", 0) if dash is not None else 0
+    return f"ANALYSER {port}" if port else "ANALYSER"
+
+
 def run_live(url: str, mgr: Manager, seconds: float | None = None, ping_s: float = PING_S,
              out=say, stop: threading.Event | None = None, dash=None,
              dash_cmds: queue.Queue | None = None) -> None:
@@ -152,8 +165,14 @@ def run_live(url: str, mgr: Manager, seconds: float | None = None, ping_s: float
         out(f"connected to {url}")
         if dash is not None:
             dash.message("link", up=True)
+            if dash.port:
+                try:
+                    here = ws.sock.getsockname()[0]       # this laptop on the board's network
+                    out(f"iPad technical view reads ws://{here}:{dash.port}/ws")
+                except OSError:
+                    pass
         try:
-            ws.send_text("ANALYSER")
+            ws.send_text(analyser_command(dash))
             ws.send_text("INFO")                    # cuff zero, dark offsets, sample rate
             next_ping = next_echo = 0.0
             me, n_echo, echo_sent, rtts = 0, 0, {}, []
@@ -215,6 +234,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--replay", type=Path, metavar="FILE", help="analyse a saved stream and exit")
     ap.add_argument("--dash-port", type=int, default=DASH_PORT,
                     help=f"serve the monitor dashboard on this laptop at this port (default {DASH_PORT}; 0 = off)")
+    ap.add_argument("--dash-host", default=DASH_HOST,
+                    help=f"address the dashboard server listens on (default {DASH_HOST}: this laptop and, "
+                         "read-only, the board's Wi-Fi for the iPad; 127.0.0.1 = this laptop only)")
     args = ap.parse_args(argv)
     results = args.results or (None if args.replay else DEFAULT_RESULTS)
     if args.replay:
@@ -227,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dash_port:
         dash_cmds = queue.Queue()
         dash = DashServer(on_command=dash_cmds.put)
-        port = dash.start("127.0.0.1", args.dash_port)
+        port = dash.start(args.dash_host, args.dash_port)
         say(f"dashboard -> http://127.0.0.1:{port}/  (open it full screen on the monitor)")
     mgr = Manager(ResultsLog(results), args.save_raw, dash=dash)
     if args.save_raw:

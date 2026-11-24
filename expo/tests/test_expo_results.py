@@ -223,12 +223,14 @@ def test_a_run_dumped_before_deflation_is_not_a_run():
     assert s.signals == []
 
 
-def test_every_flag_has_phone_text():
-    page = (EXPO / "web" / "index.html").read_text(encoding="utf-8")
+def test_every_flag_has_screen_text():
+    page = (EXPO / "web" / "dashboard.html").read_text(encoding="utf-8")
+    shown = page[page.index("function analyser(m)"):page.index("// ---- what to show")]
+    for flag in set(hubmod.RESULT_FLAGS) - {"pending"}:
+        assert re.search(rf"\b{flag}: '", shown), flag          # every flag maps to an outcome screen
     for flag in ("arm_moved", "pulse_present", "incomplete"):
-        assert flag in page
-    for flag in ("no_onset", "safety_stop", "stopped", "pending"):
-        assert f"'{flag}'" in page
+        assert re.search(rf"\b{flag}: 'Low confidence", page), flag   # and the cautions have their words
+    assert "flag === 'pending'" in page                          # the board's pending result: "Analysing"
     assert set(FLAG_TEXT) | {"pending"} == set(hubmod.RESULT_FLAGS)
 
 
@@ -268,13 +270,13 @@ def test_losing_the_proximal_band_mid_run_warns_and_the_run_finishes():
     assert analyse(s.completed()[0], 1).flag == "ok"          # it reached p_stop, no dump
 
 
-def test_proximal_rule_matches_the_firmware_and_the_phone():
+def test_proximal_rule_matches_the_firmware_and_the_ipad():
     cfg = (EXPO / "firmware" / "expo_fw" / "config.h").read_text(encoding="utf-8")
     m = re.search(r"REQUIRE_PROXIMAL_BAND\s*=\s*(true|false)", cfg)
     assert (m.group(1) == "true") == hubmod.REQUIRE_PROXIMAL_BAND
-    page = (EXPO / "web" / "index.html").read_text(encoding="utf-8")
-    blocker = page[page.index("function startBlocker"):page.index("function resultLine")]
-    assert "S.sensors[1] !== '1'" in blocker and "S.sensors[2]" not in blocker
+    page = (EXPO / "web" / "dashboard.html").read_text(encoding="utf-8")
+    blocker = page[page.index("function startBlocker"):page.index("function panelHint")]
+    assert "D.sensors[1] !== '1'" in blocker and "D.sensors[2]" not in blocker
 
 
 # ---- the manager: numbering, pending, the anonymous file, replay ---------------------
@@ -358,6 +360,52 @@ def test_the_analyser_light_follows_the_laptop_process():
     assert h.analyser == a
     h.tick(1.0 + hubmod.CONTROLLER_TIMEOUT_S + 0.5)          # went quiet
     assert h.analyser == 0
+
+
+def test_the_analyser_port_is_paired_with_its_own_address():
+    h = LinkSimHub()
+    a = h.connect(0, "192.168.4.2")
+    h.receive(a, "ANALYSER 8800", 0)
+    h.receive(a, "INFO", 0)
+    out, _ = h.tick(0.05)
+    assert h.analyser_url == "ws://192.168.4.2:8800/ws"
+    assert any(ln.endswith(f",analyser,{a} joined ws://192.168.4.2:8800/ws") for ln in out)
+    assert any(ln.startswith("# view=") and "analyser_url=ws://192.168.4.2:8800/ws" in ln for ln in out)
+    for bad in ("ANALYSER", "ANALYSER 0", "ANALYSER 70000", "ANALYSER 10.0.0.9:8800", "ANALYSER 88x"):
+        h.receive(a, bad, 0.1)
+        assert h.analyser == a and h.analyser_url == "", bad     # never an address it sends
+    h.receive(a, "ANALYSER 8800", 0.2)
+    h.tick(0.3)
+    h.tick(0.3 + hubmod.CONTROLLER_TIMEOUT_S + 0.5)              # went quiet: the address goes too
+    assert h.analyser == 0 and h.analyser_url == ""
+
+
+def test_results_process_tells_the_board_where_its_dashboard_is():
+    import queue
+    import expo_results
+    import sim_server
+    from expotool.dashserve import DashServer
+    srv, port, stop_srv = sim_server.start_in_thread()
+    dash = DashServer(on_command=queue.Queue().put)
+    dport = dash.start("0.0.0.0", 0)
+    mgr = expo_results.Manager(ResultsLog(None), out=lambda s: None, dash=dash)
+    stop = threading.Event()
+    said = []
+    worker = threading.Thread(target=expo_results.run_live, daemon=True,
+                              kwargs=dict(url=f"ws://127.0.0.1:{port}/ws", mgr=mgr, ping_s=0.05,
+                                          out=said.append, stop=stop, dash=dash))
+    worker.start()
+    try:
+        t0 = time.monotonic()
+        while not srv.hub.analyser_url and time.monotonic() - t0 < 5:
+            time.sleep(0.05)
+        assert srv.hub.analyser_url == f"ws://127.0.0.1:{dport}/ws"
+        assert f"iPad technical view reads ws://127.0.0.1:{dport}/ws" in said
+    finally:
+        stop.set()
+        worker.join(3)
+        dash.stop()
+        stop_srv()
 
 
 # ---- the whole loop over real sockets ------------------------------------------------
@@ -453,7 +501,9 @@ def test_dashboard_catch_up_is_in_order_and_only_view_goes_back():
         import urllib.request
         logo = urllib.request.urlopen(f"http://127.0.0.1:{port}/logo.webp", timeout=5)
         assert logo.headers["Content-Type"] == "image/webp" and logo.read(4) == b"RIFF"
-        for other in ("/index.html.bak", "/../host/expo_results.py", "/secrets.h"):
+        font = urllib.request.urlopen(f"http://127.0.0.1:{port}/fonts/bricolage-grotesque-latin.woff2", timeout=5)
+        assert font.headers["Content-Type"] == "font/woff2" and font.read(4) == b"wOF2"
+        for other in ("/index.html.bak", "/../host/expo_results.py", "/secrets.h", "/fonts/other.woff2"):
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}{other}", timeout=5)
                 raise AssertionError(f"served {other}")
@@ -476,6 +526,40 @@ def test_dashboard_catch_up_is_in_order_and_only_view_goes_back():
         assert sent == ["VIEW TECHNICAL"]          # the mode switch, nothing that touches the cuff
     finally:
         dash.stop()
+
+
+def test_only_this_laptop_may_switch_the_dashboard_mode():
+    from expotool.dashserve import may_command
+    for local in (("127.0.0.1", 50000), ("127.0.1.1", 1), ("::1", 2, 0, 0), ("::ffff:127.0.0.1", 3, 0, 0)):
+        assert may_command(local), local
+    for remote in (("192.168.4.3", 50000), ("::ffff:192.168.4.2", 1, 0, 0), ("fe80::1", 1, 0, 0), None, ()):
+        assert not may_command(remote), remote      # the iPad on the board's Wi-Fi only watches
+
+
+def test_dashboard_on_every_interface_still_takes_the_laptop_mode_switch():
+    import queue
+    from expotool.dashserve import DashServer
+    cmds = queue.Queue()
+    dash = DashServer(on_command=cmds.put)
+    port = dash.start("0.0.0.0", 0)                 # as expo_results now starts it
+    try:
+        ws = WSClient(f"ws://127.0.0.1:{port}/ws")
+        ws.send_text("VIEW PUBLIC")
+        time.sleep(0.3)
+        ws.close()
+        assert cmds.get(timeout=2) == "VIEW PUBLIC"
+    finally:
+        dash.stop()
+
+
+def test_analyser_announces_its_dashboard_port():
+    import expo_results
+
+    class Dash:
+        port = 8800
+    assert expo_results.analyser_command(Dash()) == "ANALYSER 8800"
+    assert expo_results.analyser_command(None) == "ANALYSER"
+    assert expo_results.DASH_HOST == "0.0.0.0"
 
 
 def urllib_get(url):

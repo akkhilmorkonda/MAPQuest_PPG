@@ -30,61 +30,72 @@ The real dashboard is one page that moves through these states as the board repo
 
 ## 2. Theme
 
-The dashboard matches the team poster: a pale lavender ground, crimson for what matters now,
-navy for type and finished things, white rounded cards. It is the poster's palette in a calmer,
-clinical arrangement (white cards, crimson used sparingly).
+Restyled 2026-11-23 (layout and wording unchanged): graphite ink on a cool clinical grey,
+crimson for what matters now (the one colour kept from the poster, because this is a heart
+project), near-square corners and hairline outlines. The earlier poster palette (lavender,
+navy, periwinkle, pill shapes, 24 px radii) read as generic and was retired; the MAPQuest
+logo and Fredoka wordmark stay.
 
 ### 2.1 Colour tokens
 
 | Token | Hex | Used for |
 |---|---|---|
-| ground | `#F4F6FB` | page background |
-| card | `#FFFFFF` | cards, chart backgrounds |
-| card border | `#DDE3F1` | 1.5 px card outline |
-| divider | `#E4E8F3` | lines inside cards, empty bar tracks |
-| navy | `#1A1F3D` | text, pressure line, finished steps, dark cards |
-| navy, safety | `#1A2A5C` | safety-stop state (never red on the public screens) |
-| text, secondary | `#4A5070` | labels, captions |
-| text, muted | `#8E97B8` | waiting states, "after the vent" |
+| ground | `#ECEEED` | page background |
+| card | `#FBFBFA` | cards, chart backgrounds |
+| card border | `#D3D8D6` | 1 px card outline |
+| divider | `#E1E5E3` | lines inside cards, empty bar tracks |
+| graphite (`--navy`) | `#17191C` | text, pressure line, finished steps, dark cards |
+| slate, safety | `#2F3B45` | safety-stop state (never red on the public screens) |
+| text, secondary | `#4D5357` | labels, captions |
+| text, muted | `#6B7175` | waiting states, "after the vent" |
 | crimson | `#C1203B` | the wordmark, the current step, the blood line, the result, the onset |
-| crimson, dark | `#9E1830` | crimson text on pale pink |
-| crimson, light text | `#FCE4E7` | secondary text on crimson cards |
-| pink band | `#FCF4F5` / `#FCEEF0` | "blood blocked" region, deflate band |
-| lavender band | `#EAEFF9` | hold band |
-| periwinkle | `#9DAFDB` / `#B9C3DE` | target ramp, sloped trend, connectors |
-| light text on navy | `#C8D6F4` / `#DCE5F8` | labels and secondary text on navy cards |
-| pulse blue | `#3B6FD8` | heartbeat trace, pulse-return marker, light sensor in the arm drawing |
-| caution | `#FBE7B5` on `#6B4A00` | the low-confidence tag only |
+| crimson, dark | `#9A1530` | crimson text on pale pink |
+| crimson, light text | `#FBD9DF` | secondary text on crimson cards |
+| pink band | `#F7EBED` | "blood blocked" region, deflate band |
+| grey bands | `#F1F3F2` / `#E4E8E6` | inflate band, hold band |
+| trend grey | `#9BA4A1` / `#A9B0AD` | target ramp, sloped trend, connectors |
+| light text on graphite | `#D6DADC` | secondary text on dark cards |
+| pulse blue | `#2B5FB8` | heartbeat trace, pulse-return marker |
+| caution | `#F4E4BC` on `#5E4200` | the low-confidence tag only |
 | threshold amber | `#D99A2B` | dashed noise-floor and motion lines |
-| ok green | `#1F6B3E` | check marks, sensor dots, "● Live" |
+| ok green | `#1E6A43` | check marks, sensor dots, "● Live" |
 
 **Colour rules.**
 - **Crimson means "now" or "the answer":** the active step, the result, the onset line. Never
   for errors on the public screens.
-- **A safety stop is navy (`#1A2A5C`),** framed as the device doing its job (DESIGN §8.2).
+- **A safety stop is slate (`#2F3B45`),** framed as the device doing its job (DESIGN §8.2).
 - **Amber only for the caution tag** and dashed thresholds.
-- **Finished steps are navy with a ✓; future steps are white with a grey outline.**
+- **Finished steps are graphite with a ✓; future steps are grey** (§3).
+- **Crimson on the public screens is text and lines, never a filled panel**, except the result's
+  "Blood is back" tag and the dashed onset line.
 
 ### 2.2 Type
+
+All fonts ship in `web/fonts/` (WOFF2, served by `dashserve.py`), because the booth laptop is
+offline. Bricolage Grotesque (chosen 2026-11-23 over Atkinson Hyperlegible, whose slashed zero
+read "1Ø6") carries all text and numbers; its zero is plain.
 
 | Role | Face | Weight · size |
 |---|---|---|
 | Wordmark "MAPQuest" | Fredoka | 700 · 42 px public, 32 px technical, crimson |
-| Logo (`web/logo.webp`) | image | left of the wordmark: 64 px tall public, 42 px technical; also the tab icon. Served by `dashserve.py` (its only asset route) |
-| Tagline "Blood pressure without a pulse" | Inter | 600 · 13 px |
-| Big numbers (pressure, result) | Inter | 800 · 120–200 px, tabular figures, tight letter-spacing |
-| Card titles | Inter | 800 · 22–38 px |
-| Labels | Inter | 700 · 13–15 px, secondary colour |
-| Body | Inter | 400–600 · 16–18 px |
-| Event log | JetBrains Mono | 500 · 11.5 px |
+| Logo (`web/logo.webp`) | image | left of the wordmark: 64 px tall public, 42 px technical; also the tab icon |
+| Big numbers (pressure, result) | Bricolage Grotesque | 800 · 176 px live, 200 px result, tabular figures |
+| Public captions | Bricolage Grotesque | 800 · 46 px "Now" (36 px for the longer outcome lines), 30 px the other two |
+| Values | Bricolage Grotesque | 800 · 26–30 px (time in cuff, release speed, run number) |
+| Labels | Bricolage Grotesque | 400 · 15 px secondary colour; 700 for "Now", "Watch for", "What it means" |
+| Body | Bricolage Grotesque | 400 · 19 px public; 12–17 px technical |
+| Event log | Atkinson Hyperlegible Mono | 11.5 px |
+
+Public type scale: 15 / 19 / 30 / 46 / 176 px.
 
 ### 2.3 Shapes and spacing
 
 - **Frame:** 1600 × 900 (16:9 monitor), padding 28 × 36 px public, 22 × 32 px technical.
-- **Radii:** 24–26 px hero and bottom cards, 20–22 px technical cards, 16 px strip chips,
-  999 px pills, 8–12 px tags and tiles.
-- **Gaps:** 20 px between public cards, 12 px between technical cards.
-- **No shadows or gradients:** flat fills and 1.5 px outlines only.
+- **Public screens have no cards:** the number, the chart and the three messages sit on the
+  page ground, separated by space and 1 px rules. The technical screen keeps its 6 px cards.
+- **Radii:** 6 px technical cards, 4 px strip chips, 2–3 px tags and chips; square numbered
+  badges. No pills.
+- **No shadows or gradients:** flat fills and 1 px lines only.
 
 ---
 
@@ -98,10 +109,13 @@ Blood pressure                                                                Ru
 without a pulse
 ```
 
-- **Stepper:** Idle → Inflate → Hold → Deflate → Result (DESIGN §6.1). Finished steps navy with ✓,
-  the current step crimson (navy `#1A2A5C` in a safety stop), future steps white with an outline.
-- **Run number:** anonymous, the only visitor identifier on screen.
-- **Status chip:** "● Live" in green; becomes "Reconnecting" or "Analyser offline" (DESIGN §8.4).
+- **Stepper:** Idle → Inflate → Hold → Deflate → Result (DESIGN §6.1). On the public screens it
+  is plain text: finished steps graphite with ✓, the current step crimson and underlined (slate in
+  a safety stop), future steps grey. The technical screen keeps small filled chips.
+- **Run number:** anonymous, the only visitor identifier on screen ("Visitor Run 8" on one line).
+- **Status:** "● Live" in green beside "Public view"; becomes "Reconnecting" or "Analyser
+  offline" (DESIGN §8.4). During a run the public numbers then grey out and "Paused: last
+  reading N s ago" appears under the pressure, so a frozen number never looks current.
 - **Mode label:** "Public view" or "Technical view", small, so a presenter knows which is up.
 
 ---
@@ -127,14 +141,17 @@ without a pulse
 └─────────────────────────┴──────────────────────────┴─────────────────────────┘
 ```
 
-**Hero card.**
-- **Left column (280 px):** cuff pressure at 120 px, "mmHg" in crimson, then time in cuff and
-  release speed.
-- **Chart:** the run from 0 to about 80 s with Inflate, Hold and Deflate shaded (ground, lavender,
-  pale pink). Cuff pressure is navy, blood in the forearm crimson. A crimson cursor and a navy
-  dot mark "now"; everything after it is covered by a translucent white panel.
+**Reading and chart** (restyled 2026-11-23, no card).
+- **Left column (330 px):** cuff pressure at 176 px, "mmHg" in grey, then time in cuff and
+  release speed as a two-column list directly beneath.
+- **Chart:** the run from 0 to about 80 s. Phase names (Inflate, Hold, Deflate · 2 mmHg/s) sit in
+  a row above the plot; Hold is shaded grey, Deflate pale pink only as far as it has happened, the
+  rest of the phase a thin pink strip. A pressure scale (0–160, headed "mmHg") belongs to the
+  cuff line; blood in the forearm is relative. Cuff pressure is graphite, blood crimson, each
+  labelled at its end (no legend). A dashed graphite line and two dots mark "now".
 
-**Bottom row: the Narrator** (columns 1.3 : 1.2 : 0.8, 200 px tall).
+**Bottom row: the Narrator** (columns 1.25 : 1.15 : 0.8, 204 px tall, one open band under a 1 px
+rule with dividers, no cards).
 
 | Phase | Now | Watch for | Time ring |
 |---|---|---|---|
@@ -143,8 +160,9 @@ without a pulse
 | hold | **Blood flow stopped** · Holding 10 seconds so the forearm settles. | **The red line dipping** · Blood drains from the forearm while no new blood gets in. | 64 s left |
 | deflate | **Releasing slowly** · Our valve lets out 2 mmHg every second. | **The red line turning upward** · That's blood squeezing back past the cuff into the forearm. | 36 s left |
 
-- **Now** is crimson with a "Now" label; **Watch for** is white with a small rising-line icon;
-  the **time ring** is navy, its pink arc proportional to the time left out of 80 s.
+- **Now** has its caption in crimson text (the only crimson block on the public screen);
+  **Watch for** is graphite text; **time left** is a number with a thin crimson bar proportional
+  to the time left (it replaced the ring).
 - **Time left** during deflation is (pressure − 40) ÷ 2 s. During inflation it is an estimate,
   because pumping is by hand.
 
@@ -328,9 +346,8 @@ simulation) for a judges' Q&A slide, and T5's fail-safe cards for the IRB safety
 
 ## 8. As built (2026-11-18)
 
-- **Fonts:** the booth laptop is offline, so the page loads no web fonts. Fredoka, Inter and
-  JetBrains Mono are used when installed on the laptop; otherwise Arial Rounded / Segoe UI /
-  Consolas stand in. Install the three for the exact look.
+- **Fonts:** the booth laptop is offline, so the page loads no web fonts; since 2026-11-23 the
+  three faces (§2.2) ship in `web/fonts/` and `dashserve.py` serves them.
 - **Fixed 1600 × 900,** scaled to fit the window (letterboxed on other aspect ratios).
 - **Public timeline axis** is the run's own expected length (to the vent at `p_stop`), not a
   fixed 80 s, so a slow pump or a long hold still fits.

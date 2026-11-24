@@ -7,7 +7,7 @@ Join the board's Wi-Fi network first (expo/README.md), then:
     python expo/host/expo_receiver.py --save link.txt      # keep every line received
     python expo/host/expo_receiver.py --url ws://127.0.0.1:8765/ws    # the local sim server
 
-It only watches: it never takes control, so it can run beside the phone.
+It only watches: it never takes control, so it can run beside the iPad.
 One status line per second; at the end, a pass/fail report against the rates
 the firmware is built for, with missing samples, the board's own buffer
 overflow count and the ECHO round trip. Exit code 0 only if every check passed.

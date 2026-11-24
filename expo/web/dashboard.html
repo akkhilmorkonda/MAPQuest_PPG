@@ -5,69 +5,151 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MAPQuest Dashboard</title>
 <link rel="icon" href="logo.webp" type="image/webp">
-<!-- Served by expo/host/expo_results.py to the laptop's own browser (DESIGN 3, 6).
-     No external resources: the booth laptop is on the board's network, offline.
+<!-- Two places serve this page:
+     - the laptop (expo/host/expo_results.py) to its own browser, for the monitor (DESIGN 3, 6);
+     - the board, to the iPad: tools/embed_web.py marks it <html data-host="board">, which adds
+       the operator panel (Start, Deflate, Stop, Zero, connections), a Run/Technical switch of
+       its own, and a second link to the laptop for the analysis and its traces.
+     No external resources: everything is on the board's network, offline.
      Designs: the "Chosen" page of the dashboard canvas (B3-Live, B3-Result, B3c-Technical). -->
 <style>
+/* Fonts ship beside the page (the booth laptop is offline). Bricolage Grotesque for all text
+   and numbers; Atkinson Hyperlegible Mono for the event log; Fredoka is the MAPQuest wordmark. */
+@font-face { font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
+  src: url("fonts/bricolage-grotesque-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
+  src: url("fonts/bricolage-grotesque-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Atkinson Hyperlegible Mono"; font-style: normal; font-weight: 200 800; font-display: swap;
+  src: url("fonts/atkinson-hyperlegible-mono-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Atkinson Hyperlegible Mono"; font-style: normal; font-weight: 200 800; font-display: swap;
+  src: url("fonts/atkinson-hyperlegible-mono-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Fredoka"; font-style: normal; font-weight: 700; font-display: swap;
+  src: url("fonts/fredoka-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Fredoka"; font-style: normal; font-weight: 700; font-display: swap;
+  src: url("fonts/fredoka-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 :root {
-  --ground: #F4F6FB; --card: #FFFFFF; --line: #DDE3F1; --line2: #E4E8F3; --navy: #1A1F3D; --ink2: #4A5070;
-  --crimson: #C1203B; --crimson-dk: #9E1830; --pink: #FCE4E7; --rose: #FCF4F5; --band2: #EAEFF9;
-  --safety: #1A2A5C; --ok: #1F6B3E; --warn: #B07A00; --warnbg: #FBE7B5; --blue: #3B6FD8; --mute: #8E97B8;
-  --display: "Fredoka", "Arial Rounded MT Bold", "Nunito", "Segoe UI", sans-serif;
-  --sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  /* graphite ink on a cool clinical grey; crimson is the one colour with a job (the heart) */
+  --ground: #ECEEED; --card: #FBFBFA; --line: #D3D8D6; --line2: #E1E5E3; --navy: #17191C; --ink2: #4D5357;
+  --crimson: #C1203B; --crimson-dk: #9A1530; --pink: #FBD9DF; --rose: #F7EBED; --band2: #E4E8E6;
+  --safety: #2F3B45; --ok: #1E6A43; --warn: #946500; --warnbg: #F4E4BC; --blue: #2B5FB8; --mute: #6B7175;
+  --display: "Fredoka", "Arial Rounded MT Bold", "Segoe UI", sans-serif;
+  --sans: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --mono: "Atkinson Hyperlegible Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: #0d1020; overflow: hidden; }
+::selection { background: var(--crimson); color: #fff; }
+html, body { margin: 0; height: 100%; background: #111315; overflow: hidden; }
+#stageBox { position: absolute; inset: 0; overflow: hidden; }
 #stage { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; transform-origin: 0 0;
-  background: var(--ground); color: var(--navy); font-family: var(--sans); }
-.screen { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transition: opacity .35s ease; pointer-events: none; }
+  background: var(--ground); color: var(--navy); font-family: var(--sans); font-variant-numeric: tabular-nums; }
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transition: opacity .3s cubic-bezier(.16, 1, .3, 1); pointer-events: none; }
 .screen.on { opacity: 1; pointer-events: auto; }
 #pub { padding: 28px 36px; gap: 20px; }
 #tech { padding: 22px 32px; gap: 12px; }
-.card { background: var(--card); border: 1.5px solid var(--line); border-radius: 24px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
 .wordmark { font-family: var(--display); font-weight: 700; color: var(--crimson); line-height: 1; }
 .brand { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .logo { display: block; width: auto; }
-.label { font-size: 13px; font-weight: 700; color: var(--ink2); }
+.label { font-size: 15px; font-weight: 700; color: var(--ink2); }
+.lbl { font-size: 15px; font-weight: 400; color: var(--ink2); }
 .big { font-weight: 800; font-variant-numeric: tabular-nums; }
 .head { display: flex; align-items: center; gap: 28px; }
 .steps { flex-grow: 1; display: flex; justify-content: center; align-items: center; gap: 8px; }
-.chip { padding: 8px 16px; border-radius: 999px; font-size: 16px; white-space: nowrap; }
-.chip.todo { background: #fff; color: var(--ink2); font-weight: 600; border: 1.5px solid var(--line); }
-.chip.done { background: var(--navy); color: #fff; font-weight: 700; }
+.chip { padding: 7px 14px; border-radius: 3px; font-size: 16px; white-space: nowrap; }
+.chip.todo { background: transparent; color: var(--ink2); font-weight: 600; border: 1px solid #BFC5C2; }
+.chip.done { background: var(--navy); color: #fff; font-weight: 600; }
 .chip.act { background: var(--crimson); color: #fff; font-weight: 800; }
 .chip.act.safety { background: var(--safety); }
-.joint { width: 22px; height: 2px; background: #B9C3DE; }
-.livechip { padding: 5px 11px; border-radius: 999px; background: #fff; border: 1.5px solid var(--line); font-size: 12px; font-weight: 700; color: var(--ok); }
-.livechip.down { color: var(--crimson-dk); }
+.joint { width: 22px; height: 1px; background: #A9B0AD; }
+.livechip { padding: 4px 9px; border-radius: 3px; background: transparent; border: 1px solid var(--line); font-size: 12px; font-weight: 700; color: var(--ok); }
+.livechip.down { color: var(--crimson-dk); border-color: var(--crimson-dk); }
 svg text { font-family: var(--sans); }
-.legend { display: inline-block; width: 18px; height: 4px; vertical-align: 3px; margin-right: 6px; }
-.tri { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 20px; height: 200px; }
-.now { background: var(--crimson); color: #fff; border-radius: 24px; padding: 22px 26px; display: flex; flex-direction: column; gap: 8px; }
-.now .label { color: var(--pink); }
-.navycard { background: var(--navy); color: #fff; border-radius: 24px; padding: 18px 22px; display: flex; align-items: center; gap: 16px; }
-.dots span { width: 18px; height: 18px; border-radius: 50%; display: inline-block; margin-right: 10px; animation: pulse 1.2s infinite ease-in-out; }
+/* public: steps as plain text (current crimson and underlined), no chips */
+#pSteps { gap: 20px; align-items: baseline; }
+#pSteps .chip { background: transparent; border: 0; border-radius: 0; padding: 0 0 6px; font-size: 18px; }
+#pSteps .chip.done { color: var(--navy); font-weight: 600; }
+#pSteps .chip.todo { color: var(--mute); font-weight: 500; }
+#pSteps .chip.act { color: var(--crimson); font-weight: 800; border-bottom: 3px solid var(--crimson); }
+#pSteps .chip.act.safety { color: var(--safety); border-bottom-color: var(--safety); }
+#pSteps .joint { align-self: center; background: var(--line); }
+#pLive { border: 0; padding: 0; font-size: 14px; }
+/* public: the number and the chart sit on the page, no card */
+.reading { display: flex; flex-direction: column; padding-right: 8px; }
+.reading .big { font-size: 176px; line-height: 0.86; letter-spacing: -0.02em; margin-top: 10px; }
+.facts { margin-top: 34px; display: grid; grid-template-columns: auto 1fr; column-gap: 18px; row-gap: 12px; align-items: baseline; }
+.facts .big { font-size: 26px; }
+.stale-note { display: none; font-size: 16px; font-weight: 700; color: var(--crimson-dk); margin-top: 10px; }
+#pub.stale .reading .big, #pub.stale .facts .big { color: #A3A9A7; }
+#pub.stale .stale-note { display: block; }
+/* public: the three messages as one open band */
+.tri { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.15fr) minmax(0, 0.8fr); height: 204px; border-top: 1px solid var(--line); }
+.tri > div { padding: 24px 30px 0 0; min-width: 0; }
+.tri > div + div { padding-left: 30px; border-left: 1px solid var(--line2); }
+.now { display: flex; flex-direction: column; gap: 8px; }
+.now .label { color: var(--crimson-dk); }
+#pCaption { font-size: 46px; font-weight: 800; line-height: 1.05; letter-spacing: -0.01em; color: var(--crimson); }
+#pub.outcome #pCaption { font-size: 36px; }      /* outcome captions are longer ("Blood came back at 121 mmHg") */
+.navycard { display: flex; flex-direction: column; gap: 8px; }
+.track { height: 6px; background: var(--line2); margin-top: 8px; }
+.track div { height: 6px; background: var(--crimson); }
+.dots span { width: 14px; height: 14px; border-radius: 2px; display: inline-block; margin-right: 8px; animation: pulse 1.2s infinite ease-in-out; }
 .dots span:nth-child(2) { animation-delay: .2s; } .dots span:nth-child(3) { animation-delay: .4s; }
 @keyframes pulse { 0%, 100% { opacity: .35 } 50% { opacity: 1 } }
-.tag { align-self: flex-start; margin-top: 8px; padding: 8px 14px; border-radius: 10px; background: var(--warnbg); color: #6B4A00; font-size: 16px; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .dots span { animation: none; opacity: 1; } .screen { transition: none; } }
+.tag { align-self: flex-start; margin-top: 8px; padding: 7px 12px; border-radius: 3px; background: var(--warnbg); color: #5E4200; font-size: 16px; font-weight: 700; }
 /* technical */
-.tchip { flex: 1 1 0; min-width: 0; border-radius: 16px; padding: 8px 12px; background: #fff; border: 1.5px solid var(--line); }
-.tchip.wait { background: #EEF1F8; border: 1.5px dashed #C5CDE2; }
-.tchip.onset { background: var(--crimson); color: #fff; border: 0; }
-.tchip.onset.none { background: #fff; color: var(--mute); border: 1.5px dashed #C5CDE2; }
+.tchip { flex: 1 1 0; min-width: 0; border-radius: 4px; padding: 8px 12px; background: var(--card); border: 1px solid var(--line); }
+.tchip.wait { background: transparent; border: 1px dashed #BFC5C2; }
+.tchip.onset { background: var(--crimson); color: #fff; border: 1px solid var(--crimson); }
+.tchip.onset.none { background: transparent; color: var(--mute); border: 1px dashed #BFC5C2; }
 .tchip .t { font-size: 12px; font-weight: 700; color: var(--ink2); }
 .tchip.onset .t { color: var(--pink); } .tchip.onset.none .t { color: var(--mute); }
-.tcard { background: #fff; border: 1.5px solid var(--line); border-radius: 22px; }
-.num { width: 22px; height: 22px; border-radius: 50%; color: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
-.mini { padding: 3px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--ground); color: var(--ink2); }
+.tcard { background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
+.num { width: 22px; height: 22px; border-radius: 3px; color: #fff; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+.mini { padding: 3px 7px; border-radius: 2px; font-size: 11px; font-weight: 700; background: var(--ground); color: var(--ink2); }
 .mini.done { background: var(--navy); color: #fff; } .mini.act { background: var(--crimson); color: #fff; } .mini.act.safety { background: var(--safety); }
-.bar { height: 8px; border-radius: 4px; background: var(--line2); }
-.bar div { height: 8px; border-radius: 4px; background: var(--navy); }
-.hw { border: 1.5px solid var(--line); border-radius: 10px; padding: 4px 8px; white-space: nowrap; }
+.bar { height: 6px; border-radius: 1px; background: var(--line2); }
+.bar div { height: 6px; border-radius: 1px; background: var(--navy); }
+.hw { border: 1px solid var(--line); border-radius: 3px; padding: 4px 8px; white-space: nowrap; }
+/* operator panel (board mode, the iPad): a dark console under the visitor's screen */
+#panel { display: none; }
+body.board { display: flex; flex-direction: column; }
+body.board #stageBox { position: relative; inset: auto; flex: 1 1 auto; min-height: 0; }
+body.board #panel { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto; gap: 16px; align-items: stretch;
+  flex: 0 0 auto; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--navy); color: #E6E9E8;
+  font-family: var(--sans); font-variant-numeric: tabular-nums; -webkit-user-select: none; user-select: none; }
+.conn { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 14px; align-content: center; font-size: 13px; }
+.conn div { display: flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conn i { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #59616A; }
+.conn i.ok { background: #3FB47A; } .conn i.bad { background: #F0506A; } .conn i.warn { background: #E2B23C; }
+.conn b { font-weight: 700; color: #fff; } .conn span { color: #AEB5B9; }
+.status { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; }
+.opnow { font-size: 22px; font-weight: 800; color: #fff; line-height: 1.1; }
+.status .hint { font-size: 15px; color: #C9CED1; line-height: 1.3; }
+.status .err { font-size: 14px; font-weight: 700; color: #FF8A9C; min-height: 18px; }
+.seg { display: inline-flex; border: 1px solid #4A5157; border-radius: 6px; overflow: hidden; align-self: flex-start; }
+.seg button { font: 700 14px var(--sans); color: #C9CED1; background: transparent; border: 0; padding: 7px 14px; }
+.seg button.on { background: #ECEEED; color: var(--navy); }
+.btns { display: flex; gap: 10px; align-items: stretch; }
+.btns button { font: 800 20px var(--sans); border-radius: 8px; border: 0; min-width: 104px; padding: 0 18px; min-height: 76px;
+  background: #ECEEED; color: var(--navy); touch-action: manipulation; }
+.btns button.quiet { background: transparent; color: #E6E9E8; border: 1px solid #5B636A; min-width: 84px; font-size: 17px; }
+.btns button.stop { background: var(--crimson); color: #fff; min-width: 136px; font-size: 24px; }
+.btns .stack { display: flex; flex-direction: column; gap: 8px; }
+.btns .stack button { min-height: 0; flex: 1 1 0; font-size: 15px; }
+.btns button:disabled { opacity: .32; }
+.btns button:active:not(:disabled) { transform: translateY(1px); filter: brightness(.92); }
+.take { font: 700 12px var(--sans); color: var(--navy); background: #ECEEED; border: 0; border-radius: 4px; padding: 2px 8px; }
 </style>
 </head>
 <body>
+<div id="stageBox">
 <div id="stage">
 
 <!-- ======================= PUBLIC (B3) ======================= -->
@@ -81,57 +163,46 @@ svg text { font-family: var(--sans); }
       </div>
     </div>
     <div class="steps" id="pSteps"></div>
-    <div style="display: flex; align-items: center; gap: 14px">
-      <div style="text-align: right"><div style="font-size: 13px; color: var(--ink2); font-weight: 600">Visitor</div><div id="pRun" class="big" style="font-size: 24px">Run —</div></div>
-      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+      <div style="display: flex; align-items: baseline; gap: 8px"><span class="lbl">Visitor</span><span id="pRun" class="big" style="font-size: 30px">Run —</span></div>
+      <div style="display: flex; align-items: baseline; gap: 12px">
         <span class="livechip" id="pLive">● Live</span>
-        <span style="font-size: 12px; color: var(--ink2); font-weight: 600">Public view</span>
+        <span class="lbl" style="font-size: 14px">Public view</span>
       </div>
     </div>
   </div>
 
   <!-- live / idle -->
-  <div id="pLiveBody" class="card" style="border-radius: 26px; padding: 22px 26px; display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; flex-grow: 1; min-height: 0">
-    <div style="display: flex; flex-direction: column; gap: 6px; border-right: 1.5px solid var(--line2); padding-right: 20px">
-      <div style="font-size: 14px; font-weight: 700; color: var(--ink2)">Cuff pressure</div>
-      <div id="pP" class="big" style="font-size: 120px; line-height: 0.95; letter-spacing: -4px">0</div>
-      <div style="font-size: 26px; font-weight: 700; color: var(--crimson)">mmHg</div>
-      <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
-        <div><div style="font-size: 13px; color: var(--ink2); font-weight: 600">Time in cuff</div><div id="pTime" class="big" style="font-size: 24px">0 s</div></div>
-        <div><div style="font-size: 13px; color: var(--ink2); font-weight: 600">Release speed</div><div id="pSpeed" class="big" style="font-size: 24px">—</div></div>
+  <div id="pLiveBody" style="display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; flex-grow: 1; min-height: 0">
+    <div class="reading">
+      <div class="lbl">Cuff pressure</div>
+      <div id="pP" class="big">0</div>
+      <div style="font-size: 30px; font-weight: 700; color: var(--ink2); margin-top: 10px">mmHg</div>
+      <div class="stale-note" id="pStale"></div>
+      <div class="facts">
+        <span class="lbl">Time in cuff</span><span id="pTime" class="big">0 s</span>
+        <span class="lbl">Release speed</span><span id="pSpeed" class="big">—</span>
       </div>
     </div>
-    <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
-      <div style="display: flex; justify-content: flex-end; gap: 18px; font-size: 13px; font-weight: 600; color: var(--ink2)">
-        <span><span class="legend" style="background: var(--navy)"></span>Cuff pressure</span>
-        <span><span class="legend" style="background: var(--crimson)"></span>Blood in the forearm</span>
-      </div>
-      <svg id="pTimeline" viewBox="0 0 1000 400" style="width: 100%; flex-grow: 1" role="img" aria-label="The run as a timeline: cuff pressure and blood in the forearm"></svg>
-    </div>
+    <svg id="pTimeline" viewBox="0 0 1000 460" style="width: 100%; height: 100%; min-width: 0" role="img" aria-label="The run as a timeline: cuff pressure and blood in the forearm"></svg>
   </div>
 
   <!-- outcome -->
-  <div id="pResultBody" class="card" style="border-radius: 26px; padding: 22px 26px; display: none; grid-template-columns: minmax(0, 1fr) 470px; gap: 26px; flex-grow: 1; min-height: 0">
+  <div id="pResultBody" style="display: none; grid-template-columns: minmax(0, 1fr) 470px; gap: 26px; flex-grow: 1; min-height: 0">
     <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
-      <div style="display: flex; justify-content: space-between; align-items: baseline">
-        <span style="font-size: 14px; font-weight: 700; color: var(--ink2)">The whole run</span>
-        <span style="display: flex; gap: 18px; font-size: 13px; font-weight: 600; color: var(--ink2)">
-          <span><span class="legend" style="background: var(--navy)"></span>Cuff pressure</span>
-          <span><span class="legend" style="background: var(--crimson)"></span>Blood in the forearm</span>
-        </span>
-      </div>
+      <span class="lbl">The whole run</span>
       <svg id="pWhole" viewBox="0 0 1000 420" style="width: 100%; flex-grow: 1" role="img" aria-label="Timeline of the whole run with the return of flow marked"></svg>
     </div>
-    <div id="pOutcome" style="border-left: 1.5px solid var(--line2); padding-left: 26px; display: flex; flex-direction: column"></div>
+    <div id="pOutcome" style="border-left: 1px solid var(--line2); padding-left: 26px; display: flex; flex-direction: column"></div>
   </div>
 
   <div class="tri">
     <div class="now">
       <div class="label" id="pNowLabel">Now</div>
-      <div id="pCaption" style="font-size: 36px; font-weight: 800; line-height: 1.1"></div>
-      <div id="pSub" style="font-size: 17px; line-height: 1.45; color: var(--pink)"></div>
+      <div id="pCaption"></div>
+      <div id="pSub" style="font-size: 19px; line-height: 1.45; color: var(--ink2)"></div>
     </div>
-    <div class="card" id="pMid" style="padding: 22px 26px; display: flex; gap: 18px; align-items: center"></div>
+    <div id="pMid" style="display: flex; flex-direction: column; gap: 8px"></div>
     <div class="navycard" id="pRight"></div>
   </div>
 </section>
@@ -173,34 +244,58 @@ svg text { font-family: var(--sans); }
         <div style="font-size: 12px; font-weight: 700; color: var(--ink2)">Arm motion, forearm IMU (limit 20 °/s)</div>
         <svg id="tMotion" viewBox="0 0 300 50" preserveAspectRatio="none" style="width: 100%; height: 36px" aria-hidden="true"></svg>
       </div>
-      <div class="tcard" style="padding: 10px 18px; font-size: 13px; color: #3A4466; line-height: 1.4"><b style="color: var(--navy)">How well does this work?</b> Bench: refill onset read −6.2 ± 7.9 mmHg against systolic over 8 slow manual runs.</div>
+      <div class="tcard" style="padding: 10px 18px; font-size: 13px; color: #3D4347; line-height: 1.4"><b style="color: var(--navy)">How well does this work?</b> Bench: refill onset read −6.2 ± 7.9 mmHg against systolic over 8 slow manual runs.</div>
     </div>
 
     <div style="grid-column: 1 / 3; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px">
-      <div class="tcard" style="border-radius: 20px; padding: 12px 18px; display: flex; flex-direction: column; gap: 6px">
+      <div class="tcard" style="border-radius: 6px; padding: 12px 18px; display: flex; flex-direction: column; gap: 6px">
         <span style="font-size: 15px; font-weight: 800">Cuff controller</span>
         <div id="tCtl" style="display: flex; gap: 3px; flex-wrap: wrap"></div>
         <svg id="tCtlSpark" viewBox="0 0 300 50" preserveAspectRatio="none" style="width: 100%; height: 46px" aria-hidden="true"></svg>
         <div id="tCtlText" style="font-size: 12px; color: var(--ink2)"></div>
       </div>
-      <div class="tcard" id="tSafety" style="border-radius: 20px; padding: 12px 18px; display: flex; flex-direction: column; gap: 6px">
+      <div class="tcard" id="tSafety" style="border-radius: 6px; padding: 12px 18px; display: flex; flex-direction: column; gap: 6px">
         <span style="font-size: 15px; font-weight: 800">Safety margins</span>
         <div id="tLimits" style="display: flex; flex-direction: column; gap: 6px"></div>
         <div id="tSafetyNote" style="font-size: 12px; font-weight: 700; margin-top: auto"></div>
       </div>
-      <div class="tcard" style="border-radius: 20px; padding: 12px 18px; display: flex; flex-direction: column; gap: 6px">
+      <div class="tcard" style="border-radius: 6px; padding: 12px 18px; display: flex; flex-direction: column; gap: 6px">
         <span style="font-size: 15px; font-weight: 800">Hardware</span>
         <div id="tHw" style="display: flex; align-items: center; flex-grow: 1; font-size: 12px"></div>
       </div>
-      <div class="tcard" style="border-radius: 20px; padding: 12px 18px; display: flex; flex-direction: column; gap: 5px; min-width: 0">
+      <div class="tcard" style="border-radius: 6px; padding: 12px 18px; display: flex; flex-direction: column; gap: 5px; min-width: 0">
         <span style="font-size: 15px; font-weight: 800">Link and events</span>
         <div id="tLink" style="font-size: 12px; font-weight: 700; color: var(--ink2)"></div>
-        <div id="tEvents" style="font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: #3A4466; overflow: hidden; white-space: nowrap; text-overflow: ellipsis"></div>
+        <div id="tEvents" style="font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: #3D4347; overflow: hidden; white-space: nowrap; text-overflow: ellipsis"></div>
       </div>
     </div>
   </div>
 </section>
 
+</div>
+</div>
+
+<!-- ======================= OPERATOR PANEL (board mode: the iPad) ======================= -->
+<div id="panel" aria-label="Operator controls">
+  <div class="conn" id="opConn" aria-label="Connections"></div>
+  <div class="status">
+    <div class="opnow" id="opNow">Connecting…</div>
+    <div class="hint" id="opHint"></div>
+    <div class="err" id="opErr" role="status"></div>
+    <div class="seg" role="group" aria-label="Screen">
+      <button id="opViewPub" class="on" aria-pressed="true">Run</button>
+      <button id="opViewTech" aria-pressed="false">Technical</button>
+    </div>
+  </div>
+  <div class="btns">
+    <div class="stack">
+      <button id="opRefresh" class="quiet" title="Look for the sensors again and set the LED level (between runs)">Refresh</button>
+      <button id="opZero" class="quiet">Zero</button>
+    </div>
+    <button id="opStart">Start</button>
+    <button id="opDeflate">Deflate</button>
+    <button id="opStop" class="stop">Stop</button>
+  </div>
 </div>
 
 <script>
@@ -212,12 +307,18 @@ const qs = new URLSearchParams(location.search);
 const WS_URL = qs.get('ws') || ('ws://' + location.host + '/ws');
 const RESULT_SHOW_S = 120;           // the outcome stays up this long, then the idle screen
 const STEP_LABELS = ['Idle', 'Inflate', 'Hold', 'Deflate', 'Result'];
+// Served by the board to the iPad (embed_web.py sets data-host), or ?host=board to try it.
+const ON_BOARD = document.documentElement.dataset.host === 'board' || qs.get('host') === 'board';
+if (ON_BOARD) document.body.classList.add('board');
+const VENTED_BELOW = 10;             // firmware VENTED_BELOW_MMHG: Start needs the cuff below this
+const PUMP_TARGET = 160, PUMP_CAP = 190;      // DESIGN 4.2: pump to 160, never past 190
+const REST_S = 6;                    // the analysis needs 4 s of resting pulse before Start
 
-// ---- fit the 1600 x 900 stage to the window -------------------------------
+// ---- fit the 1600 x 900 stage to its box ------------------------------------
 function fit() {
-  const s = Math.min(innerWidth / 1600, innerHeight / 900);
-  const st = $('stage');
-  st.style.transform = `translate(${(innerWidth - 1600 * s) / 2}px, ${(innerHeight - 900 * s) / 2}px) scale(${s})`;
+  const box = $('stageBox'), w = box.clientWidth, h = box.clientHeight;
+  const s = Math.min(w / 1600, h / 900);
+  $('stage').style.transform = `translate(${(w - 1600 * s) / 2}px, ${(h - 900 * s) / 2}px) scale(${s})`;
 }
 addEventListener('resize', fit); fit();
 
@@ -228,8 +329,11 @@ const D = {
   pStop: 40, holdTimeout: 120, view: 'PUBLIC', analyser: 0, nextRun: 0,
   run: null,          // the run in progress (or the last one)
   outcome: null,      // 'analysing' | 'result' | 'caution' | 'no-reading' | 'safety-stop' | 'stopped'
-  outcomeAt: 0, result: null, tNow: 0, events: [],
+  outcomeAt: 0, result: null, tNow: 0, events: [], zeroed: false,
 };
+// Board mode only: this iPad's link, control, and its second link to the laptop.
+const B = { open: false, me: 0, claimRefused: false, err: '', errAt: 0, view: 'PUBLIC',
+  restSince: 0, lap: null, lapUrl: '', lapOpen: false };
 const irPre = [];                                   // the last 2 s of IR before a run: the reference
 let lastIdx = {}, counts = {}, rates = {}, missing = 0;
 setInterval(() => { for (const k in counts) { rates[k] = counts[k]; counts[k] = 0; } }, 1000);
@@ -256,17 +360,76 @@ function newRun(t0) {
 let ws = null;
 function connect() {
   try { ws = new WebSocket(WS_URL); } catch (e) { setTimeout(connect, 1000); return; }
-  ws.onopen = () => { D.dash = true; };
+  ws.onopen = () => {
+    D.dash = true;
+    if (ON_BOARD) {           // the iPad runs the cuff: take control, and learn where the laptop is
+      B.open = true; B.claimRefused = false; B.restSince = 0;
+      ws.send('INFO'); ws.send('CLAIM');
+    }
+  };
   ws.onmessage = (e) => { for (const ln of e.data.split('\n')) handle(ln.trim()); };
-  ws.onclose = () => { D.dash = false; D.board = false; setTimeout(connect, 1000); };
+  ws.onclose = () => { D.dash = false; D.board = false; B.open = false; B.me = 0; setTimeout(connect, 1000); };
   ws.onerror = () => { try { ws.close(); } catch (e) {} };
 }
-function sendView(mode) { if (ws && ws.readyState === 1 && mode !== D.view) ws.send('VIEW ' + mode); }
+// The board drops a silent controller after 2 s (and dumps the cuff in INFLATE or HOLD).
+setInterval(() => {
+  if (!ON_BOARD || !ws || ws.readyState !== 1) return;
+  ws.send('PING');
+  // Control is free (a reload's old connection held it, then dropped): claim it again.
+  const now = performance.now();
+  if (B.me && D.controller === 0 && now - (B.claimAt || 0) > 2000) { B.claimAt = now; ws.send('CLAIM'); }
+}, 250);
+
+function viewMode() { return ON_BOARD ? B.view : D.view; }
+function sendView(mode) {
+  if (ON_BOARD) { B.view = mode; return; }   // the iPad's switch is its own; the monitor stays as it is
+  if (ws && ws.readyState === 1 && mode !== D.view) ws.send('VIEW ' + mode);
+}
 addEventListener('keydown', (e) => {          // a key on the laptop or a presentation clicker
   if (['t', 'T', 'PageUp', 'PageDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-    e.preventDefault(); sendView(D.view === 'TECHNICAL' ? 'PUBLIC' : 'TECHNICAL');
+    e.preventDefault(); sendView(viewMode() === 'TECHNICAL' ? 'PUBLIC' : 'TECHNICAL');
   }
 });
+
+// ---- board mode: the second link, to the laptop, for the analysis -------------
+// The board names it (analyser_url, from the laptop's own socket). Only the laptop's
+// A, messages are used: the board's lines already come straight from the board.
+function setLapUrl(u) {
+  if (!ON_BOARD || u === B.lapUrl) return;
+  B.lapUrl = u;
+  const old = B.lap; B.lap = null; B.lapOpen = false;
+  if (old) try { old.close(); } catch (e) {}
+  if (u) lapConnect();
+}
+function lapConnect() {
+  const url = B.lapUrl;
+  if (!url || B.lap) return;
+  let w;
+  try { w = new WebSocket(url); } catch (e) { setTimeout(lapConnect, 2000); return; }
+  B.lap = w;
+  w.onopen = () => { if (B.lap === w) B.lapOpen = true; };
+  w.onmessage = (e) => {
+    if (B.lap !== w) return;
+    for (const ln of e.data.split('\n')) { const l = ln.trim(); if (l.startsWith('A,')) handle(l); }
+  };
+  w.onclose = () => {
+    if (B.lap !== w) return;
+    B.lap = null; B.lapOpen = false;
+    setTimeout(() => { if (B.lapUrl === url) lapConnect(); }, 2000);
+  };
+  w.onerror = () => { try { w.close(); } catch (e) {} };
+}
+
+// The board's own RESULT event: the number reaches the iPad even when the laptop's
+// server can't be reached. The laptop's message (with the traces) wins when both come.
+function boardResult(detail) {
+  const m = /run=(\d+) mmhg=(\S+) flag=(\S+)/.exec(detail);
+  if (!m) return;
+  const run = +m[1], flag = m[3];
+  if (flag === 'pending') { analyser({ kind: 'pending', run }); return; }
+  if (D.result && D.result.run === run && D.result.traces) return;
+  analyser({ kind: 'result', run, flag, mmhg: m[2] === '-' ? null : +m[2] });
+}
 
 function idxCheck(k, idx) {
   if (k in lastIdx && idx > lastIdx[k] + 1) {
@@ -280,6 +443,11 @@ function handle(line) {
   if (!line) return;
   if (line.startsWith('A,')) { try { analyser(JSON.parse(line.slice(2))); } catch (e) {} return; }
   if (line[0] === '#') { meta(line.slice(1).trim()); return; }
+  if (line.startsWith('E,')) {                      // a refusal or fault: the operator sees it
+    B.err = line.slice(2); B.errAt = performance.now();
+    if (line.includes('CLAIM refused')) B.claimRefused = true;
+    return;
+  }
   const f = line.split(',');
   const k = f[0];
   counts[k === 'M' ? 'M' + f[3] : k] = (counts[k === 'M' ? 'M' + f[3] : k] || 0) + 1;
@@ -287,6 +455,7 @@ function handle(line) {
   if (k === 'S') {
     idxCheck('S', +f[1]);
     const t = tsec(+f[2]); D.tNow = Math.max(D.tNow, t);
+    if (!B.restSince) B.restSince = performance.now();     // the resting pulse starts recording
     const ir = +f[3];
     if (!run) { irPre.push(ir); if (irPre.length > 200) irPre.shift(); return; }
     if (!(run.irRef > 0)) run.irRef = ir;
@@ -305,13 +474,14 @@ function handle(line) {
     idxCheck('C', +f[1]);
     const t = tsec(+f[2]); D.tNow = Math.max(D.tNow, t);
     D.p = parseFloat(f[4]); D.pref = parseFloat(f[5]); D.rate = parseFloat(f[6]); D.duty = parseFloat(f[7]);
+    D.lastC = performance.now();          // for the "paused" note when the link drops
     setState(f[3], t);
     if (run) {
       run.pts.push({ t: t - run.t0, p: D.p, pref: D.pref });
       if (fin(D.p)) run.pPeak = Math.max(run.pPeak, D.p);
     }
   } else if (k === 'ST') {
-    D.sensors = f[3] || '00000'; D.controller = +f[5]; D.clients = +f[6];
+    D.sensors = f[3] || '00000'; D.zeroed = f[4] === '1'; D.controller = +f[5]; D.clients = +f[6];
     D.pRunMin = +f[7]; D.holdS = +f[8]; D.rateSet = +f[9]; D.pMax = +f[10];
     if (f[13]) D.view = f[13];
     if (f[14] !== undefined) D.analyser = +f[14];
@@ -325,7 +495,12 @@ function handle(line) {
     } else if (name === 'run_summary' && D.run) {
       const m = /mean_rate=([-\d.]+)/.exec(detail); if (m) D.run.meanRate = +m[1];
     } else if (name === 'view') D.view = detail.split(' ')[0];
-    else if (name === 'analyser') { const tok = detail.split(' ')[0]; D.analyser = tok === 'none' ? 0 : +tok; }
+    else if (name === 'analyser') {
+      const tok = detail.split(' '); D.analyser = tok[0] === 'none' ? 0 : +tok[0];
+      setLapUrl(tok[0] === 'none' ? '' : (tok[2] || ''));   // "3 joined ws://192.168.4.2:8800/ws"
+    } else if (name === 'result' && ON_BOARD) boardResult(detail);
+    else if (name === 'stream_gap') B.restSince = 0;        // the resting pulse starts again
+    else if (name === 'controller' && ON_BOARD) B.claimRefused = false;
   }
 }
 
@@ -338,6 +513,8 @@ function meta(body) {
     if ('p_max' in pairs) D.pMax = +pairs.p_max;
   }
   if ('view' in pairs) D.view = pairs.view;
+  if ('client_id' in pairs) B.me = +pairs.client_id;
+  if ('view' in pairs && 'analyser' in pairs) setLapUrl(pairs.analyser_url || '');
 }
 
 function setState(s, t) {
@@ -350,6 +527,7 @@ function setState(s, t) {
     if (s === 'HOLD' && D.run.tHold === null) D.run.tHold = rt;
     if (s === 'DEFLATE' && D.run.tDefl === null) { D.run.tDefl = rt; D.run.pStart = D.p; }
     if (s === 'IDLE') { D.run.tEnd = rt; D.run.active = false; }
+    if (s === 'IDLE') B.restSince = performance.now();   // the laptop's pre-roll starts again here
   }
   void prev;
 }
@@ -357,7 +535,7 @@ function setState(s, t) {
 function setOutcome(o) { D.outcome = o; D.outcomeAt = performance.now(); }
 
 function analyser(m) {
-  if (m.kind === 'link') D.board = !!m.up;
+  if (m.kind === 'link') { if (!ON_BOARD) D.board = !!m.up; }   // on the iPad: its own board link
   else if (m.kind === 'rtt') D.rtt = m.ms;
   else if (m.kind === 'hello') D.nextRun = m.next_run;
   else if (m.kind === 'run') { if (D.run) D.run.number = m.run; }
@@ -425,38 +603,75 @@ function stepIndex(ph) {
   return { idle: 0, inflate: 1, hold: 2, deflate: 3 }[ph] ?? (D.outcome === 'safety-stop' || D.outcome === 'stopped' ? 3 : 4);
 }
 
-// The run as a timeline (public screens): bands, cuff pressure, blood in the forearm.
+// The run as a timeline (public screens). Phase names sit in a row above the plot; the
+// pressure scale (mmHg) belongs to the cuff line, blood in the forearm is relative.
+const PLOT_L = 44, BAND_TOP = 36;
+function timelineFrame(H, T, tHold, tDefl, tNow) {
+  const X = (t) => PLOT_L + Math.max(0, Math.min(1, t / T)) * (1000 - PLOT_L);
+  const base = H - 28;
+  const Y = (p) => base - Math.max(0, Math.min(p, 200)) / 200 * (base - BAND_TOP - 14);
+  const xh = X(tHold), xd = X(tDefl);
+  let s = '';
+  s += `<rect x="${xh}" y="${BAND_TOP}" width="${Math.max(0, xd - xh)}" height="${base - BAND_TOP}" fill="#E4E8E6"/>`;
+  if (tNow === null) s += `<rect x="${xd}" y="${BAND_TOP}" width="${Math.max(0, 1000 - xd)}" height="${base - BAND_TOP}" fill="#F7EBED"/>`;
+  else {      // the release is tinted only as far as it has happened; the rest of the phase is a strip
+    const xn = Math.max(xd, X(tNow));
+    s += `<rect x="${xd}" y="${BAND_TOP}" width="${xn - xd}" height="${base - BAND_TOP}" fill="#F7EBED"/>`;
+    s += `<rect x="${xn}" y="${BAND_TOP}" width="${Math.max(0, 1000 - xn)}" height="5" fill="#F7EBED"/>`;
+  }
+  if (xh - PLOT_L > 60) s += `<text x="${PLOT_L}" y="24" style="font: 700 15px var(--sans); fill: #4D5357">Inflate</text>`;
+  if (xd - xh > 50) s += `<text x="${xh + 8}" y="24" style="font: 700 15px var(--sans); fill: #4D5357">Hold</text>`;
+  s += `<text x="${xd + 8}" y="24" style="font: 700 15px var(--sans); fill: #9A1530">Deflate · ${(Math.abs(D.rateSet) || 2).toFixed(0)} mmHg/s</text>`;
+  for (const p of [40, 80, 120, 160]) {
+    s += `<line x1="${PLOT_L}" y1="${Y(p)}" x2="1000" y2="${Y(p)}" stroke="#D5DAD8" stroke-width="1"/>`;
+    s += `<text x="${PLOT_L - 8}" y="${Y(p) + 5}" style="font: 400 14px var(--sans); fill: #6B7175" text-anchor="end">${p}</text>`;
+  }
+  s += `<text x="${PLOT_L - 8}" y="${base + 5}" style="font: 400 14px var(--sans); fill: #6B7175" text-anchor="end">0</text>`;
+  s += `<text x="${PLOT_L + 6}" y="${Y(186) + 5}" style="font: 700 13px var(--sans); fill: #17191C">mmHg</text>`;
+  s += `<line x1="${PLOT_L}" y1="${base}" x2="1000" y2="${base}" stroke="#4D5357" stroke-width="1"/>`;
+  return { s, X, Y, base };
+}
+
+// Direct labels at the ends of the two lines (they replace the legend).
+function lineLabels(x, yP, yB) {
+  const right = x < 790;
+  const ax = right ? x + 16 : x - 16, anchor = right ? 'start' : 'end';
+  let a = fin(yP) ? yP + 6 : null, b = fin(yB) ? yB + 6 : null;
+  if (a !== null && b !== null && Math.abs(a - b) < 26) { if (a <= b) { a -= 13; b += 13; } else { a += 13; b -= 13; } }
+  let s = '';
+  if (a !== null) s += `<text x="${ax}" y="${right ? a : a - 18}" style="font: 700 17px var(--sans); fill: #17191C" text-anchor="${anchor}">Cuff pressure</text>`;
+  if (b !== null) s += `<text x="${ax}" y="${right ? b : b - 18}" style="font: 700 17px var(--sans); fill: #9A1530" text-anchor="${anchor}">Blood in the forearm</text>`;
+  return s;
+}
+
 function timelineSvg(H, showCursor) {
   const r = D.run, pl = plan();
   const T = Math.max(pl.total, 30);
-  const X = (t) => Math.max(0, Math.min(1000, t / T * 1000));
-  const base = H - 28;
-  const Y = (p) => base - Math.max(0, Math.min(p, 210)) / 210 * (base - 40);
-  let s = '';
-  const xh = X(pl.tHold), xd = X(pl.tDefl);
-  s += `<rect x="0" y="0" width="${xh}" height="${base}" fill="#F4F6FB"/>`;
-  s += `<rect x="${xh}" y="0" width="${Math.max(0, xd - xh)}" height="${base}" fill="#EAEFF9"/>`;
-  s += `<rect x="${xd}" y="0" width="${Math.max(0, 1000 - xd)}" height="${base}" fill="#FCF4F5"/>`;
-  if (xh > 60) s += `<text x="${xh / 2}" y="26" style="font: 700 15px var(--sans); fill: #4A5070" text-anchor="middle">Inflate</text>`;
-  if (xd - xh > 50) s += `<text x="${(xh + xd) / 2}" y="26" style="font: 700 15px var(--sans); fill: #4A5070" text-anchor="middle">Hold</text>`;
-  s += `<text x="${(xd + 1000) / 2}" y="26" style="font: 700 15px var(--sans); fill: #9E1830" text-anchor="middle">Deflate · ${(Math.abs(D.rateSet) || 2).toFixed(0)} mmHg/s</text>`;
-  s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#DDE3F1" stroke-width="1.5"/>`;
+  const live = showCursor && r && r.active;
+  const f = timelineFrame(H, T, pl.tHold, pl.tDefl, live ? pl.now : null);
+  const { X, Y, base } = f;
+  let s = f.s;
   if (r) {
-    s += `<path d="${pathOf(r.pts, X, Y, 'p')}" fill="none" stroke="#1A1F3D" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s += `<path d="${pathOf(r.pts, X, Y, 'p')}" fill="none" stroke="#17191C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
     const [lo, hi] = range(r.bv.map((q) => q.v), 4);
     const YB = (v) => base - 30 - (v - lo) / (hi - lo) * (base * 0.42);
-    s += `<path d="${pathOf(r.bv, X, YB)}" fill="none" stroke="#C1203B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s += `<path d="${pathOf(r.bv, X, YB)}" fill="none" stroke="#C1203B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
     r._X = X; r._Y = Y; r._YB = YB;
-    if (showCursor && r.active) {
+    const lastB = r.bv.length ? r.bv[r.bv.length - 1] : null;
+    if (live) {
       const xn = X(pl.now);
-      s += `<rect x="${xn}" y="40" width="${Math.max(0, 1000 - xn)}" height="${base - 41}" fill="#FFFFFF" opacity="0.88"/>`;   // the rest of the run, still to come
-      s += `<line x1="${xn}" y1="40" x2="${xn}" y2="${base}" stroke="#C1203B" stroke-width="2.5"/>`;
-      if (fin(D.p)) s += `<circle cx="${xn}" cy="${Y(D.p)}" r="9" fill="#1A1F3D" stroke="#fff" stroke-width="3"/>`;
+      s += `<line x1="${xn}" y1="${BAND_TOP}" x2="${xn}" y2="${base}" stroke="#17191C" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+      if (fin(D.p)) s += `<circle cx="${xn}" cy="${Y(D.p)}" r="8" fill="#17191C" stroke="#ECEEED" stroke-width="3"/>`;
+      if (lastB) s += `<circle cx="${xn}" cy="${YB(lastB.v)}" r="7" fill="#C1203B" stroke="#ECEEED" stroke-width="3"/>`;
+      s += lineLabels(xn, fin(D.p) ? Y(D.p) : NaN, lastB ? YB(lastB.v) : NaN);
+    } else if (r.pts.length) {
+      const lp = r.pts[r.pts.length - 1];
+      s += lineLabels(X(lp.t), Y(lp.p), lastB ? YB(lastB.v) : NaN);
     }
   }
-  s += `<text x="0" y="${H - 6}" style="font: 600 14px var(--sans); fill: #4A5070">0 s</text>`;
+  s += `<text x="${PLOT_L}" y="${H - 4}" style="font: 400 15px var(--sans); fill: #4D5357">0 s</text>`;
   const tail = r && !r.active ? `${Math.round(T)} s` : `about ${Math.round(T)} s · vents at ${Math.round(D.pStop)} mmHg`;
-  s += `<text x="1000" y="${H - 6}" style="font: 600 14px var(--sans); fill: #4A5070" text-anchor="end">${tail}</text>`;
+  s += `<text x="1000" y="${H - 4}" style="font: 400 15px var(--sans); fill: #4D5357" text-anchor="end">${tail}</text>`;
   return { svg: s, X, Y, T, base };
 }
 
@@ -473,15 +688,13 @@ const SAFETY_LINE = {        // DESIGN 8.2, public lines
   'run timeout': 'The release took longer than expected',
   'pressure dropout': 'The pressure sensor stopped reporting',
   'pressure sensor integrity flag': 'The pressure sensor stopped reporting',
-  'controller lost': 'The operator’s phone disconnected',
+  'controller lost': 'The operator’s iPad disconnected',
 };
 const CAUTION = {
   arm_moved: 'Low confidence: arm moved during the release',
   pulse_present: 'Low confidence: blood flow may not have fully stopped',
   incomplete: 'Low confidence: part of the signal is missing',
 };
-const RING = '<svg viewBox="0 0 100 100" style="width: 110px; height: 110px; flex-shrink: 0" role="img" aria-label="Time left in the run"><circle cx="50" cy="50" r="42" fill="none" stroke="#2B3256" stroke-width="10"/><circle cx="50" cy="50" r="42" transform="rotate(-90 50 50)" fill="none" stroke="#F7B0B9" stroke-width="10" stroke-linecap="round" stroke-dasharray="DASH 264"/><text x="50" y="58" style="font: 800 26px var(--sans); fill: #fff" text-anchor="middle">LEFT</text></svg>';
-const WATCH_ICON = '<svg viewBox="0 0 80 80" style="width: 80px; height: 80px; flex-shrink: 0" aria-hidden="true"><path d="M6 60 C24 60 34 62 42 62 C54 60 62 40 74 18" fill="none" stroke="#C1203B" stroke-width="6" stroke-linecap="round"/><circle cx="42" cy="62" r="7" fill="#fff" stroke="#C1203B" stroke-width="4"/></svg>';
 
 function runLabel() {
   const n = D.run && D.run.number ? D.run.number : D.nextRun;
@@ -493,6 +706,7 @@ function renderPublic(ph) {
   $('pSteps').innerHTML = stepperHtml(stepIndex(ph), safety, false);
   $('pRun').textContent = runLabel();
   const live = ph !== 'outcome';
+  $('pub').classList.toggle('outcome', !live);
   $('pLiveBody').style.display = live ? 'grid' : 'none';
   $('pResultBody').style.display = live ? 'none' : 'grid';
   if (live) renderPublicLive(ph); else renderPublicOutcome();
@@ -503,24 +717,23 @@ function renderPublicLive(ph) {
   $('pP').textContent = ph === 'idle' ? '0' : fin(D.p) ? Math.max(0, Math.round(D.p)) : '--';
   $('pTime').textContent = ph === 'idle' ? '0 s' : fmtS(pl.now);
   $('pSpeed').textContent = ph === 'deflate' && fin(D.rate) ? Math.abs(D.rate).toFixed(1) + ' mmHg/s' : ph === 'hold' ? 'holding' : '—';
-  const tl = timelineSvg(400, true);
-  $('pTimeline').innerHTML = ph === 'idle' ? timelineIdle() : tl.svg;
+  const tl = timelineSvg(460, true);
+  $('pTimeline').innerHTML = ph === 'idle' ? timelineIdle(460) : tl.svg;
   const [cap, sub, watch, watchSub] = LIVE_TEXT[ph](pl);
   $('pNowLabel').textContent = 'Now';
   $('pCaption').textContent = cap; $('pSub').textContent = sub;
-  $('pMid').innerHTML = WATCH_ICON + `<div style="display: flex; flex-direction: column; gap: 6px"><div class="label">Watch for</div><div style="font-size: 22px; font-weight: 800; line-height: 1.25">${esc(watch)}</div><div style="font-size: 16px; color: var(--ink2); line-height: 1.4">${esc(watchSub)}</div></div>`;
+  $('pMid').innerHTML = `<div class="label">Watch for</div><div style="font-size: 30px; font-weight: 800; line-height: 1.15">${esc(watch)}</div><div style="font-size: 19px; color: var(--ink2); line-height: 1.45">${esc(watchSub)}</div>`;
   const total = ph === 'idle' ? 80 : pl.total, left = ph === 'idle' ? 80 : Math.max(0, pl.tVent - pl.now);
-  const dash = Math.round(264 * (ph === 'idle' ? 1 : left / Math.max(total, 1)));
-  $('pRight').innerHTML = RING.replace('DASH', dash).replace('LEFT', Math.round(left) + ' s') +
-    `<div style="font-size: 16px; line-height: 1.4; color: #DCE5F8"><b style="color: #fff; font-size: 19px">${ph === 'idle' ? 'in total' : 'left'}</b><br>${ph === 'idle' ? 'from squeeze to release' : 'then the cuff empties by itself'}</div>`;
+  const frac = ph === 'idle' ? 1 : Math.max(0, Math.min(1, left / Math.max(total, 1)));
+  $('pRight').innerHTML = `<div style="display: flex; align-items: baseline; gap: 10px"><span class="big" style="font-size: 46px; line-height: 1">${Math.round(left)}<span style="font-size: 26px"> s</span></span><span style="font-size: 22px; font-weight: 800">${ph === 'idle' ? 'in total' : 'left'}</span></div>` +
+    `<div class="track" role="img" aria-label="${Math.round(left)} of ${Math.round(total)} seconds ${ph === 'idle' ? 'in total' : 'left'}"><div style="width: ${(frac * 100).toFixed(1)}%"></div></div>` +
+    `<div style="font-size: 19px; line-height: 1.45; color: var(--ink2)">${ph === 'idle' ? 'from squeeze to release' : 'then the cuff empties by itself'}</div>`;
 }
 
-function timelineIdle() {
-  return '<rect x="0" y="0" width="125" height="372" fill="#F4F6FB"/><rect x="125" y="0" width="125" height="372" fill="#EAEFF9"/><rect x="250" y="0" width="750" height="372" fill="#FCF4F5"/>' +
-    '<text x="62" y="26" style="font: 700 15px var(--sans); fill: #4A5070" text-anchor="middle">Inflate</text><text x="187" y="26" style="font: 700 15px var(--sans); fill: #4A5070" text-anchor="middle">Hold</text><text x="625" y="26" style="font: 700 15px var(--sans); fill: #9E1830" text-anchor="middle">Deflate · 2 mmHg/s</text>' +
-    '<line x1="0" y1="372" x2="1000" y2="372" stroke="#DDE3F1" stroke-width="1.5"/>' +
-    '<text x="500" y="210" style="font: 700 22px var(--sans); fill: #8E97B8" text-anchor="middle">The next run draws here as it happens</text>' +
-    '<text x="0" y="396" style="font: 600 14px var(--sans); fill: #4A5070">0 s</text><text x="1000" y="396" style="font: 600 14px var(--sans); fill: #4A5070" text-anchor="end">about 80 s · vents at 40 mmHg</text>';
+function timelineIdle(H) {
+  const f = timelineFrame(H, 80, 10, 20, null);
+  return f.s + `<text x="${(PLOT_L + 1000) / 2}" y="${H / 2}" style="font: 700 22px var(--sans); fill: #6B7175" text-anchor="middle">The next run draws here as it happens</text>` +
+    `<text x="${PLOT_L}" y="${H - 4}" style="font: 400 15px var(--sans); fill: #4D5357">0 s</text><text x="1000" y="${H - 4}" style="font: 400 15px var(--sans); fill: #4D5357" text-anchor="end">about 80 s · vents at 40 mmHg</text>`;
 }
 
 function renderPublicOutcome() {
@@ -533,14 +746,14 @@ function renderPublicOutcome() {
     const x = tl.X(tOn);
     const pOn = pAt(r.pts, tOn), bOn = vAt(r.bv, tOn);
     s += `<line x1="${x}" y1="40" x2="${x}" y2="${tl.base}" stroke="#C1203B" stroke-width="3" stroke-dasharray="9 6"/>`;
-    if (fin(pOn)) s += `<circle cx="${x}" cy="${r._Y(pOn)}" r="10" fill="#1A1F3D" stroke="#fff" stroke-width="3"/>`;
+    if (fin(pOn)) s += `<circle cx="${x}" cy="${r._Y(pOn)}" r="10" fill="#17191C" stroke="#fff" stroke-width="3"/>`;
     if (fin(bOn)) s += `<circle cx="${x}" cy="${r._YB(bOn)}" r="10" fill="#C1203B" stroke="#fff" stroke-width="3"/>`;
     const lx = Math.min(x + 18, 790), ly = fin(bOn) ? Math.max(60, r._YB(bOn) - 34) : 300;
-    s += `<rect x="${lx}" y="${ly}" width="200" height="40" rx="10" fill="#C1203B"/><text x="${lx + 100}" y="${ly + 27}" style="font: 700 17px var(--sans); fill: #fff" text-anchor="middle">Blood is back</text>`;
+    s += `<rect x="${lx}" y="${ly}" width="200" height="40" rx="3" fill="#C1203B"/><text x="${lx + 100}" y="${ly + 27}" style="font: 700 17px var(--sans); fill: #fff" text-anchor="middle">Blood is back</text>`;
   }
   if (r && (o === 'safety-stop' || o === 'stopped') && r.tDump !== null) {
     const x = tl.X(r.tDump);
-    s += `<line x1="${x}" y1="40" x2="${x}" y2="${tl.base}" stroke="#1A2A5C" stroke-width="3"/><text x="${Math.min(x + 12, 760)}" y="70" style="font: 700 16px var(--sans); fill: #1A2A5C">${o === 'stopped' ? 'Run stopped' : 'Cuff released itself'}</text>`;
+    s += `<line x1="${x}" y1="40" x2="${x}" y2="${tl.base}" stroke="#2F3B45" stroke-width="3"/><text x="${Math.min(x + 12, 760)}" y="70" style="font: 700 16px var(--sans); fill: #2F3B45">${o === 'stopped' ? 'Run stopped' : 'Cuff released itself'}</text>`;
   }
   $('pWhole').innerHTML = s;
 
@@ -559,7 +772,7 @@ function renderPublicOutcome() {
     found = ['No clear reading this time', 'Blood came back too faintly to pin down. Another run usually works.'];
   } else if (o === 'safety-stop') {
     const why = (r && SAFETY_LINE[r.dumpReason]) || (r && /^ppg dropout/.test(r.dumpReason || '') ? 'The light sensor lost contact' : 'A built-in safety limit ended the run');
-    panel = `<div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1"><svg viewBox="0 0 48 48" style="width: 56px; height: 56px" aria-hidden="true"><path d="M24 4 L40 10 V22 C40 33 33 41 24 44 C15 41 8 33 8 22 V10 Z" fill="#DCE5F8" stroke="#1A2A5C" stroke-width="2.5" stroke-linejoin="round"/><path d="M16 24 L22 30 L32 18" fill="none" stroke="#1A2A5C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><div style="font-size: 44px; font-weight: 800; line-height: 1.1">Safety stop: the cuff released itself</div><div style="font-size: 19px; color: var(--ink2); line-height: 1.45">${esc(why)}. No reading this run.</div></div>`;
+    panel = `<div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1"><svg viewBox="0 0 48 48" style="width: 56px; height: 56px" aria-hidden="true"><path d="M24 4 L40 10 V22 C40 33 33 41 24 44 C15 41 8 33 8 22 V10 Z" fill="#D6DADC" stroke="#2F3B45" stroke-width="2.5" stroke-linejoin="round"/><path d="M16 24 L22 30 L32 18" fill="none" stroke="#2F3B45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><div style="font-size: 44px; font-weight: 800; line-height: 1.1">Safety stop: the cuff released itself</div><div style="font-size: 19px; color: var(--ink2); line-height: 1.45">${esc(why)}. No reading this run.</div></div>`;
     found = ['The cuff released itself early', 'A built-in safety limit ended the run. No reading this time.'];
   } else {   // stopped
     panel = `<div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1"><div style="font-size: 15px; font-weight: 700; color: var(--ink2)">Return-of-flow pressure</div><div style="font-size: 56px; font-weight: 800; line-height: 1.05">Run stopped</div><div style="font-size: 19px; color: var(--ink2); line-height: 1.45">The run was stopped before the end. No reading this time.</div></div>`;
@@ -568,8 +781,8 @@ function renderPublicOutcome() {
   $('pOutcome').innerHTML = panel;
   $('pNowLabel').textContent = 'What we found';
   $('pCaption').textContent = found[0]; $('pSub').textContent = found[1];
-  $('pMid').innerHTML = `<div style="display: flex; flex-direction: column; gap: 6px"><div class="label">What it means</div><div style="font-size: 22px; font-weight: 800; line-height: 1.25">For you, this lands near your systolic.</div><div style="font-size: 16px; color: var(--ink2); line-height: 1.4">For an LVAD patient with no pulse, the same moment is their MAP, the number clinicians keep at 70–90.</div></div>`;
-  $('pRight').innerHTML = `<div style="display: flex; flex-direction: column; gap: 6px; justify-content: center"><div style="font-size: 26px; font-weight: 800; line-height: 1.15">Want to try it?</div><div style="font-size: 16px; color: #DCE5F8; line-height: 1.4">About 80 seconds. Ask anyone on the team.</div></div>`;
+  $('pMid').innerHTML = `<div class="label">What it means</div><div style="font-size: 30px; font-weight: 800; line-height: 1.15">For you, this lands near your systolic.</div><div style="font-size: 19px; color: var(--ink2); line-height: 1.45">For an LVAD patient with no pulse, the same moment is their MAP, the number clinicians keep at 70–90.</div>`;
+  $('pRight').innerHTML = `<div style="font-size: 30px; font-weight: 800; line-height: 1.15">Want to try it?</div><div style="font-size: 19px; color: var(--ink2); line-height: 1.45">About 80 seconds. Ask anyone on the team.</div>`;
 }
 
 function pAt(pts, t) { let best = null; for (const q of pts) if (best === null || Math.abs(q.t - t) < Math.abs(best.t - t)) best = q; return best ? best.p : NaN; }
@@ -587,8 +800,8 @@ function spark(xs, ys, opt) {
   const Y = (v) => h - 3 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * (h - 6);
   let s = '';
   if (opt.thr !== undefined && fin(opt.thr)) s += `<line x1="0" y1="${Y(opt.thr)}" x2="${w}" y2="${Y(opt.thr)}" stroke="#D99A2B" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/>`;
-  if (opt.second) s += `<path d="${pathOf(opt.second.map((v, i) => ({ t: xs[i], v })), X, Y)}" fill="none" stroke="#9DAFDB" stroke-width="5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
-  s += `<path d="${pathOf(pts, X, Y)}" fill="none" stroke="${opt.color || '#1A1F3D'}" stroke-width="${opt.sw || 2.5}" vector-effect="non-scaling-stroke"/>`;
+  if (opt.second) s += `<path d="${pathOf(opt.second.map((v, i) => ({ t: xs[i], v })), X, Y)}" fill="none" stroke="#9BA4A1" stroke-width="5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+  s += `<path d="${pathOf(pts, X, Y)}" fill="none" stroke="${opt.color || '#17191C'}" stroke-width="${opt.sw || 2.5}" vector-effect="non-scaling-stroke"/>`;
   return s;
 }
 
@@ -611,7 +824,7 @@ function renderTech(ph) {
     ['ΔOD', tr ? [tr.t, tr.d_od] : [liveX, r ? r.bv.map((q) => q.v / 1000) : []], true],
     ['Blood volume', tr ? [tr.t, tr.dv] : [liveX, r ? r.bv.map((q) => q.v) : []], true, '#C1203B'],
     ['Low-pass 0.3 Hz', tr ? [tr.t, tr.dv_lp] : null, false],
-    ['dV/dt vs μ₀+3σ₀', tr ? [tr.t, tr.ddv] : null, false, '#1A1F3D', tr ? tr.threshold : undefined],
+    ['dV/dt vs μ₀+3σ₀', tr ? [tr.t, tr.ddv] : null, false, '#17191C', tr ? tr.threshold : undefined],
   ];
   let chips = '';
   defs.forEach(([title, data, live, color, thr], i) => {
@@ -636,7 +849,7 @@ function renderTech(ph) {
 
   // -- confidence checks --
   const P = (mark, color, name, detail) => `<span><span style="font-weight: 800; color: ${color}">${mark}</span> <b>${name}</b> <span style="color: var(--ink2)">· ${esc(detail)}</span></span>`;
-  const ok = '#1F6B3E', wait = '#8E97B8', warn = '#B07A00', bad = '#9E1830';
+  const ok = '#1E6A43', wait = '#6B7175', warn = '#946500', bad = '#9A1530';
   const peak = r ? r.imu.filter((q) => r.tDefl === null || q.t >= r.tDefl).reduce((m, q) => Math.max(m, q.dps), 0) : 0;
   let checks;
   if (tr || (res && (st === 'result' || st === 'caution' || st === 'no-reading'))) {
@@ -661,11 +874,11 @@ function renderTech(ph) {
   // heartbeat vs 3x its stopped level (after the vent), motion (live)
   if (tr && tr.pulse_env) {
     const tt = Math.max(...tr.t.filter(fin)), t0 = Math.min(...tr.t.filter(fin));
-    $('tPulse').innerHTML = spark(tr.t, tr.pulse_env, { w: 300, h: 50, T: tt, t0, color: '#3B6FD8', thr: tr.pulse_thr });
-  } else $('tPulse').innerHTML = '<text x="150" y="32" style="font: 600 13px var(--sans); fill: #8E97B8" text-anchor="middle">after the vent</text>';
+    $('tPulse').innerHTML = spark(tr.t, tr.pulse_env, { w: 300, h: 50, T: tt, t0, color: '#2B5FB8', thr: tr.pulse_thr });
+  } else $('tPulse').innerHTML = '<text x="150" y="32" style="font: 600 13px var(--sans); fill: #6B7175" text-anchor="middle">after the vent</text>';
   if (r && r.imu.length > 1) {
     const ys = r.imu.map((q) => q.dps), xs = r.imu.map((q) => q.t);
-    $('tMotion').innerHTML = spark(xs, ys, { w: 300, h: 50, T: r.active ? T : Math.max(...xs), color: '#1A1F3D', sw: 2, thr: 20, range: [0, Math.max(40, ...ys)] });
+    $('tMotion').innerHTML = spark(xs, ys, { w: 300, h: 50, T: r.active ? T : Math.max(...xs), color: '#17191C', sw: 2, thr: 20, range: [0, Math.max(40, ...ys)] });
   } else $('tMotion').innerHTML = '';
 
   // -- controller --
@@ -688,23 +901,23 @@ function renderTech(ph) {
   const maxRun = r && fin(r.pStart) ? (r.pStart - D.pStop) / (Math.abs(D.rateSet) || 2) * 2 + 15 : 135;
   const defl = r && r.tDefl !== null ? ((active ? pl.now : (r.tDump ?? pl.now)) - r.tDefl) : 0;
   const reason = r && r.dumpReason;
-  const L = (label, val, lim, text, tripped) => `<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 76px; gap: 6px; align-items: center; font-size: 12px"><span style="font-weight: 700; color: ${tripped ? '#9E1830' : '#4A5070'}">${label}</span><div class="bar"><div style="width: ${Math.max(0, Math.min(100, val / lim * 100)).toFixed(0)}%; background: ${tripped ? '#C1203B' : '#1A1F3D'}"></div></div><span style="font-weight: 700; text-align: right; color: ${tripped ? '#9E1830' : '#4A5070'}">${text}</span></div>`;
+  const L = (label, val, lim, text, tripped) => `<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 76px; gap: 6px; align-items: center; font-size: 12px"><span style="font-weight: 700; color: ${tripped ? '#9A1530' : '#4D5357'}">${label}</span><div class="bar"><div style="width: ${Math.max(0, Math.min(100, val / lim * 100)).toFixed(0)}%; background: ${tripped ? '#C1203B' : '#17191C'}"></div></div><span style="font-weight: 700; text-align: right; color: ${tripped ? '#9A1530' : '#4D5357'}">${text}</span></div>`;
   $('tLimits').innerHTML =
     L(active || !r ? 'Over-pressure' : 'Peak pressure', pNow, D.pMax, reason === 'overpressure' ? 'tripped' : `${Math.round(pNow)} / ${Math.round(D.pMax)}`, reason === 'overpressure') +
     L('Hold timeout', closed, D.holdTimeout, reason === 'hold timeout' ? 'tripped' : `${Math.round(closed)} / ${Math.round(D.holdTimeout)} s`, reason === 'hold timeout') +
     L('Run timeout', Math.max(0, defl), maxRun, reason === 'run timeout' ? 'tripped' : `${Math.round(Math.max(0, defl))} / ${Math.round(maxRun)} s`, reason === 'run timeout');
   const note = safety ? `Tripped: ${reason} → valve opened` : active || st === 'idle' ? 'All limits armed · watchdog 1 s' : st === 'stopped' ? 'Stopped by DUMP · valve opened' : `No safety stop · vented at ${Math.round(D.pStop)} mmHg`;
   $('tSafetyNote').textContent = note;
-  $('tSafetyNote').style.color = safety ? '#9E1830' : '#1F6B3E';
-  $('tSafety').style.border = safety ? '2.5px solid #C1203B' : '1.5px solid #DDE3F1';
+  $('tSafetyNote').style.color = safety ? '#9A1530' : '#1E6A43';
+  $('tSafety').style.border = safety ? '2.5px solid #C1203B' : '1.5px solid #D3D8D6';
 
   // -- hardware --
   const sOk = (i) => D.sensors[i] === '1';
-  const dot = (good) => `<span style="color: ${good ? '#1F6B3E' : '#C1203B'}">●</span>`;
+  const dot = (good) => `<span style="color: ${good ? '#1E6A43' : '#C1203B'}">●</span>`;
   const valve = st === 'inflate' || st === 'hold' ? 'closed' : st === 'deflate' ? 'pulsing' : 'open';
   $('tHw').innerHTML = `<div style="display: flex; flex-direction: column; gap: 4px"><span class="hw">${dot(sOk(1) && sOk(3))} Forearm band</span><span class="hw">${dot(sOk(2) && sOk(4))} Upper-arm band</span></div>` +
     '<span class="joint" style="width: 12px"></span><span class="hw">Mux</span><span class="joint" style="width: 12px"></span>' +
-    '<span style="background: var(--navy); color: #fff; border-radius: 10px; padding: 6px 10px; font-weight: 800">ESP32</span><span class="joint" style="width: 12px"></span>' +
+    '<span style="background: var(--navy); color: #fff; border-radius: 3px; padding: 6px 10px; font-weight: 800">ESP32</span><span class="joint" style="width: 12px"></span>' +
     `<div style="display: flex; flex-direction: column; gap: 4px"><span class="hw">${dot(sOk(0))} MPRLS</span><span class="hw">${dot(true)} Valve · ${valve}</span></div>`;
 
   // -- link and events --
@@ -740,15 +953,15 @@ function eventText(e) {
 function renderHero(st, r, res, pl) {
   const H = 420, base = 380;
   let s = '', title = 'Close-up: blood volume', note = 'waiting for the release';
-  const msg = (text) => `<text x="500" y="190" style="font: 700 20px var(--sans); fill: #8E97B8" text-anchor="middle">${esc(text)}</text>`;
+  const msg = (text) => `<text x="500" y="190" style="font: 700 20px var(--sans); fill: #6B7175" text-anchor="middle">${esc(text)}</text>`;
   const axis = (hi, lo, X) => {
-    let a = `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#DDE3F1" stroke-width="1.5"/>`;
+    let a = `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#D3D8D6" stroke-width="1.5"/>`;
     const step = 10, first = Math.floor(hi / step) * step;
     for (let p = first; p >= lo; p -= step) {
       const x = X(p); if (x < 0 || x > 1000) continue;
-      a += `<text x="${x}" y="404" style="font: 600 15px var(--sans); fill: #4A5070" text-anchor="${x < 20 ? 'start' : x > 980 ? 'end' : 'middle'}">${p}</text>`;
+      a += `<text x="${x}" y="404" style="font: 600 15px var(--sans); fill: #4D5357" text-anchor="${x < 20 ? 'start' : x > 980 ? 'end' : 'middle'}">${p}</text>`;
     }
-    return a + `<text x="1000" y="${H - 1}" style="font: 600 12px var(--sans); fill: #8E97B8" text-anchor="end">mmHg</text>`;
+    return a + `<text x="1000" y="${H - 1}" style="font: 600 12px var(--sans); fill: #6B7175" text-anchor="end">mmHg</text>`;
   };
   const tr = res && res.traces;
   const hasNum = (st === 'result' || st === 'caution') && res && fin(res.mmhg);
@@ -774,37 +987,37 @@ function renderHero(st, r, res, pl) {
     const pad = (vhi - vlo) * 0.12;
     const Y = (v) => base - 20 - (v - (vlo - pad)) / ((vhi + pad) - (vlo - pad)) * (base - 70);
     const XP = (q) => X(q);   // pathOf uses q.t as x
-    if (on) s += `<rect x="0" y="0" width="${X(pOn)}" height="${base}" fill="#FCF4F5"/>`;
+    if (on) s += `<rect x="0" y="0" width="${X(pOn)}" height="${base}" fill="#F7EBED"/>`;
     s += axis(hi, lo, X);
-    if (base1.length) s += `<path d="${pathOf(base1, XP, Y)}" fill="none" stroke="#9DAFDB" stroke-width="3" stroke-dasharray="10 8"/>`;
+    if (base1.length) s += `<path d="${pathOf(base1, XP, Y)}" fill="none" stroke="#9BA4A1" stroke-width="3" stroke-dasharray="10 8"/>`;
     s += `<path d="${pathOf(pts, XP, Y)}" fill="none" stroke="#C1203B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`;
-    if (base1.length) s += `<text x="12" y="${Math.min(base - 10, Y(base1[0].v) + 30)}" style="font: 600 14px var(--sans); fill: #4A5070">sloped occlusion trend (still draining)</text>`;
+    if (base1.length) s += `<text x="12" y="${Math.min(base - 10, Y(base1[0].v) + 30)}" style="font: 600 14px var(--sans); fill: #4D5357">sloped occlusion trend (still draining)</text>`;
     if (on) {
       const xo = X(pOn), yo = Y(vAtP(pts, pOn));
-      if (hinge.length) s += `<path d="${pathOf(hinge, XP, Y)}" fill="none" stroke="#1A1F3D" stroke-width="3" stroke-dasharray="3 6"/>`;
+      if (hinge.length) s += `<path d="${pathOf(hinge, XP, Y)}" fill="none" stroke="#17191C" stroke-width="3" stroke-dasharray="3 6"/>`;
       s += `<line x1="${xo}" y1="40" x2="${xo}" y2="${base}" stroke="#C1203B" stroke-width="3"/><circle cx="${xo}" cy="${yo}" r="11" fill="#C1203B" stroke="#fff" stroke-width="4"/>`;
       const lx = Math.max(10, xo - 266);
-      s += `<rect x="${lx}" y="40" width="252" height="42" rx="10" fill="#C1203B"/><text x="${lx + 126}" y="68" style="font: 800 18px var(--sans); fill: #fff" text-anchor="middle">Hinge onset · ${pOn.toFixed(1)} mmHg</text>`;
+      s += `<rect x="${lx}" y="40" width="252" height="42" rx="3" fill="#C1203B"/><text x="${lx + 126}" y="68" style="font: 800 18px var(--sans); fill: #fff" text-anchor="middle">Hinge onset · ${pOn.toFixed(1)} mmHg</text>`;
       const mk = (name, color, y, label) => {
         const m = res.markers[name]; if (!m) return '';
         const x = X(m[1]); if (x < 0 || x > 1000) return '';
         return `<line x1="${x}" y1="${y}" x2="${x}" y2="${base}" stroke="${color}" stroke-width="2" stroke-dasharray="5 5"/><text x="${Math.min(x + 8, 840)}" y="${y + 18}" style="font: 700 15px var(--sans); fill: ${color}">${label} · ${m[1].toFixed(1)}</text>`;
       };
-      s += mk('pulse return', '#3B6FD8', 100, 'pulse return') + mk('refill onset (intersect)', '#4A5070', 140, 'intersect');
-      if (hinge.length) s += `<text x="760" y="104" style="font: 600 14px var(--sans); fill: #1A1F3D">dotted: hinge fit</text>`;
+      s += mk('pulse return', '#2B5FB8', 100, 'pulse return') + mk('refill onset (intersect)', '#4D5357', 140, 'intersect');
+      if (hinge.length) s += `<text x="760" y="104" style="font: 600 14px var(--sans); fill: #17191C">dotted: hinge fit</text>`;
       const badge = (x, y, n, c) => `<circle cx="${x}" cy="${y}" r="17" fill="${c}" stroke="#fff" stroke-width="3"/><text x="${x}" y="${y + 6}" style="font: 800 16px var(--sans); fill: #fff" text-anchor="middle">${n}</text>`;
       if (pts.length > 4) {
         const q1 = pts[Math.min(pts.length - 1, Math.floor(pts.length * 0.12))];
-        s += badge(X(q1.t), Y(q1.v) - 44, 1, '#1A1F3D');
+        s += badge(X(q1.t), Y(q1.v) - 44, 1, '#17191C');
         const q3 = pts[Math.floor(pts.length * 0.8)];
-        s += badge(X(q3.t), Y(q3.v) + 40, 3, '#1A1F3D');
+        s += badge(X(q3.t), Y(q3.v) + 40, 3, '#17191C');
       }
       s += badge(xo, Math.min(base - 20, yo + 38), 2, '#C1203B');
       title = `Close-up: blood volume, ${hi} → ${lo} mmHg`;
       note = 'windows from board events · refill shape: ' + (res.detail.hinge_power === 1 ? 'sharp corner (p = 1)' : 'soft start (p = 2)');
       if (st === 'caution') note = 'windows from board events · flagged: ' + (res.flags || []).join(', ').replace(/_/g, ' ');
     } else {
-      s += `<text x="500" y="180" style="font: 700 19px var(--sans); fill: #4A5070" text-anchor="middle">No sustained rise above the noise floor before the vent</text>`;
+      s += `<text x="500" y="180" style="font: 700 19px var(--sans); fill: #4D5357" text-anchor="middle">No sustained rise above the noise floor before the vent</text>`;
       title = `Blood volume through the release, ${hi} → ${lo} mmHg`;
       note = 'windows from board events · no onset';
     }
@@ -820,22 +1033,22 @@ function renderHero(st, r, res, pl) {
     s += axis(hi, lo, X);
     s += `<path d="${pathOf(pts, X, Y)}" fill="none" stroke="#C1203B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`;
     if (st === 'analysing') {
-      s += `<rect x="360" y="150" width="280" height="50" rx="12" fill="#1A1F3D"/><text x="500" y="182" style="font: 800 18px var(--sans); fill: #fff" text-anchor="middle">Fitting the hinge…</text>`;
+      s += `<rect x="360" y="150" width="280" height="50" rx="3" fill="#17191C"/><text x="500" y="182" style="font: 800 18px var(--sans); fill: #fff" text-anchor="middle">Fitting the hinge…</text>`;
       title = `Close-up: blood volume, ${hi} → ${lo} mmHg`;
       note = 'whole run · fitting';
     } else if (fin(D.p)) {
       const x = Math.max(0, Math.min(1000, X(D.p)));
-      s += `<line x1="${x}" y1="30" x2="${x}" y2="${base}" stroke="#1A1F3D" stroke-width="3"/><rect x="${Math.max(0, Math.min(850, x - 75))}" y="0" width="150" height="36" rx="10" fill="#1A1F3D"/><text x="${Math.max(75, Math.min(925, x))}" y="24" style="font: 800 16px var(--sans); fill: #fff" text-anchor="middle">now · ${Math.round(D.p)} mmHg</text>`;
+      s += `<line x1="${x}" y1="30" x2="${x}" y2="${base}" stroke="#17191C" stroke-width="3"/><rect x="${Math.max(0, Math.min(850, x - 75))}" y="0" width="150" height="36" rx="3" fill="#17191C"/><text x="${Math.max(75, Math.min(925, x))}" y="24" style="font: 800 16px var(--sans); fill: #fff" text-anchor="middle">now · ${Math.round(D.p)} mmHg</text>`;
       const tx = x < 560 ? x + 40 : 40;
-      s += `<text x="${tx}" y="200" style="font: 700 18px var(--sans); fill: #8E97B8">The corner is fitted after the vent:</text><text x="${tx}" y="226" style="font: 700 18px var(--sans); fill: #8E97B8">the filters need the whole run.</text>`;
+      s += `<text x="${tx}" y="200" style="font: 700 18px var(--sans); fill: #6B7175">The corner is fitted after the vent:</text><text x="${tx}" y="226" style="font: 700 18px var(--sans); fill: #6B7175">the filters need the whole run.</text>`;
       title = `Close-up: blood volume, ${hi} → ${lo} mmHg`;
       note = 'live, raw volume · fit pending';
     }
   } else if (st === 'analysing') {
-    s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#DDE3F1" stroke-width="1.5"/><rect x="360" y="150" width="280" height="50" rx="12" fill="#1A1F3D"/><text x="500" y="182" style="font: 800 18px var(--sans); fill: #fff" text-anchor="middle">Fitting the hinge…</text>`;
+    s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#D3D8D6" stroke-width="1.5"/><rect x="360" y="150" width="280" height="50" rx="3" fill="#17191C"/><text x="500" y="182" style="font: 800 18px var(--sans); fill: #fff" text-anchor="middle">Fitting the hinge…</text>`;
     note = 'whole run · fitting';
   } else {
-    s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#DDE3F1" stroke-width="1.5"/>`;
+    s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#D3D8D6" stroke-width="1.5"/>`;
     const why = r && r.dumpReason ? r.dumpReason : 'a safety limit';
     s += msg({ idle: 'Waiting for a visitor. This fills in as the release begins.', inflate: 'Inflating. The close-up starts when the release begins.',
       hold: `Holding at ${fin(D.p) ? Math.round(D.p) : '—'}. The last 5 s of the hold become the reference window.`,
@@ -851,14 +1064,115 @@ function vAtP(pts, p) { let best = null; for (const q of pts) if (best === null 
 // ---- frame --------------------------------------------------------------------
 function render() {
   const ph = phase();
-  const tech = D.view === 'TECHNICAL';
+  const tech = viewMode() === 'TECHNICAL';
   $('pub').classList.toggle('on', !tech);
   $('tech').classList.toggle('on', tech);
   // The status chip (DASHBOARD 3): Live, Reconnecting (no board), Analyser offline (this
-  // page cannot reach expo_results.py, so nothing new can arrive).
-  const chip = !D.dash ? '● Analyser offline' : !D.board ? '● Reconnecting' : '● Live';
+  // page cannot reach expo_results.py, so nothing new can arrive). On the iPad the board is
+  // its own link; the laptop's state is in the operator panel.
+  const chip = ON_BOARD ? (B.open ? '● Live' : '● Reconnecting')
+    : !D.dash ? '● Analyser offline' : !D.board ? '● Reconnecting' : '● Live';
   for (const id of ['pLive', 'tLive']) { $(id).textContent = chip; $(id).classList.toggle('down', chip !== '● Live'); }
+  // During a run, a dropped link must not leave the big number looking current: grey it and
+  // say how old it is.
+  const stale = chip !== '● Live' && ['inflate', 'hold', 'deflate'].includes(ph) && D.lastC > 0;
+  $('pub').classList.toggle('stale', stale);
+  if (stale) $('pStale').textContent = `Paused: last reading ${Math.round((performance.now() - D.lastC) / 1000)} s ago`;
   if (tech) renderTech(ph); else renderPublic(ph);
+  if (ON_BOARD) renderPanel();
+}
+
+// ---- operator panel (board mode: the iPad) -----------------------------------
+function cmd(c) {
+  if (ws && ws.readyState === 1) { ws.send(c); return true; }
+  B.err = 'Not connected to the board'; B.errAt = performance.now();
+  return false;
+}
+function haveControl() { return B.open && B.me > 0 && D.controller === B.me; }
+
+// One reason Start is locked, with its fix, or '' (the board checks all of it again).
+function startBlocker() {
+  if (!B.open) return 'Not connected to the board';
+  if (!haveControl()) return D.controller ? 'Another device has control' : 'Taking control…';
+  if (D.state !== 'IDLE') return '';
+  if (D.sensors[0] !== '1') return 'Pressure sensor missing: check its cable';
+  if (!D.zeroed) return 'Cuff not zeroed: empty it and press Zero';
+  if (!(D.p < VENTED_BELOW)) return 'Wait for the cuff to empty';
+  // The result uses the forearm (distal) band only; the upper-arm band never blocks Start
+  // (firmware REQUIRE_PROXIMAL_BAND).
+  if (D.sensors[1] !== '1') return 'Forearm light sensor missing: check its cable (found by itself once plugged in)';
+  return '';
+}
+
+function panelHint(blocker) {
+  const s = D.state, p = fin(D.p) ? Math.round(D.p) : NaN;
+  if (!B.open) return 'Reconnecting to the board…';
+  if (s === 'IDLE') {
+    if (blocker) return blocker;
+    const rest = B.restSince ? (performance.now() - B.restSince) / 1000 : 0;
+    if (rest < REST_S) return `Recording the resting pulse: keep the arm still (${Math.ceil(REST_S - rest)} s)`;
+    return 'Ready: press Start, then pump';
+  }
+  if (s === 'INFLATE') {
+    if (p > PUMP_CAP) return `Above ${PUMP_CAP} mmHg: let some air out`;
+    if (p >= D.pRunMin) return 'Press Deflate: it holds 10 s, then releases slowly';
+    return `Pump to ${PUMP_TARGET} · Deflate unlocks at ${Math.round(D.pRunMin)} mmHg`;
+  }
+  if (s === 'HOLD') return `Holding ${Math.round(D.holdS)} s with blood flow stopped`;
+  if (s === 'DEFLATE') return `Releasing at ${(Math.abs(D.rateSet) || 2).toFixed(0)} mmHg/s · vents at ${Math.round(D.pStop)} mmHg`;
+  if (s === 'DUMP') return 'Venting the cuff';
+  return '';
+}
+
+function connRow(label, cls, text) {
+  return `<div><i class="${cls}"></i><b>${esc(label)}</b><span>${esc(text)}</span></div>`;
+}
+
+function renderPanel() {
+  const ctl = haveControl(), s = D.state, live = B.open;
+  const blocker = startBlocker();
+  const bit = (i) => live && D.sensors[i] === '1';
+  // Needed to run: red when missing. Optional (upper-arm band, IMUs): grey "not fitted".
+  // Paired rows: links, pressure and control, then the two bands' light and motion sensors.
+  let h = connRow('Board', live ? 'ok' : 'bad', live ? 'live' : 'reconnecting');
+  h += connRow('Laptop', B.lapOpen ? 'ok' : D.analyser ? 'warn' : 'bad',
+    B.lapOpen ? 'linked' : D.analyser ? 'no traces' : 'offline');
+  h += connRow('Pressure', !bit(0) ? 'bad' : D.zeroed ? 'ok' : 'warn', !live ? '—' : !bit(0) ? 'missing' : D.zeroed ? 'ok' : 'not zeroed');
+  h += `<div><i class="${ctl ? 'ok' : 'warn'}"></i><b>Control</b><span>${ctl ? 'this iPad' : D.controller ? 'another device' : 'none'}</span>` +
+    (!ctl && live && D.controller && !['INFLATE', 'HOLD', 'DEFLATE'].includes(s) ? ' <button class="take" id="opTake">Take</button>' : '') + '</div>';
+  h += connRow('Forearm PPG', bit(1) ? 'ok' : 'bad', !live ? '—' : bit(1) ? 'ok' : 'missing');
+  h += connRow('Upper PPG', bit(2) ? 'ok' : '', !live ? '—' : bit(2) ? 'ok' : 'not fitted');
+  h += connRow('Forearm IMU', bit(3) ? 'ok' : '', !live ? '—' : bit(3) ? 'ok' : 'not fitted');
+  h += connRow('Upper IMU', bit(4) ? 'ok' : '', !live ? '—' : bit(4) ? 'ok' : 'not fitted');
+  $('opConn').innerHTML = h;
+  const take = $('opTake'); if (take) take.onclick = () => cmd('CLAIM FORCE');
+
+  $('opNow').textContent = !live ? 'Board offline' :
+    `${{ IDLE: 'Ready', INFLATE: 'Inflate', HOLD: 'Hold', DEFLATE: 'Deflate', DUMP: 'Venting' }[s] || s}` +
+    (fin(D.p) ? ` · ${Math.max(0, Math.round(D.p))} mmHg` : '');
+  $('opHint').textContent = panelHint(blocker);
+  $('opErr').textContent = B.err && performance.now() - B.errAt < 8000 ? B.err : '';
+
+  const tech = viewMode() === 'TECHNICAL';
+  $('opViewPub').classList.toggle('on', !tech); $('opViewPub').setAttribute('aria-pressed', String(!tech));
+  $('opViewTech').classList.toggle('on', tech); $('opViewTech').setAttribute('aria-pressed', String(tech));
+
+  $('opStart').disabled = !(ctl && s === 'IDLE' && !blocker);
+  $('opDeflate').disabled = !(ctl && s === 'INFLATE' && fin(D.p) && D.p >= D.pRunMin);
+  $('opZero').disabled = !(ctl && s === 'IDLE');
+  $('opRefresh').disabled = !(ctl && s === 'IDLE');  // never in a run: the board refuses R then anyway
+  $('opStop').disabled = false;                     // always: it says so if it can't reach the board
+}
+
+if (ON_BOARD) {
+  $('opStart').onclick = () => cmd('START');
+  $('opDeflate').onclick = () => cmd('RUN');        // hold, then the controlled release
+  $('opZero').onclick = () => cmd('ZERO');
+  $('opRefresh').onclick = () => cmd('R');          // re-probe every sensor, then the LED level (~1 s)
+  $('opStop').onclick = () => cmd('DUMP');          // anyone, any time: vents the cuff now
+  $('opViewPub').onclick = () => sendView('PUBLIC');
+  $('opViewTech').onclick = () => sendView('TECHNICAL');
+  new ResizeObserver(fit).observe($('stageBox'));
 }
 let last = 0;
 function frame(ts) { requestAnimationFrame(frame); if (ts - last < 100) return; last = ts; render(); }

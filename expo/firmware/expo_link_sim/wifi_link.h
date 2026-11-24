@@ -1,8 +1,8 @@
 // Wi-Fi link for the expo firmware (expo/README.md, "How the link works").
 //
 // The board is a WPA2 access point. ESP-IDF's HTTP server (built into the
-// esp32 core, no extra library) serves the phone page at / and a WebSocket
-// at /ws. Every WebSocket client receives the same text lines as the serial
+// esp32 core, no extra library) serves the page at /, the files it loads
+// (/logo.webp, /fonts/*, from web_assets.h) and a WebSocket at /ws. Every WebSocket client receives the same text lines as the serial
 // port, batched into one frame every WS_FLUSH_MS.
 //
 // Threading. The sensor loop is the only writer of outgoing data
@@ -56,5 +56,9 @@ uint32_t wifiTakeDumpRequest();
 // Liveness of one client: connected, and millis() of its last frame.
 bool     wifiConnected(uint32_t client);
 uint32_t wifiLastSeenMs(uint32_t client);
+
+// Loop task only. The client's IPv4 address as text ("192.168.4.2") into
+// buf (16 bytes or more). False if it is not connected.
+bool     wifiClientAddress(uint32_t client, char *buf, size_t n);
 
 void     wifiPrintInfo(Print &out);  // '#' metadata for INFO

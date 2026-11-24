@@ -12,6 +12,7 @@
 #include <lwip/sockets.h>
 
 #include "config.h"
+#include "web_assets.h"
 #include "web_page.h"
 
 // ===========================================================================
@@ -284,6 +285,21 @@ static esp_err_t pageHandler(httpd_req_t *req) {
   return httpd_resp_send(req, WEB_INDEX_HTML, sizeof(WEB_INDEX_HTML) - 1);
 }
 
+// The files the page loads (logo, fonts), from flash (web_assets.h). Only
+// the listed paths; anything else is a 404.
+static esp_err_t assetHandler(httpd_req_t *req) {
+  const size_t n = strcspn(req->uri, "?#");
+  for (size_t i = 0; i < WEB_ASSET_COUNT; i++) {
+    const WebAsset &a = WEB_ASSETS[i];
+    if (strlen(a.path) != n || strncmp(req->uri, a.path, n) != 0) continue;
+    httpd_resp_set_type(req, a.type);
+    httpd_resp_set_hdr(req, "Cache-Control", "max-age=86400");   // fonts don't change between flashes
+    httpd_resp_set_hdr(req, "Connection", "close");
+    return httpd_resp_send(req, (const char *)a.data, a.len);
+  }
+  return httpd_resp_send_404(req);
+}
+
 static esp_err_t noContentHandler(httpd_req_t *req) {
   httpd_resp_set_status(req, "204 No Content");
   return httpd_resp_send(req, nullptr, 0);
@@ -317,7 +333,10 @@ bool wifiBegin() {
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
   cfg.core_id = 0;                       // keep the network off the loop's core
   cfg.stack_size = 6144;
-  cfg.max_open_sockets = WS_MAX_CLIENTS + 3;
+  // The WebSocket clients, plus room for a browser fetching the page's files
+  // in parallel (each closes after one file). lwIP allows 13 (16 less 3).
+  cfg.max_open_sockets = WS_MAX_CLIENTS + 6;
+  cfg.uri_match_fn = httpd_uri_match_wildcard;   // "/fonts/*"; plain URIs still match exactly
   cfg.lru_purge_enable = false;          // would close quiet viewers first
   cfg.send_wait_timeout = WS_SEND_TIMEOUT_S;
   cfg.recv_wait_timeout = 2;
@@ -346,6 +365,18 @@ bool wifiBegin() {
   icon.method = HTTP_GET;
   icon.handler = noContentHandler;
   httpd_register_uri_handler(g_server, &icon);
+
+  httpd_uri_t fonts = {};
+  fonts.uri = "/fonts/*";
+  fonts.method = HTTP_GET;
+  fonts.handler = assetHandler;
+  httpd_register_uri_handler(g_server, &fonts);
+
+  httpd_uri_t logo = {};
+  logo.uri = "/logo.webp";
+  logo.method = HTTP_GET;
+  logo.handler = assetHandler;
+  httpd_register_uri_handler(g_server, &logo);
 
   for (uint8_t i = 0; i < WS_MAX_CLIENTS; i++) {
     char name[12];
@@ -404,6 +435,28 @@ uint32_t wifiLastSeenMs(uint32_t client) {
   for (WsClient &c : g_clients) if (c.fd >= 0 && c.id == client) { t = c.last_rx_ms; break; }
   portEXIT_CRITICAL(&g_lock);
   return t;
+}
+
+bool wifiClientAddress(uint32_t client, char *buf, size_t n) {
+  int fd = -1;
+  portENTER_CRITICAL(&g_lock);
+  for (WsClient &c : g_clients) if (c.fd >= 0 && c.id == client) { fd = c.fd; break; }
+  portEXIT_CRITICAL(&g_lock);
+  if (fd < 0 || n < 16) return false;
+  struct sockaddr_storage sa = {};
+  socklen_t len = sizeof(sa);
+  if (getpeername(fd, (struct sockaddr *)&sa, &len) != 0) return false;
+  const uint8_t *v4 = nullptr;
+  if (sa.ss_family == AF_INET) {
+    v4 = (const uint8_t *)&((struct sockaddr_in *)&sa)->sin_addr.s_addr;
+  } else if (sa.ss_family == AF_INET6) {                // the server listens on IPv6 too:
+    const uint8_t *a = ((struct sockaddr_in6 *)&sa)->sin6_addr.s6_addr;   // ::ffff:a.b.c.d
+    static const uint8_t kMapped[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
+    if (memcmp(a, kMapped, sizeof(kMapped)) == 0) v4 = a + 12;
+  }
+  if (!v4) return false;
+  snprintf(buf, n, "%u.%u.%u.%u", v4[0], v4[1], v4[2], v4[3]);
+  return true;
 }
 
 void wifiPrintInfo(Print &out) {

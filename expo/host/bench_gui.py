@@ -18,7 +18,15 @@ Three graphs, stacked on one time axis (the last N seconds):
      deflation, as the analysis uses; "Zero volume" sets both to now;
   3. accelerometer, raw counts: X, Y, Z of each band's IMU (distal solid,
      proximal dashed), to see what the IMU picks up around the return of
-     flow. At the firmware's +-4 g range, 8192 counts = 1 g.
+     flow. The counts per g come from the board's INFO (imu_acc_lsb_per_g):
+     16384 at expo_fw's +-2 g (200 Hz since 2026-11-23), 8192 at +-4 g.
+
+Reference cuff (ground truth): type an automated cuff's SYS / DIA (and HR) for a
+run, before or after it, and "Save reference" appends it to
+expo/results/bench/references.csv (several per run are averaged). The GUI's
+own readings go to bench_results.csv beside it; the box shows each run's
+reading minus the cuff's SYS and MAP (DIA + (SYS - DIA) / 3), and the mean and
+SD over every run that has both.
 
 Left: the connected parts, START / RUN / DUMP (Esc always dumps), Zero cuff,
 Refresh sensors (R), VALVE TEST, and the result of each run from the results
@@ -78,6 +86,88 @@ def highest_run(save_dir: Path = SAVE_DIR, results: Path = EXPO / "results") -> 
             if m and p.is_dir():
                 hi = max(hi, int(m.group(2) or m.group(1)))
     return hi
+
+
+# Ground truth: readings from an automated cuff, tied to a run number, and the
+# GUI's own readings, so each run can be compared with the reference.
+REF_FILE = SAVE_DIR / "references.csv"
+REF_FIELDS = ("run", "entered", "when", "ref_sbp", "ref_dbp", "ref_hr", "note")
+BENCH_RESULTS = SAVE_DIR / "bench_results.csv"
+RESULT_FIELDS = ("run", "time", "mmhg", "flag", "reason")
+REF_WHEN = ("before run", "after run")
+
+
+def append_row(path: Path, fields: tuple, row: dict) -> None:
+    import csv
+    path.parent.mkdir(parents=True, exist_ok=True)
+    new = not path.exists()
+    with path.open("a", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=fields)
+        if new:
+            w.writeheader()
+        w.writerow({k: row.get(k, "") for k in fields})
+
+
+def parse_reference(sbp: str, dbp: str, hr: str = "") -> tuple[tuple | None, str]:
+    """(sbp, dbp, hr or None) from the text fields, or None and what's wrong."""
+    try:
+        s, d = float(sbp), float(dbp)
+    except ValueError:
+        return None, "enter systolic and diastolic as numbers"
+    h = None
+    if hr.strip():
+        try:
+            h = float(hr)
+        except ValueError:
+            return None, "heart rate must be a number (or leave it empty)"
+        if not 30 <= h <= 220:
+            return None, "heart rate should be 30-220"
+    if not 60 <= s <= 260:
+        return None, "systolic should be 60-260 mmHg"
+    if not 30 <= d <= 160:
+        return None, "diastolic should be 30-160 mmHg"
+    if d >= s:
+        return None, "diastolic must be below systolic"
+    return (s, d, h), ""
+
+
+def reference_summary(results: Path = BENCH_RESULTS, refs: Path = REF_FILE) -> dict:
+    """Per run: our reading (latest row) against the mean of its references,
+    as reading - SBP and reading - MAP (MAP = DBP + (SBP - DBP) / 3)."""
+    import csv
+
+    def rows(p):
+        if not p.exists():
+            return []
+        with p.open(newline="", encoding="utf-8") as fh:
+            return list(csv.DictReader(fh))
+    ours = {}                                    # the latest row per run wins
+    for r in rows(results):
+        if not str(r.get("run", "")).isdigit():
+            continue
+        try:
+            ours[int(r["run"])] = float(r["mmhg"])
+        except (TypeError, ValueError):          # no number (no onset, stopped): no comparison
+            ours.pop(int(r["run"]), None)
+    per_run: dict[int, list] = {}
+    for r in rows(refs):
+        try:
+            per_run.setdefault(int(r["run"]), []).append((float(r["ref_sbp"]), float(r["ref_dbp"])))
+        except (KeyError, ValueError):
+            pass
+    out = []
+    for n in sorted(set(ours) & set(per_run)):
+        s = float(np.mean([a for a, _ in per_run[n]]))
+        d = float(np.mean([b for _, b in per_run[n]]))
+        mp = d + (s - d) / 3.0
+        out.append({"run": n, "mmhg": ours[n], "sbp": s, "dbp": d, "map": mp,
+                    "err_sbp": ours[n] - s, "err_map": ours[n] - mp, "n_refs": len(per_run[n])})
+    summ = {"runs": out, "n": len(out)}
+    if out:
+        e, em = np.array([r["err_sbp"] for r in out]), np.array([r["err_map"] for r in out])
+        summ.update(mean_sbp=float(e.mean()), sd_sbp=float(e.std(ddof=1)) if len(e) > 1 else 0.0,
+                    mean_map=float(em.mean()), sd_map=float(em.std(ddof=1)) if len(em) > 1 else 0.0)
+    return summ
 
 
 def run_folder_name(first: int, runs: list[int]) -> str:
@@ -142,6 +232,7 @@ class Signals:
 
     def __init__(self) -> None:
         self.zero_abs = None
+        self.acc_lsb_per_g = 16384.0  # expo_fw's +-2 g until INFO says otherwise
         self.dark = {"D": {"ir": 0.0, "red": 0.0}, "P": {"ir": 0.0, "red": 0.0}}
         self.clear()
 
@@ -151,7 +242,7 @@ class Signals:
         self.t_first = None
         self.pressure = deque()       # (t, mmHg): glitches dropped, smoothed
         self.light = {"D": deque(), "P": deque()}   # (t, ir, red) 10 Hz means per band, dark-subtracted
-        self.accel = {"D": deque(), "P": deque()}  # (t, ax, ay, az) raw counts per band, 50 Hz
+        self.accel = {"D": deque(), "P": deque()}  # (t, ax, ay, az) raw counts per band, at the IMU rate
         self.states = deque()         # (t, state)
         self.last_p_idx = None
         self._med = deque(maxlen=2 * GLITCH_HALF + 1)
@@ -206,6 +297,8 @@ class Signals:
                 pairs = dict(tok.split("=", 1) for tok in ln[2:].split() if "=" in tok)
                 if "cuff_zero_abs_mmhg" in pairs:
                     self.zero_abs = float(pairs["cuff_zero_abs_mmhg"])
+                if "imu_acc_lsb_per_g" in pairs:
+                    self.acc_lsb_per_g = float(pairs["imu_acc_lsb_per_g"])
                 if pairs.get("band") in self.dark and "dark_ir" in pairs:
                     self.dark[pairs["band"]] = {"ir": float(pairs["dark_ir"]), "red": float(pairs["dark_red"])}
         except (ValueError, IndexError):
@@ -325,6 +418,34 @@ class BenchApp:
         self.v_result = tk.StringVar(value="No run analysed yet")
         tk.Label(left, textvariable=self.v_result, wraplength=250, justify="left",
                  font=("Segoe UI", 10, "bold"), fg="#1f5fa8").pack(anchor="w", pady=6)
+
+        box = ttk.LabelFrame(left, text="Reference cuff (ground truth)", padding=3)
+        box.pack(fill="x", pady=(0, 4))
+        self.v_ref = {k: tk.StringVar() for k in ("run", "sbp", "dbp", "hr", "note")}
+        self.v_ref["run"].set(str(self.last_run))
+        self.v_ref_when = tk.StringVar(value=REF_WHEN[1])
+        ttk.Label(box, text="Run").grid(row=0, column=0, sticky="w")
+        ttk.Entry(box, textvariable=self.v_ref["run"], width=6).grid(row=0, column=1, sticky="w")
+        ttk.Combobox(box, textvariable=self.v_ref_when, values=REF_WHEN, width=10,
+                     state="readonly").grid(row=0, column=2, columnspan=2, sticky="ew", padx=(4, 0))
+        ttk.Label(box, text="SYS").grid(row=1, column=0, sticky="w")
+        ttk.Entry(box, textvariable=self.v_ref["sbp"], width=6).grid(row=1, column=1, sticky="w")
+        ttk.Label(box, text="DIA").grid(row=1, column=2, sticky="e", padx=(4, 2))
+        ttk.Entry(box, textvariable=self.v_ref["dbp"], width=6).grid(row=1, column=3, sticky="w")
+        ttk.Label(box, text="HR").grid(row=2, column=0, sticky="w")
+        ttk.Entry(box, textvariable=self.v_ref["hr"], width=6).grid(row=2, column=1, sticky="w")
+        ttk.Label(box, text="(optional)", font=("Segoe UI", 8)).grid(row=2, column=2, columnspan=2, sticky="w", padx=(4, 0))
+        ttk.Label(box, text="Note").grid(row=3, column=0, sticky="w")
+        ttk.Entry(box, textvariable=self.v_ref["note"]).grid(row=3, column=1, columnspan=3, sticky="ew")
+        ttk.Button(box, text="Save reference", command=self.save_reference).grid(
+            row=4, column=0, columnspan=4, sticky="ew", pady=(3, 0))
+        self.v_ref_status = tk.StringVar(value="")
+        tk.Label(box, textvariable=self.v_ref_status, wraplength=250, justify="left",
+                 font=("Segoe UI", 8)).grid(row=5, column=0, columnspan=4, sticky="w")
+        box.columnconfigure(3, weight=1)
+        self.results: dict[int, object] = {}         # run -> Result, this session
+        self._show_ref_summary()
+
         self.log = tk.Text(left, width=36, height=10, font=("Consolas", 8), wrap="none")
         self.log.pack(fill="both", expand=True)
         self.log.tag_configure("err", foreground="#c62828")
@@ -342,7 +463,7 @@ class BenchApp:
             for k, (axis, colour) in enumerate((("X", "#c62828"), ("Y", "#2e7d32"), ("Z", "#1f5fa8"))):
                 self.h_acc[(band, k)], = self.ax_m.plot([], [], ls=style, color=colour, lw=0.8,
                                                         label=f"{name} {axis}")
-        self.ax_m.set_ylabel("accelerometer, raw counts\n(8192 = 1 g)")
+        self.ax_m.set_ylabel("accelerometer, raw counts")
         self.ax_m.set_xlabel("time, s")
         self.ax_m.legend(loc="upper left", fontsize=7, ncol=6)
         for ax in (self.ax_p, self.ax_v, self.ax_m):
@@ -485,8 +606,8 @@ class BenchApp:
             if ev.startswith("up"):
                 self.link.write(["INFO"])
                 if not self.auto_refreshed:
-                    # The board looks for its sensors once at boot and never again by
-                    # itself: one missed then stays missing until R. Ask once.
+                    # The board looks for its sensors at boot; after that only the
+                    # pressure sensor is retried by itself (IDLE). Ask once.
                     self.auto_refreshed = True
                     self.send("R", source="auto (on connect)")
         for ln in lines:
@@ -499,6 +620,7 @@ class BenchApp:
                 if kind == "deflate":                  # a run gets its number here, as in expo_results
                     self.last_run = max(self.last_run, highest_run()) + 1
                     run.number = self.last_run
+                    self.v_ref["run"].set(str(run.number))   # the reference box follows the newest run
                     if self.rec_file is not None:
                         self.rec_runs.append(run.number)
                 elif kind == "complete":
@@ -566,11 +688,68 @@ class BenchApp:
 
         threading.Thread(target=work, daemon=True).start()
 
+    # -- reference cuff ---------------------------------------------------------
+
+    def save_reference(self) -> None:
+        v = self.v_ref
+        try:
+            run = int(v["run"].get())
+        except ValueError:
+            self.v_ref_status.set("Run must be a number")
+            return
+        if run < 1:
+            self.v_ref_status.set("Run must be 1 or more")
+            return
+        vals, why = parse_reference(v["sbp"].get(), v["dbp"].get(), v["hr"].get())
+        if vals is None:
+            self.v_ref_status.set(f"Not saved: {why}")
+            return
+        s, d, h = vals
+        row = {"run": run, "entered": time.strftime("%Y-%m-%dT%H:%M:%S"), "when": self.v_ref_when.get(),
+               "ref_sbp": f"{s:.0f}", "ref_dbp": f"{d:.0f}", "ref_hr": "" if h is None else f"{h:.0f}",
+               "note": v["note"].get().strip()}
+        try:
+            append_row(REF_FILE, REF_FIELDS, row)
+        except OSError as e:
+            self.v_ref_status.set(f"Not saved: {e}")
+            return
+        self.record(f"reference run {run} ({row['when']}): {s:.0f}/{d:.0f}"
+                    + ("" if h is None else f" HR {h:.0f}") + (f" note {row['note']}" if row["note"] else ""))
+        self.logline(f"reference run {run}: {s:.0f}/{d:.0f} saved")
+        for k in ("sbp", "dbp", "hr", "note"):
+            v[k].set("")
+        self._show_ref_summary(f"Saved run {run}: {s:.0f}/{d:.0f}. ")
+
+    def _show_ref_summary(self, prefix: str = "") -> None:
+        try:
+            summ = reference_summary()
+        except Exception as e:                     # a hand-edited CSV must not take the GUI down
+            self.v_ref_status.set(f"{prefix}(couldn't read the reference files: {e})")
+            return
+        if not summ["n"]:
+            self.v_ref_status.set(prefix + "No run has both a reading and a reference yet.")
+            return
+        last = summ["runs"][-1]
+        text = (f"{prefix}Run {last['run']}: {last['mmhg']:.1f} vs cuff {last['sbp']:.0f}/{last['dbp']:.0f}"
+                f" → {last['err_sbp']:+.1f} vs SYS, {last['err_map']:+.1f} vs MAP.\n"
+                f"All {summ['n']} run(s): {summ['mean_sbp']:+.1f} ± {summ['sd_sbp']:.1f} vs SYS, "
+                f"{summ['mean_map']:+.1f} ± {summ['sd_map']:.1f} vs MAP")
+        self.v_ref_status.set(text)
+
     def _show_result(self, n: int, res) -> None:
         mm = "no reading" if res.mmhg is None else f"{res.mmhg:.1f} mmHg"
         flag = FLAG_TEXT.get(res.flag) or res.flag
         self.v_result.set(f"Run {n}: {mm} ({flag})" + (f"\n{res.reason}" if res.reason else ""))
         self.logline(f"result run {n}: {mm} {res.flag}")
+        self.results[n] = res
+        try:
+            append_row(BENCH_RESULTS, RESULT_FIELDS,
+                       {"run": n, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "mmhg": "" if res.mmhg is None else f"{res.mmhg:.1f}", "flag": res.flag,
+                        "reason": res.reason})
+        except OSError as e:
+            self.logline(f"couldn't write {BENCH_RESULTS.name}: {e}", "err")
+        self._show_ref_summary()
         on = res.markers.get("refill onset (hinge)")
         if on and self.sig.states:
             # analysis time is from its own start; place it by the deflate event
@@ -660,8 +839,9 @@ class BenchApp:
             else:
                 line.set_data([], [])
         detrend = self.v_detrend.get()
-        self.ax_m.set_ylabel("accelerometer, counts minus mean\n(8192 = 1 g)" if detrend
-                             else "accelerometer, raw counts\n(8192 = 1 g)")
+        g1 = f"({s.acc_lsb_per_g:.0f} = 1 g)"
+        self.ax_m.set_ylabel(f"accelerometer, counts minus mean\n{g1}" if detrend
+                             else f"accelerometer, raw counts\n{g1}")
         for band in ("D", "P"):
             a = window(s.accel[band])
             for k in range(3):

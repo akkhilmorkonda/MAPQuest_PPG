@@ -1,7 +1,8 @@
 // MAPQuest expo firmware configuration (expo/README.md).
 //
-// Board: ESP32-WROOM-32D dev board, Arduino board "ESP32 Dev Module"
-// (core esp32:esp32). Everything tunable lives here and is echoed by INFO.
+// Board: Seeed XIAO ESP32S3 (the rig), or an ESP32-WROOM-32D dev board
+// (core esp32:esp32; pins below). Everything tunable lives here and is echoed
+// by INFO.
 //
 // Forked from irb/firmware/irb_fw 0.2.1. Sensor, valve and safety settings
 // are unchanged; the Wi-Fi section at the end is new.
@@ -78,7 +79,7 @@ static const uint32_t I2C_CLOCK_HZ   = 400000;  // drop to 100000 if a band cabl
 static const uint16_t I2C_TIMEOUT_MS = 10;      // a stuck transaction fails fast
 
 // TCA9548A mux. Each band (MAX30101 + BMI270) sits on its own channel; the
-// MPRLS stays on the main bus, upstream of the mux.
+// MPRLS is on MUX_CH_PRESSURE (above: channel 7 on the XIAO).
 static const uint8_t MUX_ADDR        = 0x70;
 static const uint8_t MUX_CH_DISTAL   = 0;
 static const uint8_t MUX_CH_PROXIMAL = 1;
@@ -96,21 +97,54 @@ static const uint8_t  DEFAULT_IR_AMP   = 0x1F;  // 6.2 mA, register units of 0.2
 static const uint8_t  DEFAULT_RED_AMP  = 0x1F;
 static const uint16_t DARK_SAMPLES     = 200;
 
+// expo: automatic LED level (LEVEL, and part of R):
+// sets each band's IR and red current so its light sits near LEVEL_TARGET of
+// full scale, minus dark. Never at START: a change between the pre-roll and
+// the hold would skew the "flow fully stopped" check. Fit the bands, then
+// Refresh, then Start.
+static const float    LEVEL_TARGET     = 0.50f;   // of full scale
+static const float    LEVEL_TOLERANCE  = 0.15f;   // done when within +-15 % of full scale
+static const float    LEVEL_RAIL       = 0.97f;   // at or above: saturated, cut hard
+static const float    LEVEL_DIM        = 0.10f;   // below this at LEVEL_AMP_MAX: not on skin?
+static const uint8_t  LEVEL_AMP_MIN    = 0x04;    // 0.8 mA
+static const uint8_t  LEVEL_AMP_MAX    = 0x7F;    // 25.4 mA
+static const uint8_t  LEVEL_SAMPLES    = 10;      // per measurement, 0.1 s
+static const uint8_t  LEVEL_STEPS      = 5;
+
 static const uint32_t PPG_DRAIN_MS     = 10;    // FIFO is 320 ms deep at 100 Hz
 
 // ---------------------------------------------------------------------------
 // BMI270. Initialised by the SparkFun BMI270 Arduino Library (it loads the
-// 8 KB config blob); data is read raw from the registers.
+// 8 KB config blob); data is read raw from its FIFO (headerless frames of
+// gyro x,y,z then accel x,y,z, int16 LE), so no sample is missed at 200 Hz.
+// expo 2026-11-23: 200 Hz and +-2 g (was 50 Hz, +-4 g) to try sensing the
+// pulse mechanically; the result's "arm moved" check uses the gyro only.
 // ---------------------------------------------------------------------------
 
 static const uint8_t  IMU_ADDR       = 0x68;  // SDO low
 static const uint8_t  IMU_CHIP_ID    = 0x24;
-static const uint8_t  IMU_REG_STATUS = 0x03;  // bit 7: new accel data
-static const uint8_t  IMU_REG_DATA   = 0x0C;  // acc x,y,z then gyr x,y,z, int16 LE
-static const uint16_t IMU_ODR_HZ        = 50;
-static const uint16_t IMU_ACC_RANGE_G   = 4;     // -> 8192 LSB/g
+static const uint8_t  IMU_REG_FIFO_LEN  = 0x24;  // 14-bit byte count, LE
+static const uint8_t  IMU_REG_FIFO_DATA = 0x26;
+static const uint8_t  IMU_REG_FIFO_CFG1 = 0x49;  // bit 7 gyr, bit 6 acc, bit 4 header
+static const uint8_t  IMU_REG_CMD       = 0x7E;  // 0xB0: flush the FIFO
+static const uint8_t  IMU_FRAME_BYTES   = 12;
+static const uint16_t IMU_ODR_HZ        = 200;   // 50, 100, 200 or 400
+static const uint16_t IMU_ACC_RANGE_G   = 2;     // 2, 4, 8 or 16 -> 16384 LSB/g at 2
 static const uint16_t IMU_GYR_RANGE_DPS = 500;   // -> 65.536 LSB/(deg/s)
 static const uint32_t IMU_POLL_MS       = 10;
+static const uint16_t IMU_FIFO_MAX_FRAMES = 160; // the BMI270 holds ~170 (2 KB): more is an overflow
+
+// expo: a pressure sensor missing in IDLE (missed at boot, or unplugged) is
+// probed this often and brought up, and the cuff zeroed, when it answers.
+static const uint32_t PRESSURE_RETRY_MS = 2000;
+
+// expo: a band plugged in while the board runs (or missed at boot) is found
+// in IDLE without R: each missing PPG, and each missing IMU on a working
+// band, gets one address probe this often (silent when absent). When it
+// answers it is brought up and, for a PPG, its LED level set. Not while
+// streaming on USB serial (a bench recording must not get a hole; the bench
+// GUI's Refresh does it there).
+static const uint32_t BAND_RETRY_MS = 3000;
 
 // expo: the result (host/mapquest, refill onset) reads the DISTAL band only.
 // START needs the distal PPG; the proximal band is shown when present but
@@ -193,21 +227,21 @@ static const uint32_t WDT_TIMEOUT_MS = 1000;
 static const uint32_t SERIAL_BAUD = 921600;
 
 // ---------------------------------------------------------------------------
-// Wi-Fi (expo). The board is its own WPA2 access point; phones and the
+// Wi-Fi (expo). The board is its own WPA2 access point; the iPad and the
 // presentation laptop join it and open http://192.168.4.1/. Data goes out
 // over a WebSocket at /ws as the same text lines the serial port carries.
 // ---------------------------------------------------------------------------
 
 // Pick a quiet channel at the venue (1, 6 or 11 overlap least).
 static const uint8_t  WIFI_CHANNEL       = 6;
-// Stations allowed to join: the controlling phone, the laptop, a spare.
+// Stations allowed to join: the controlling iPad, the laptop, a spare.
 static const uint8_t  WIFI_MAX_STATIONS  = 4;
 // Transmit power in units of 0.25 dBm (34 = 8.5 dBm, ~7 mW). Plenty for a
 // booth, and smaller current spikes on the 3V3 rail the sensors and valve
 // share. Raise toward 78 (19.5 dBm) only if the range is too short.
 static const int8_t   WIFI_TX_POWER_QDBM = 34;
 
-// WebSocket clients (phones, laptop) at once. Same as the station limit.
+// WebSocket clients (iPad, laptop) at once. Same as the station limit.
 static const uint8_t  WS_MAX_CLIENTS     = 4;
 // Lines are batched into one WebSocket frame this often.
 static const uint32_t WS_FLUSH_MS        = 40;
@@ -226,7 +260,7 @@ static const uint8_t  WS_CMD_QUEUE       = 16;
 // started, the cuff is dumped; during DEFLATE the run finishes on the board.
 static const uint32_t CONTROLLER_TIMEOUT_MS = 2000;
 
-// Compact status line (ST) for the phone, this often.
+// Compact status line (ST) for the iPad, this often.
 static const uint32_t STATUS_PERIOD_MS = 500;
 
 // A main-loop pass longer than this is reported (slow_loop event). The Wi-Fi
@@ -235,4 +269,4 @@ static const uint32_t STATUS_PERIOD_MS = 500;
 static const uint32_t LOOP_WARN_US = 20000;
 
 // The status LED (pins above): lit = valve closed; BLINK flashes it so the
-// phone can tell which board it is talking to.
+// iPad can tell which board it is talking to.

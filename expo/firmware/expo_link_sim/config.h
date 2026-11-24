@@ -36,14 +36,14 @@ static const int PIN_REAL_VALVE = 25;
 static const int PIN_SIM_LED    = 2;
 
 // ---------------------------------------------------------------------------
-// Wi-Fi. The board is its own WPA2 access point; phones and the laptop join
+// Wi-Fi. The board is its own WPA2 access point; the iPad and the laptop join
 // it and open http://192.168.4.1/. Data goes out over a WebSocket at /ws as
 // the same text lines the IRB firmware sends over serial.
 // ---------------------------------------------------------------------------
 
 // Pick a quiet channel at the venue (1, 6 or 11 overlap least).
 static const uint8_t  WIFI_CHANNEL       = 6;
-// Stations allowed to join: the controlling phone, the laptop, spares.
+// Stations allowed to join: the controlling iPad, the laptop, spares.
 static const uint8_t  WIFI_MAX_STATIONS  = 4;
 // Transmit power in units of 0.25 dBm (34 = 8.5 dBm, ~7 mW). Plenty for a
 // booth, and smaller current spikes on the 3V3 rail the real sensors and
@@ -69,7 +69,7 @@ static const uint8_t  WS_CMD_QUEUE       = 16;
 // the cuff is dumped. Lost during DEFLATE: the run finishes on the board.
 static const uint32_t CONTROLLER_TIMEOUT_MS = 2000;
 
-// Compact status line (ST) for the phone, this often.
+// Compact status line (ST) for the iPad, this often.
 static const uint32_t STATUS_PERIOD_MS = 500;
 
 // A main-loop pass longer than this is reported (the Wi-Fi stack must never

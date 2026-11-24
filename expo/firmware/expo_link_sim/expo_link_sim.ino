@@ -4,7 +4,7 @@
 // Wiring: NONE. The sensors and the cuff are simulated on the chip.
 //
 // Purpose: prove the wireless link before the real system runs over it.
-// The board is a WPA2 access point (secrets.h). A phone opens
+// The board is a WPA2 access point (secrets.h). The iPad opens
 // http://192.168.4.1/ to control and watch; the laptop opens
 // http://192.168.4.1/?view to watch, or runs expo/host/expo_receiver.py.
 //
@@ -299,11 +299,14 @@ static void cmdRelease(uint32_t id) {
 // Open to every client and never touches the cuff (no valve, no settings, no
 // session state). The board keeps the latest values and repeats them in ST
 // and INFO, so a screen that reconnects comes back in step.
-// Same code in expo_fw (a test keeps the command lists in step).
+// Same code in expo_fw and expo_link_sim (a test keeps them in step).
 // ===========================================================================
 
 static bool     g_view_technical = false;
 static uint32_t g_analyser       = 0;    // client id of the laptop results process
+// Where the iPad reads the technical traces: the analyser's own address on
+// this network and the dashboard port it sent (ANALYSER <port>). "" if none.
+static char     g_analyser_url[40] = "";
 static char     g_result[48]     = "";   // latest: "run=N mmhg=V flag=F"
 
 static const char *const kResultFlags[] = {"pending", "ok", "no_onset", "arm_moved",
@@ -350,11 +353,21 @@ static void cmdResult(const char *arg) {
   event("result", g_result);
 }
 
-static void cmdAnalyser(uint32_t src) {
+// ANALYSER [port], from the laptop results process. With a port, the board
+// pairs it with the client's address, so a screen can reach its dashboard
+// server. The address comes from the socket, never from what was sent.
+static void cmdAnalyser(uint32_t src, const char *arg) {
   if (src == SRC_SERIAL) { Out.println(F("E,ANALYSER is for Wi-Fi clients")); return; }
   g_analyser = src;
-  char d[24];
-  snprintf(d, sizeof(d), "%lu joined", (unsigned long)src);
+  g_analyser_url[0] = '\0';
+  char *end = nullptr;
+  const long port = arg ? strtol(arg, &end, 10) : 0;
+  char ip[16];
+  if (port > 0 && port < 65536 && end && *end == '\0' && wifiClientAddress(src, ip, sizeof(ip))) {
+    snprintf(g_analyser_url, sizeof(g_analyser_url), "ws://%s:%ld/ws", ip, port);
+  }
+  char d[64];
+  snprintf(d, sizeof(d), "%lu joined%s%s", (unsigned long)src, g_analyser_url[0] ? " " : "", g_analyser_url);
   event("analyser", d);
 }
 
@@ -365,12 +378,13 @@ static void analyserService(uint32_t now) {
                     (int32_t)(now - wifiLastSeenMs(g_analyser)) > (int32_t)CONTROLLER_TIMEOUT_MS;
   if (!gone) return;
   g_analyser = 0;
+  g_analyser_url[0] = '\0';
   event("analyser", "none lost");
 }
 
 static void printDisplayInfo() {
-  Out.printf("# view=%s analyser=%lu\n", g_view_technical ? "TECHNICAL" : "PUBLIC",
-             (unsigned long)g_analyser);
+  Out.printf("# view=%s analyser=%lu%s%s\n", g_view_technical ? "TECHNICAL" : "PUBLIC",
+             (unsigned long)g_analyser, g_analyser_url[0] ? " analyser_url=" : "", g_analyser_url);
   if (g_result[0]) Out.printf("# result %s\n", g_result);
 }
 
@@ -550,7 +564,7 @@ static void handleCommand(char *line, uint32_t src) {
   else if (strcmp(line, "RELEASE") == 0)  { if (src == SRC_SERIAL) Out.println(F("E,RELEASE is for Wi-Fi clients")); else cmdRelease(src); }
   else if (strcmp(line, "VIEW") == 0)     cmdView(src, arg);
   else if (strcmp(line, "RESULT") == 0)   cmdResult(arg);
-  else if (strcmp(line, "ANALYSER") == 0) cmdAnalyser(src);
+  else if (strcmp(line, "ANALYSER") == 0) cmdAnalyser(src, arg);
   else if (strcmp(line, "STREAM") == 0) {
     if (src != SRC_SERIAL) { Out.println(F("E,STREAM is serial-only: Wi-Fi clients always receive the stream")); return; }
     g_serial_stream = arg && arg[0] == '1';

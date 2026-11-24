@@ -70,7 +70,78 @@ def server():
 def test_page_is_served(server):
     _, port = server
     body = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
-    assert "<title>MAPQuest Expo</title>" in body
+    assert "<title>MAPQuest Dashboard</title>" in body
+    assert '<html lang="en" data-host="board">' in body           # the iPad's page, as the board serves it
+
+
+def test_the_board_serves_the_dashboard_marked_for_the_ipad():
+    from expotool.dashserve import board_page
+    page = (EXPO / "web" / "dashboard.html").read_text(encoding="utf-8")
+    assert '<html lang="en">' in page and "<html lang=\"en\" data-host" not in page   # the laptop's copy: no panel
+    header = (EXPO / "firmware" / "expo_fw" / "web_page.h").read_text(encoding="utf-8")
+    assert board_page(page) in header and embed_web.SOURCE.name == "dashboard.html"
+
+
+def test_a_band_plugged_in_is_found_in_idle_only():
+    src = _fw()
+    body = src[src.index("static void retryBands("):src.index("void setup()")]
+    guard = body.index("g_state != ST_IDLE || g_serial_stream || !g_mux_ok")
+    assert guard < body.index("i2cProbe(MAX30101_ADDR)") < body.index("ppgBringUp(b)")   # a probe first
+    assert body.index("i2cProbe(IMU_ADDR)") < body.index("imuBringUp(b)")
+    assert 'endBlocking("RETRY", t0)' in body and 'event("band_found"' in body
+    assert "retryBands(millis());" in src[src.index("void loop()"):]
+    cfg = (FW / "config.h").read_text(encoding="utf-8")
+    assert 1000 <= int(re.search(r"BAND_RETRY_MS\s*=\s*(\d+)", cfg).group(1)) <= 10000
+
+
+def test_ipad_refresh_only_between_runs():
+    page = (EXPO / "web" / "dashboard.html").read_text(encoding="utf-8")
+    assert "$('opRefresh').disabled = !(ctl && s === 'IDLE');" in page
+    assert "$('opRefresh').onclick = () => cmd('R');" in page
+
+
+def test_ipad_keeps_control_alive_and_stop_always_works():
+    page = (EXPO / "web" / "dashboard.html").read_text(encoding="utf-8")
+    ping = re.search(r"setInterval\(\(\) => \{\n(.*?)\n\}, (\d+)\);", page, re.S)
+    assert ping and "ws.send('PING');" in ping.group(1)
+    assert int(ping.group(2)) * 4 <= hubmod.CONTROLLER_TIMEOUT_S * 1000   # several pings per timeout
+    assert "D.controller === 0" in ping.group(1) and "ws.send('CLAIM')" in ping.group(1)   # re-claims when free
+    assert "$('opStop').disabled = false;" in page and "$('opStop').onclick = () => cmd('DUMP');" in page
+    assert "$('opDeflate').onclick = () => cmd('RUN');" in page
+    blocker = page[page.index("function startBlocker"):page.index("function panelHint")]
+    assert "D.sensors[1] !== '1'" in blocker and "D.sensors[2]" not in blocker   # proximal never blocks
+
+
+def test_page_files_are_served_as_the_board_serves_them(server):
+    import urllib.error
+    from expotool.dashserve import ASSETS
+    _, port = server
+    for path, ctype in ASSETS.items():
+        r = urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5)
+        assert r.headers["Content-Type"] == ctype and r.read() == (EXPO / "web" / path[1:]).read_bytes()
+    for other in ("/fonts/other.woff2", "/secrets.h", "/../host/sim_server.py"):
+        with pytest.raises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}{other}", timeout=5)
+        assert e.value.code == 404
+
+
+def test_the_board_embeds_and_routes_every_page_file():
+    from expotool.dashserve import ASSETS
+    cpp = (SIM / "wifi_link.cpp").read_text(encoding="utf-8")
+    routes = re.findall(r'\.uri = "([^"]+)";\s*\w+\.method = HTTP_GET;\s*\w+\.handler = assetHandler;', cpp)
+    for sketch in (SIM, EXPO / "firmware" / "expo_fw"):
+        embedded = re.findall(r'\{"(/[^"]+)", "([^"]+)", WEB_ASSET_\d+', (sketch / "web_assets.h").read_text())
+        assert dict(embedded) == ASSETS
+    for path in ASSETS:                                   # every file has a route to the asset handler
+        assert any(path == r or (r.endswith("*") and path.startswith(r[:-1])) for r in routes), path
+
+
+@pytest.mark.parametrize("name", ["expo_link_sim", "expo_fw"])
+def test_the_analyser_address_comes_from_its_socket(name):
+    src = (EXPO / "firmware" / name / f"{name}.ino").read_text(encoding="utf-8")
+    body = src[src.index("static void cmdAnalyser("):src.index("// Every loop pass: the analyser is gone")]
+    assert "wifiClientAddress(src," in body and '"ws://%s:%ld/ws"' in body
+    assert "cmdAnalyser(src, arg);" in src
 
 
 def test_phone_and_laptop_end_to_end(server):
@@ -204,10 +275,10 @@ def test_expo_fw_rules_match_the_link_simulator():
     assert tuple(re.findall(r'"([A-Z]+)"', m.group(1))) == hubmod.OPEN_TO_ALL
     m = re.search(r"kController\[\] = \{([^}]*)\}", _fw())
     controller = set(re.findall(r'"([A-Z]+)"', m.group(1)))
-    # Exactly what the phone page sends beyond the open commands, nothing more.
-    page = (EXPO / "web" / "index.html").read_text(encoding="utf-8")
+    # What the iPad page sends beyond the open commands: controller commands only.
+    page = (EXPO / "web" / "dashboard.html").read_text(encoding="utf-8")
     sent = set(re.findall(r"(?:cmd|send)\('([A-Z]+)", page)) - set(hubmod.OPEN_TO_ALL) - {"PING"}
-    assert controller == sent
+    assert sent == {"START", "RUN", "ZERO", "R"} and sent <= controller
     for bench in ("DARK", "AMP", "SCAN", "VALVE", "TEST", "STREAM", "RADIO"):
         assert bench not in controller
 
@@ -242,11 +313,34 @@ def test_refresh_reprobes_the_sensors_for_the_controller_only():
     assert any(",stream_gap,R" in ln for ln in lines)
 
 
-def test_phone_refresh_never_reconnects_during_a_run():
-    page = (EXPO / "web" / "index.html").read_text(encoding="utf-8")
-    body = re.search(r"\$\('btnRefresh'\)\.onclick = \(\) => \{(.*?)\n\};", page, re.S).group(1)
-    i_run, i_close, i_r = body.index("S.state !== 'IDLE'"), body.index("ws.close()"), body.index("cmd('R')")
-    assert i_run < i_close and i_run < i_r                     # the run check comes first
+def test_led_level_runs_on_refresh_never_at_start():
+    fw = _fw()
+    r_cmd = re.search(r'strcmp\(line, "R"\) == 0\) \{(.*?)\n  \} else if', fw, re.S).group(1)
+    assert "autoLevel" in r_cmd and r_cmd.index("bringUpAll") < r_cmd.index("autoLevel")
+    start = re.search(r"static void cmdStart\(.*?\n\}", fw, re.S).group(0)
+    assert "autoLevel" not in start            # a change between pre-roll and hold skews the pulse check
+    m = re.search(r"kController\[\] = \{([^}]*)\}", fw)
+    assert '"LEVEL"' not in m.group(1)         # bench command; the phone gets it through R
+
+
+def test_missing_pressure_sensor_is_retried_in_idle_only():
+    fw = _fw()
+    retry = re.search(r"static void retryPressure\(uint32_t now\) \{(.*?)\n\}", fw, re.S).group(1)
+    first = retry.strip().splitlines()[0]
+    assert "g_state != ST_IDLE" in first and "g_p_ok" in first   # nothing outside IDLE, nothing if present
+    assert "zeroPressure()" in retry and "endBlocking" in retry
+    assert "retryPressure(millis());" in fw
+
+
+def test_imu_settings_are_ones_the_bmi270_supports():
+    cfg = (FW / "config.h").read_text(encoding="utf-8")
+    odr = int(re.search(r"IMU_ODR_HZ\s*=\s*(\d+)", cfg).group(1))
+    rng = int(re.search(r"IMU_ACC_RANGE_G\s*=\s*(\d+)", cfg).group(1))
+    assert odr in (50, 100, 200, 400) and rng in (2, 4, 8, 16)
+    frames = int(re.search(r"IMU_FIFO_MAX_FRAMES\s*=\s*(\d+)", cfg).group(1))
+    assert frames * 12 < 2048                    # below the BMI270's 2 KB FIFO
+    poll_ms = int(re.search(r"IMU_POLL_MS\s*=\s*(\d+)", cfg).group(1))
+    assert odr * poll_ms / 1000 < frames         # a normal poll is nowhere near overflow
 
 
 def test_expo_fw_status_columns_and_timeout_match():

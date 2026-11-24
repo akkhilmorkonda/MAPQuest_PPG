@@ -7,9 +7,10 @@
 
 #include <stdint.h>
 
-// IDLE: valve open. INFLATE: valve closed, operator pumps. HOLD: valve
-// closed for hold_s. DEFLATE: PI-controlled bleed. DUMP: valve open until the
-// cuff reads vented, then IDLE.
+// IDLE: valve closed once the cuff has read empty for 3 s, open otherwise
+// (expo idleValve). INFLATE: valve closed, operator pumps. HOLD: valve closed
+// for hold_s. DEFLATE: PI-controlled bleed. DUMP: valve open until the cuff
+// reads vented, then IDLE. expo/CHECKS.md has the checks in each.
 enum SessState : uint8_t { ST_IDLE, ST_INFLATE, ST_HOLD, ST_DEFLATE, ST_DUMP };
 
 struct Settings {

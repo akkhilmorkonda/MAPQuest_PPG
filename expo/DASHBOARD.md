@@ -30,31 +30,35 @@ The real dashboard is one page that moves through these states as the board repo
 
 ## 2. Theme
 
-Restyled 2026-11-23 (layout and wording unchanged): graphite ink on a cool clinical grey,
-crimson for what matters now (the one colour kept from the poster, because this is a heart
-project), near-square corners and hairline outlines. The earlier poster palette (lavender,
-navy, periwinkle, pill shapes, 24 px radii) read as generic and was retired; the MAPQuest
-logo and Fredoka wordmark stay.
+**ECG chart paper** (chosen 2026-11-26 from four looks rendered on the live dashboard: Oxygen,
+ECG paper, Night booth, Poster blush; layout and wording unchanged). The charts are drawn on a
+heart monitor's printout paper: a pink grid of fine squares every 8 px and bold squares every
+40 px behind the public chart and the technical close-up, replacing the value gridlines. The
+ground is warm paper white, the ink a recorder's warm black, and crimson stays for what matters
+now (the one colour kept from the poster, because this is a heart project). Near-square corners
+and hairline outlines; the MAPQuest logo and Fredoka wordmark stay. Earlier looks (the poster's
+lavender and navy, then graphite on cool grey) are in git history.
 
 ### 2.1 Colour tokens
 
 | Token | Hex | Used for |
 |---|---|---|
-| ground | `#ECEEED` | page background |
-| card | `#FBFBFA` | cards, chart backgrounds |
-| card border | `#D3D8D6` | 1 px card outline |
-| divider | `#E1E5E3` | lines inside cards, empty bar tracks |
-| graphite (`--navy`) | `#17191C` | text, pressure line, finished steps, dark cards |
+| ground | `#FCF6F3` | page background (chart-paper white) |
+| chart grid | `#ECB2AC` / `#F6D6D2` | bold 40 px and fine 8 px squares behind the charts |
+| card | `#FFFBF9` | card fill where one remains |
+| card border | `#E6CCC6` | 1 px outlines, zone rules |
+| divider | `#F0DED9` | lines inside zones, empty bar tracks |
+| warm black (`--navy`) | `#211818` | text, pressure line (3 px pen), finished steps, dark tags |
 | slate, safety | `#2F3B45` | safety-stop state (never red on the public screens) |
-| text, secondary | `#4D5357` | labels, captions |
-| text, muted | `#6B7175` | waiting states, "after the vent" |
+| text, secondary | `#5B4946` | labels, captions |
+| text, muted | `#7C6A66` | waiting states, "after the vent" |
 | crimson | `#C1203B` | the wordmark, the current step, the blood line, the result, the onset |
 | crimson, dark | `#9A1530` | crimson text on pale pink |
-| crimson, light text | `#FBD9DF` | secondary text on crimson cards |
-| pink band | `#F7EBED` | "blood blocked" region, deflate band |
-| grey bands | `#F1F3F2` / `#E4E8E6` | inflate band, hold band |
-| trend grey | `#9BA4A1` / `#A9B0AD` | target ramp, sloped trend, connectors |
-| light text on graphite | `#D6DADC` | secondary text on dark cards |
+| crimson, light text | `#FBD9DF` | secondary text on crimson |
+| release band | `rgba(193, 32, 59, 0.06)` | "blood blocked" region, deflate band (translucent so the paper shows) |
+| hold band | `rgba(91, 73, 70, 0.07)` | hold band |
+| zero line | `#D9A8A3` | 0 mmHg on the public chart |
+| trend | `#B9928D` / `#CBB0AA` | target ramp, sloped trend, leaders, chevrons, step joints |
 | pulse blue | `#2B5FB8` | heartbeat trace, pulse-return marker |
 | caution | `#F4E4BC` on `#5E4200` | the low-confidence tag only |
 | threshold amber | `#D99A2B` | dashed noise-floor and motion lines |

@@ -33,16 +33,16 @@ static const char WEB_INDEX_HTML[] = R"EXPOHTML(<!doctype html>
   src: url("fonts/fredoka-700-latin-ext.woff2") format("woff2");
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 :root {
-  /* graphite ink on a cool clinical grey; crimson is the one colour with a job (the heart) */
-  --ground: #ECEEED; --card: #FBFBFA; --line: #D3D8D6; --line2: #E1E5E3; --navy: #17191C; --ink2: #4D5357;
-  --crimson: #C1203B; --crimson-dk: #9A1530; --pink: #FBD9DF; --rose: #F7EBED; --band2: #E4E8E6;
-  --safety: #2F3B45; --ok: #1E6A43; --warn: #946500; --warnbg: #F4E4BC; --blue: #2B5FB8; --mute: #6B7175;
+  /* ECG chart paper: warm paper white, a recorder's warm-black pen, crimson for the heart */
+  --ground: #FCF6F3; --card: #FFFBF9; --line: #E6CCC6; --line2: #F0DED9; --navy: #211818; --ink2: #5B4946;
+  --crimson: #C1203B; --crimson-dk: #9A1530; --pink: #FBD9DF; --rose: rgba(193, 32, 59, 0.06); --band2: rgba(91, 73, 70, 0.07);
+  --safety: #2F3B45; --ok: #1E6A43; --warn: #946500; --warnbg: #F4E4BC; --blue: #2B5FB8; --mute: #7C6A66;
   --display: "Fredoka", "Arial Rounded MT Bold", "Segoe UI", sans-serif;
   --sans: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
 ::selection { background: var(--crimson); color: #fff; }
-html, body { margin: 0; height: 100%; background: #111315; overflow: hidden; }
+html, body { margin: 0; height: 100%; background: #1C1515; overflow: hidden; }
 #stageBox { position: absolute; inset: 0; overflow: hidden; }
 #stage { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; transform-origin: 0 0;
   background: var(--ground); color: var(--navy); font-family: var(--sans); font-variant-numeric: tabular-nums; }
@@ -60,14 +60,20 @@ html, body { margin: 0; height: 100%; background: #111315; overflow: hidden; }
 .head { display: flex; align-items: center; gap: 28px; }
 .steps { flex-grow: 1; display: flex; justify-content: center; align-items: center; gap: 8px; }
 .chip { padding: 7px 14px; border-radius: 3px; font-size: 17px; white-space: nowrap; }
-.chip.todo { background: transparent; color: var(--ink2); font-weight: 400; border: 1px solid #BFC5C2; }
+.chip.todo { background: transparent; color: var(--ink2); font-weight: 400; border: 1px solid #D9BDB7; }
 .chip.done { background: var(--navy); color: #fff; font-weight: 700; }
 .chip.act { background: var(--crimson); color: #fff; font-weight: 700; }
 .chip.act.safety { background: var(--safety); }
-.joint { width: 22px; height: 1px; background: #A9B0AD; }
+.joint { width: 22px; height: 1px; background: #CBB0AA; }
 .livechip { padding: 4px 9px; border-radius: 3px; background: transparent; border: 1px solid var(--line); font-size: 12px; font-weight: 700; color: var(--ok); }
 .livechip.down { color: var(--crimson-dk); border-color: var(--crimson-dk); }
 svg text { font-family: var(--sans); }
+/* The charts are drawn on ECG chart paper: fine squares every 8 px, bold every 40 px (the
+   1 mm and 5 mm squares of a heart monitor's printout). It replaces the value gridlines. */
+#pTimeline, #pWhole, #tHero {
+  background-image: linear-gradient(#ECB2AC 1px, transparent 1px), linear-gradient(90deg, #ECB2AC 1px, transparent 1px),
+    linear-gradient(#F6D6D2 1px, transparent 1px), linear-gradient(90deg, #F6D6D2 1px, transparent 1px);
+  background-size: 40px 40px, 40px 40px, 8px 8px, 8px 8px; }
 .mk { display: inline-block; flex-shrink: 0; vertical-align: -1px; overflow: visible; }
 /* public: steps as plain text (current crimson and underlined), no chips */
 #pSteps { gap: 20px; align-items: baseline; }
@@ -83,7 +89,7 @@ svg text { font-family: var(--sans); }
 .facts { display: flex; gap: 40px; align-items: baseline; padding-left: 44px; }
 .facts > span { display: flex; gap: 10px; align-items: baseline; }
 .facts .big { font-size: 24px; font-weight: 700; }
-#pub.stale .facts .big { color: #A3A9A7; }
+#pub.stale .facts .big { color: #B9A5A1; }
 /* public: the three messages as one open band; each label hangs beside its text */
 /* During a run "Now" leads and "Watch for" is written on the chart, beside the line it
    means; the outcome keeps three columns sized by what they say. */
@@ -158,17 +164,17 @@ body.board #panel { display: grid; grid-template-columns: minmax(0, 1.1fr) minma
 .status .err { font-size: 14px; font-weight: 700; color: #FF8A9C; min-height: 18px; }
 .seg { display: inline-flex; border: 1px solid #4A5157; border-radius: 6px; overflow: hidden; align-self: flex-start; }
 .seg button { font: 700 14px var(--sans); color: #C9CED1; background: transparent; border: 0; padding: 7px 14px; }
-.seg button.on { background: #ECEEED; color: var(--navy); }
+.seg button.on { background: #FCF6F3; color: var(--navy); }
 .btns { display: flex; gap: 10px; align-items: stretch; }
 .btns button { font: 800 20px var(--sans); border-radius: 8px; border: 0; min-width: 104px; padding: 0 18px; min-height: 76px;
-  background: #ECEEED; color: var(--navy); touch-action: manipulation; }
+  background: #FCF6F3; color: var(--navy); touch-action: manipulation; }
 .btns button.quiet { background: transparent; color: #E6E9E8; border: 1px solid #5B636A; min-width: 84px; font-size: 17px; }
 .btns button.stop { background: var(--crimson); color: #fff; min-width: 136px; font-size: 24px; }
 .btns .stack { display: flex; flex-direction: column; gap: 8px; }
 .btns .stack button { min-height: 0; flex: 1 1 0; font-size: 15px; }
 .btns button:disabled { opacity: .32; }
 .btns button:active:not(:disabled) { transform: translateY(1px); filter: brightness(.92); }
-.take { font: 700 12px var(--sans); color: var(--navy); background: #ECEEED; border: 0; border-radius: 4px; padding: 2px 8px; }
+.take { font: 700 12px var(--sans); color: var(--navy); background: #FCF6F3; border: 0; border-radius: 4px; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -258,7 +264,7 @@ body.board #panel { display: grid; grid-template-columns: minmax(0, 1.1fr) minma
         <div style="font-size: 12px; font-weight: 700; color: var(--ink2)">Arm motion, forearm IMU (limit 20 °/s)</div>
         <svg id="tMotion" viewBox="0 0 300 50" preserveAspectRatio="none" style="width: 100%; height: 36px" aria-hidden="true"></svg>
       </div>
-      <div class="tcard" style="padding: 10px 18px; font-size: 14px; color: #3D4347; line-height: 1.4"><b style="color: var(--navy)">How well does this work?</b> Bench: refill onset read −6.2 ± 7.9 mmHg against systolic over 8 slow manual runs.</div>
+      <div class="tcard" style="padding: 10px 18px; font-size: 14px; color: #3F302E; line-height: 1.4"><b style="color: var(--navy)">How well does this work?</b> Bench: refill onset read −6.2 ± 7.9 mmHg against systolic over 8 slow manual runs.</div>
     </div>
 
     <div id="tFoot" style="grid-column: 1 / 3; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px">
@@ -280,7 +286,7 @@ body.board #panel { display: grid; grid-template-columns: minmax(0, 1.1fr) minma
       <div class="tcard" style="border-radius: 6px; padding: 12px 18px; display: flex; flex-direction: column; gap: 5px; min-width: 0">
         <span style="font-size: 14px; font-weight: 700">Link and events</span>
         <div id="tLink" style="font-size: 12px; color: var(--ink2)"></div>
-        <div id="tEvents" style="font-size: 12px; line-height: 1.55; color: #3D4347; overflow: hidden"></div>
+        <div id="tEvents" style="font-size: 12px; line-height: 1.55; color: #3F302E; overflow: hidden"></div>
       </div>
     </div>
   </div>
@@ -645,24 +651,23 @@ function timelineFrame(H, T, tHold, tDefl, tNow, W) {
   const Y = (p) => pBase - Math.max(0, Math.min(p, 200)) / 200 * (pBase - BAND_TOP - 14);
   const xh = X(tHold), xd = X(tDefl);
   let s = '';
-  s += `<rect x="${xh}" y="${BAND_TOP}" width="${Math.max(0, xd - xh)}" height="${base - BAND_TOP}" fill="#E4E8E6"/>`;
-  if (tNow === null) s += `<rect x="${xd}" y="${BAND_TOP}" width="${Math.max(0, W - xd)}" height="${base - BAND_TOP}" fill="#F7EBED"/>`;
+  s += `<rect x="${xh}" y="${BAND_TOP}" width="${Math.max(0, xd - xh)}" height="${base - BAND_TOP}" fill="rgba(91, 73, 70, 0.07)"/>`;
+  if (tNow === null) s += `<rect x="${xd}" y="${BAND_TOP}" width="${Math.max(0, W - xd)}" height="${base - BAND_TOP}" fill="rgba(193, 32, 59, 0.06)"/>`;
   else {      // the release is tinted only as far as it has happened; the rest of the phase is a strip
     const xn = Math.max(xd, X(tNow));
-    s += `<rect x="${xd}" y="${BAND_TOP}" width="${xn - xd}" height="${base - BAND_TOP}" fill="#F7EBED"/>`;
-    s += `<rect x="${xn}" y="${BAND_TOP}" width="${Math.max(0, W - xn)}" height="5" fill="#F7EBED"/>`;
+    s += `<rect x="${xd}" y="${BAND_TOP}" width="${xn - xd}" height="${base - BAND_TOP}" fill="rgba(193, 32, 59, 0.06)"/>`;
+    s += `<rect x="${xn}" y="${BAND_TOP}" width="${Math.max(0, W - xn)}" height="5" fill="rgba(193, 32, 59, 0.06)"/>`;
   }
-  if (xh - PLOT_L > 60) s += `<text x="${PLOT_L}" y="24" style="font: 700 14px var(--sans); fill: #4D5357">Inflate</text>`;
-  if (xd - xh > 50) s += `<text x="${xh + 8}" y="24" style="font: 700 14px var(--sans); fill: #4D5357">Hold</text>`;
+  if (xh - PLOT_L > 60) s += `<text x="${PLOT_L}" y="24" style="font: 700 14px var(--sans); fill: #5B4946">Inflate</text>`;
+  if (xd - xh > 50) s += `<text x="${xh + 8}" y="24" style="font: 700 14px var(--sans); fill: #5B4946">Hold</text>`;
   s += `<text x="${xd + 8}" y="24" style="font: 700 14px var(--sans); fill: #9A1530">Deflate<tspan dx="10" style="font-weight: 400">${(Math.abs(D.rateSet) || 2).toFixed(0)} mmHg/s</tspan></text>`;
   for (const p of [40, 80, 120, 160]) {
-    s += `<line x1="${PLOT_L}" y1="${Y(p)}" x2="${W}" y2="${Y(p)}" stroke="#D5DAD8" stroke-width="1"/>`;
-    s += `<text x="${PLOT_L - 8}" y="${Y(p) + 5}" style="font: 400 14px var(--sans); fill: #6B7175" text-anchor="end">${p}</text>`;
+    s += `<text x="${PLOT_L - 8}" y="${Y(p) + 5}" style="font: 400 14px var(--sans); fill: #7C6A66" text-anchor="end">${p}</text>`;
   }
-  s += `<text x="${PLOT_L - 8}" y="${pBase + 5}" style="font: 400 14px var(--sans); fill: #6B7175" text-anchor="end">0</text>`;
-  s += `<text x="${PLOT_L + 6}" y="${Y(186) + 5}" style="font: 700 14px var(--sans); fill: #17191C">mmHg</text>`;
-  s += `<line x1="${PLOT_L}" y1="${pBase}" x2="${W}" y2="${pBase}" stroke="#9BA4A1" stroke-width="1"/>`;
-  s += `<line x1="${PLOT_L}" y1="${base}" x2="${W}" y2="${base}" stroke="#4D5357" stroke-width="1"/>`;
+  s += `<text x="${PLOT_L - 8}" y="${pBase + 5}" style="font: 400 14px var(--sans); fill: #7C6A66" text-anchor="end">0</text>`;
+  s += `<text x="${PLOT_L + 6}" y="${Y(186) + 5}" style="font: 700 14px var(--sans); fill: #211818">mmHg</text>`;
+  s += `<line x1="${PLOT_L}" y1="${pBase}" x2="${W}" y2="${pBase}" stroke="#D9A8A3" stroke-width="1"/>`;
+  s += `<line x1="${PLOT_L}" y1="${base}" x2="${W}" y2="${base}" stroke="#5B4946" stroke-width="1"/>`;
   return { s, X, Y, base, pBase, bTop, bBase, W };
 }
 
@@ -710,7 +715,7 @@ function timelineSvg(H, showCursor, W) {
   const { X, Y, base, bTop, bBase } = f;
   let s = f.s, obst = [], YB = null;
   if (r) {
-    s += `<path d="${pathOf(r.pts, X, Y, 'p')}" fill="none" stroke="#17191C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s += `<path d="${pathOf(r.pts, X, Y, 'p')}" fill="none" stroke="#211818" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
     // Blood in the forearm is drawn from the moment the cuff is really squeezing: the first
     // second or so of pumping jolts the sensor and would set the strip's scale.
     const sq = r.pts.find((q) => fin(q.p) && q.p >= SQUEEZE_MMHG);
@@ -726,11 +731,11 @@ function timelineSvg(H, showCursor, W) {
     const strip = { x0: PLOT_L, x1: f.W, y0: bTop - 12, y1: base - 2 };
     if (live) {
       const xn = X(pl.now);
-      s += `<line x1="${xn}" y1="${BAND_TOP}" x2="${xn}" y2="${base}" stroke="#17191C" stroke-width="1.5" stroke-dasharray="4 4"/>`;
-      if (fin(D.p)) s += `<circle cx="${xn}" cy="${Y(D.p)}" r="8" fill="#17191C" stroke="#ECEEED" stroke-width="3"/>`;
+      s += `<line x1="${xn}" y1="${BAND_TOP}" x2="${xn}" y2="${base}" stroke="#211818" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+      if (fin(D.p)) s += `<circle cx="${xn}" cy="${Y(D.p)}" r="8" fill="#211818" stroke="#FCF6F3" stroke-width="3"/>`;
       if (lastB) {
         const yb = YB(lastB.v);
-        s += `<circle cx="${xn}" cy="${yb}" r="7" fill="#C1203B" stroke="#ECEEED" stroke-width="3"/>`;
+        s += `<circle cx="${xn}" cy="${yb}" r="7" fill="#C1203B" stroke="#FCF6F3" stroke-width="3"/>`;
         // the label rides beside the blood line's head, where the run has not drawn yet
         const c = placeText([{ x: xn + 16, y: yb + 6, anchor: 'start' }, { x: xn + 16, y: yb - 10, anchor: 'start' },
           { x: xn + 16, y: yb + 22, anchor: 'start' }, { x: xn - 16, y: yb - 12, anchor: 'end' }, { x: xn - 16, y: yb + 26, anchor: 'end' }],
@@ -742,7 +747,7 @@ function timelineSvg(H, showCursor, W) {
     } else if (r.pts.length) {
       const top = { x0: PLOT_L, x1: f.W, y0: BAND_TOP + 4, y1: f.pBase };
       const c = placeText(alongLine(pPts, [0.3, 0.22, 0.4, 0.5, 0.15, 0.62], 16, 32), cw, 17, obst, top);
-      s += `<text x="${c.x}" y="${c.y}" style="font: 700 17px var(--sans); fill: #17191C" text-anchor="${c.anchor}">Cuff pressure</text>`;
+      s += `<text x="${c.x}" y="${c.y}" style="font: 700 17px var(--sans); fill: #211818" text-anchor="${c.anchor}">Cuff pressure</text>`;
       blockOut(obst, c, cw, 17);
       if (bPts.length) {
         const cb = placeText(alongLine(bPts, [0.3, 0.4, 0.22, 0.5, 0.15, 0.6], 14, 30), bw, 17, obst, strip);
@@ -751,9 +756,9 @@ function timelineSvg(H, showCursor, W) {
       }
     }
   }
-  s += `<text x="${PLOT_L}" y="${H - 4}" style="font: 400 14px var(--sans); fill: #4D5357">0 s</text>`;
+  s += `<text x="${PLOT_L}" y="${H - 4}" style="font: 400 14px var(--sans); fill: #5B4946">0 s</text>`;
   const tail = r && !r.active ? `${Math.round(T)} s` : `about ${Math.round(T)} s, vents at ${Math.round(D.pStop)} mmHg`;
-  s += `<text x="${f.W}" y="${H - 4}" style="font: 400 14px var(--sans); fill: #4D5357" text-anchor="end">${tail}</text>`;
+  s += `<text x="${f.W}" y="${H - 4}" style="font: 400 14px var(--sans); fill: #5B4946" text-anchor="end">${tail}</text>`;
   return { svg: s, X, Y, YB, T, base, f, obst };
 }
 
@@ -766,9 +771,9 @@ function readoutSvg(f, obst, x, y, value, staleText, big) {
     { x: x + 30, y: by(BAND_TOP + h + 4), anchor: 'start' }, { x: x - 30, y: by(BAND_TOP + h + 4), anchor: 'end' },
     { x: x + 30, y: by(f.pBase - 8), anchor: 'start' }, { x: x - 30, y: by(f.pBase - 8), anchor: 'end' }],
     w, h, obst, { x0: PLOT_L, x1: f.W, y0: BAND_TOP, y1: f.pBase + 4 });
-  const ink = staleText ? '#A3A9A7' : '#17191C';
-  let s = `<text x="${c.x}" y="${c.y - big * 0.78}" style="font: 700 14px var(--sans); fill: #4D5357" text-anchor="${c.anchor}">Cuff pressure</text>`;
-  s += `<text x="${c.x}" y="${c.y}" style="font: 800 ${big}px var(--sans); fill: ${ink}; letter-spacing: -0.02em" text-anchor="${c.anchor}">${esc(value)}<tspan dx="12" style="font-size: 24px; font-weight: 700; fill: #4D5357; letter-spacing: 0">mmHg</tspan></text>`;
+  const ink = staleText ? '#B9A5A1' : '#211818';
+  let s = `<text x="${c.x}" y="${c.y - big * 0.78}" style="font: 700 14px var(--sans); fill: #5B4946" text-anchor="${c.anchor}">Cuff pressure</text>`;
+  s += `<text x="${c.x}" y="${c.y}" style="font: 800 ${big}px var(--sans); fill: ${ink}; letter-spacing: -0.02em" text-anchor="${c.anchor}">${esc(value)}<tspan dx="12" style="font-size: 24px; font-weight: 700; fill: #5B4946; letter-spacing: 0">mmHg</tspan></text>`;
   if (staleText) s += `<text x="${c.x}" y="${c.y - big * 0.78 - 24}" style="font: 700 14px var(--sans); fill: #9A1530" text-anchor="${c.anchor}">${esc(staleText)}</text>`;
   blockOut(obst, c, w, h);
   return s;
@@ -807,11 +812,11 @@ function watchSvg(f, obst, target, head, sub, leader) {
       }
       return false;
     });
-    if (!crosses && Math.hypot(ex - target.x, ey - target.y) > 34) s += `<line x1="${ex}" y1="${ey}" x2="${target.x}" y2="${target.y}" stroke="#9BA4A1" stroke-width="1.5"/>`;
+    if (!crosses && Math.hypot(ex - target.x, ey - target.y) > 34) s += `<line x1="${ex}" y1="${ey}" x2="${target.x}" y2="${target.y}" stroke="#B9928D" stroke-width="1.5"/>`;
   }
-  s += `<text x="${x}" y="${y0}" style="font: 700 14px var(--sans); fill: #4D5357">Watch for</text>`;
-  s += `<text x="${x}" y="${y0 + 34}" style="font: 700 24px var(--sans); fill: #17191C">${esc(head)}</text>`;
-  subLines.forEach((l, i) => { s += `<text x="${x}" y="${y0 + 34 + 26 + i * 23}" style="font: 400 17px var(--sans); fill: #4D5357">${esc(l)}</text>`; });
+  s += `<text x="${x}" y="${y0}" style="font: 700 14px var(--sans); fill: #5B4946">Watch for</text>`;
+  s += `<text x="${x}" y="${y0 + 34}" style="font: 700 24px var(--sans); fill: #211818">${esc(head)}</text>`;
+  subLines.forEach((l, i) => { s += `<text x="${x}" y="${y0 + 34 + 26 + i * 23}" style="font: 400 17px var(--sans); fill: #5B4946">${esc(l)}</text>`; });
   blockOut(obst, c, w, h);
   return s;
 }
@@ -891,8 +896,8 @@ function renderPublicLive(ph) {
 }
 
 function timelineIdle(f, H) {
-  return f.s + `<text x="${(PLOT_L + f.W) / 2}" y="${(BAND_TOP + f.pBase) / 2}" style="font: 400 24px var(--sans); fill: #4D5357" text-anchor="middle">The next run draws here as it happens</text>` +
-    `<text x="${PLOT_L}" y="${H - 4}" style="font: 400 14px var(--sans); fill: #4D5357">0 s</text><text x="${f.W}" y="${H - 4}" style="font: 400 14px var(--sans); fill: #4D5357" text-anchor="end">about 80 s, vents at 40 mmHg</text>`;
+  return f.s + `<text x="${(PLOT_L + f.W) / 2}" y="${(BAND_TOP + f.pBase) / 2}" style="font: 400 24px var(--sans); fill: #5B4946" text-anchor="middle">The next run draws here as it happens</text>` +
+    `<text x="${PLOT_L}" y="${H - 4}" style="font: 400 14px var(--sans); fill: #5B4946">0 s</text><text x="${f.W}" y="${H - 4}" style="font: 400 14px var(--sans); fill: #5B4946" text-anchor="end">about 80 s, vents at 40 mmHg</text>`;
 }
 
 function renderPublicOutcome() {
@@ -902,7 +907,7 @@ function renderPublicOutcome() {
   const tl = timelineSvg(H, false);
   let s = tl.svg;
   const obst = tl.obst.slice();
-  s += `<text x="${(PLOT_L + 1000) / 2}" y="${H - 4}" style="font: 700 14px var(--sans); fill: #4D5357" text-anchor="middle">The whole run</text>`;
+  s += `<text x="${(PLOT_L + 1000) / 2}" y="${H - 4}" style="font: 700 14px var(--sans); fill: #5B4946" text-anchor="middle">The whole run</text>`;
   if (r && isNumber && res.markers && res.markers['refill onset (hinge)']) {
     const [tOn] = res.markers['refill onset (hinge)'];
     const x = tl.X(tOn);
@@ -913,7 +918,7 @@ function renderPublicOutcome() {
     if (fin(pOn)) {
       // The tag marks the reading where it is: on the pressure line, at the onset's mmHg.
       const yp = r._Y(pOn), tw = textW('Blood is back', 17, 700) + 28, th = 38;
-      s += `<circle cx="${x}" cy="${yp}" r="10" fill="#17191C" stroke="#fff" stroke-width="3"/>`;
+      s += `<circle cx="${x}" cy="${yp}" r="10" fill="#211818" stroke="#fff" stroke-width="3"/>`;
       const c = placeText([{ x: x + 18, y: yp - 16, anchor: 'start' }, { x: x + 18, y: yp + 54, anchor: 'start' },
         { x: x - 18, y: yp - 16, anchor: 'end' }, { x: x - 18, y: yp + 54, anchor: 'end' }],
         tw, th, obst, { x0: PLOT_L, x1: 1000, y0: BAND_TOP, y1: tl.f.pBase });
@@ -946,7 +951,7 @@ function renderPublicOutcome() {
     found = ['No clear reading this time', 'Blood came back too faintly to pin down. Another run usually works.'];
   } else if (o === 'safety-stop') {
     const why = (r && SAFETY_LINE[r.dumpReason]) || (r && /^ppg dropout/.test(r.dumpReason || '') ? 'The light sensor lost contact' : 'A built-in safety limit ended the run');
-    panel = `<div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1"><svg viewBox="0 0 48 48" style="width: 56px; height: 56px" aria-hidden="true"><path d="M24 4 L40 10 V22 C40 33 33 41 24 44 C15 41 8 33 8 22 V10 Z" fill="#D6DADC" stroke="#2F3B45" stroke-width="2.5" stroke-linejoin="round"/><path d="M16 24 L22 30 L32 18" fill="none" stroke="#2F3B45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><div style="font-size: 40px; font-weight: 700; line-height: 1.1">Safety stop: the cuff released itself</div><div style="font-size: 17px; color: var(--ink2); line-height: 1.45">${esc(why)}. No reading this run.</div></div>`;
+    panel = `<div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1"><svg viewBox="0 0 48 48" style="width: 56px; height: 56px" aria-hidden="true"><path d="M24 4 L40 10 V22 C40 33 33 41 24 44 C15 41 8 33 8 22 V10 Z" fill="#F0DED9" stroke="#2F3B45" stroke-width="2.5" stroke-linejoin="round"/><path d="M16 24 L22 30 L32 18" fill="none" stroke="#2F3B45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><div style="font-size: 40px; font-weight: 700; line-height: 1.1">Safety stop: the cuff released itself</div><div style="font-size: 17px; color: var(--ink2); line-height: 1.45">${esc(why)}. No reading this run.</div></div>`;
     found = ['The cuff released itself early', 'A built-in safety limit ended the run. No reading this time.'];
   } else {   // stopped
     panel = `<div style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1"><div style="font-size: 40px; font-weight: 700; line-height: 1.1">Run stopped</div><div style="font-size: 17px; color: var(--ink2); line-height: 1.45"><b style="color: var(--navy)">Return-of-flow pressure</b><br>The run was stopped before the end. No reading this time.</div></div>`;
@@ -974,8 +979,8 @@ function spark(xs, ys, opt) {
   const Y = (v) => h - 3 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * (h - 6);
   let s = '';
   if (opt.thr !== undefined && fin(opt.thr)) s += `<line x1="0" y1="${Y(opt.thr)}" x2="${w}" y2="${Y(opt.thr)}" stroke="#D99A2B" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/>`;
-  if (opt.second) s += `<path d="${pathOf(opt.second.map((v, i) => ({ t: xs[i], v })), X, Y)}" fill="none" stroke="#9BA4A1" stroke-width="5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
-  s += `<path d="${pathOf(pts, X, Y)}" fill="none" stroke="${opt.color || '#17191C'}" stroke-width="${opt.sw || 2.5}" vector-effect="non-scaling-stroke"/>`;
+  if (opt.second) s += `<path d="${pathOf(opt.second.map((v, i) => ({ t: xs[i], v })), X, Y)}" fill="none" stroke="#B9928D" stroke-width="5" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+  s += `<path d="${pathOf(pts, X, Y)}" fill="none" stroke="${opt.color || '#211818'}" stroke-width="${opt.sw || 2.5}" vector-effect="non-scaling-stroke"/>`;
   return s;
 }
 
@@ -998,22 +1003,22 @@ function renderTech(ph) {
     ['ΔOD', tr ? [tr.t, tr.d_od] : [liveX, r ? r.bv.map((q) => q.v / 1000) : []], true],
     ['Blood volume', tr ? [tr.t, tr.dv] : [liveX, r ? r.bv.map((q) => q.v) : []], true, '#C1203B'],
     ['Low-pass 0.3 Hz', tr ? [tr.t, tr.dv_lp] : null, false],
-    ['dV/dt vs μ₀+3σ₀', tr ? [tr.t, tr.ddv] : null, false, '#17191C', tr ? tr.threshold : undefined],
+    ['dV/dt vs μ₀+3σ₀', tr ? [tr.t, tr.ddv] : null, false, '#211818', tr ? tr.threshold : undefined],
   ];
   let chips = '';
   defs.forEach(([title, data, live, color, thr], i) => {
     const drawn = data && data[0].length > 1 && (live || tr);
     if (!drawn) {
-      chips += `<div class="tchip ${live ? '' : 'wait'}"><div class="t">${i ? icon('next', '#9BA4A1', 11) : ''}${title}</div><div style="height: 36px; display: flex; align-items: center; font-size: 12px; color: var(--mute)">${live ? 'with the run' : 'after the vent'}</div></div>`;
+      chips += `<div class="tchip ${live ? '' : 'wait'}"><div class="t">${i ? icon('next', '#B9928D', 11) : ''}${title}</div><div style="height: 36px; display: flex; align-items: center; font-size: 12px; color: var(--mute)">${live ? 'with the run' : 'after the vent'}</div></div>`;
       return;
     }
     const xs = data[0], tt = tr ? Math.max(...xs.filter(fin)) : T;
     const t0 = tr ? Math.min(...xs.filter(fin)) : 0;
-    chips += `<div class="tchip"><div class="t">${i ? icon('next', '#9BA4A1', 11) : ''}${title}</div><svg viewBox="0 0 200 36" preserveAspectRatio="none" style="width: 100%; height: 36px" aria-hidden="true">${spark(xs, data[1], { T: tt, t0, color, thr })}</svg></div>`;
+    chips += `<div class="tchip"><div class="t">${i ? icon('next', '#B9928D', 11) : ''}${title}</div><svg viewBox="0 0 200 36" preserveAspectRatio="none" style="width: 100%; height: 36px" aria-hidden="true">${spark(xs, data[1], { T: tt, t0, color, thr })}</svg></div>`;
   });
   const hasNum = (st === 'result' || st === 'caution') && res && fin(res.mmhg);
   const onsetText = hasNum ? Math.round(res.mmhg) + ' mmHg' : { 'no-reading': 'none found', analysing: 'fitting…', 'safety-stop': '—', stopped: '—' }[st] || '—';
-  chips += `<div class="tchip onset ${hasNum ? '' : 'none'}"><div class="t">${icon('next', hasNum ? '#C1203B' : '#9BA4A1', 11)}Hinge onset</div><div style="font-size: 24px; font-weight: 800; line-height: 36px">${onsetText}</div></div>`;
+  chips += `<div class="tchip onset ${hasNum ? '' : 'none'}"><div class="t">${icon('next', hasNum ? '#C1203B' : '#B9928D', 11)}Hinge onset</div><div style="font-size: 24px; font-weight: 800; line-height: 36px">${onsetText}</div></div>`;
   $('tChips').innerHTML = chips;
 
   // -- hero: the close-up --
@@ -1024,7 +1029,7 @@ function renderTech(ph) {
   // -- confidence checks --
   const KIND = { '✓': 'ok', '✗': 'bad', '!': 'warn', '–': 'wait', '…': 'busy' };
   const P = (mark, color, name, detail) => `<span style="display: flex; align-items: baseline; gap: 7px">${icon(KIND[mark], color, 13)}<b>${name}</b><span style="color: var(--ink2)">${esc(detail)}</span></span>`;
-  const ok = '#1E6A43', wait = '#6B7175', warn = '#946500', bad = '#9A1530';
+  const ok = '#1E6A43', wait = '#7C6A66', warn = '#946500', bad = '#9A1530';
   const peak = r ? r.imu.filter((q) => r.tDefl === null || q.t >= r.tDefl).reduce((m, q) => Math.max(m, q.dps), 0) : 0;
   let checks;
   if (tr || (res && (st === 'result' || st === 'caution' || st === 'no-reading'))) {
@@ -1050,10 +1055,10 @@ function renderTech(ph) {
   if (tr && tr.pulse_env) {
     const tt = Math.max(...tr.t.filter(fin)), t0 = Math.min(...tr.t.filter(fin));
     $('tPulse').innerHTML = spark(tr.t, tr.pulse_env, { w: 300, h: 50, T: tt, t0, color: '#2B5FB8', thr: tr.pulse_thr });
-  } else $('tPulse').innerHTML = '<text x="150" y="32" style="font: 400 14px var(--sans); fill: #6B7175" text-anchor="middle">after the vent</text>';
+  } else $('tPulse').innerHTML = '<text x="150" y="32" style="font: 400 14px var(--sans); fill: #7C6A66" text-anchor="middle">after the vent</text>';
   if (r && r.imu.length > 1) {
     const ys = r.imu.map((q) => q.dps), xs = r.imu.map((q) => q.t);
-    $('tMotion').innerHTML = spark(xs, ys, { w: 300, h: 50, T: r.active ? T : Math.max(...xs), color: '#17191C', sw: 2, thr: 20, range: [0, Math.max(40, ...ys)] });
+    $('tMotion').innerHTML = spark(xs, ys, { w: 300, h: 50, T: r.active ? T : Math.max(...xs), color: '#211818', sw: 2, thr: 20, range: [0, Math.max(40, ...ys)] });
   } else $('tMotion').innerHTML = '';
 
   // -- controller --
@@ -1076,7 +1081,7 @@ function renderTech(ph) {
   const maxRun = r && fin(r.pStart) ? (r.pStart - D.pStop) / (Math.abs(D.rateSet) || 2) * 2 + 15 : 135;
   const defl = r && r.tDefl !== null ? ((active ? pl.now : (r.tDump ?? pl.now)) - r.tDefl) : 0;
   const reason = r && r.dumpReason;
-  const L = (label, val, lim, text, tripped) => `<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 76px; gap: 6px; align-items: center; font-size: 12px"><span style="font-weight: 700; color: ${tripped ? '#9A1530' : '#4D5357'}">${label}</span><div class="bar"><div style="width: ${Math.max(0, Math.min(100, val / lim * 100)).toFixed(0)}%; background: ${tripped ? '#C1203B' : '#17191C'}"></div></div><span style="font-weight: 700; text-align: right; color: ${tripped ? '#9A1530' : '#4D5357'}">${text}</span></div>`;
+  const L = (label, val, lim, text, tripped) => `<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 76px; gap: 6px; align-items: center; font-size: 12px"><span style="font-weight: 700; color: ${tripped ? '#9A1530' : '#5B4946'}">${label}</span><div class="bar"><div style="width: ${Math.max(0, Math.min(100, val / lim * 100)).toFixed(0)}%; background: ${tripped ? '#C1203B' : '#211818'}"></div></div><span style="font-weight: 700; text-align: right; color: ${tripped ? '#9A1530' : '#5B4946'}">${text}</span></div>`;
   $('tLimits').innerHTML =
     L(active || !r ? 'Over-pressure' : 'Peak pressure', pNow, D.pMax, reason === 'overpressure' ? 'tripped' : `${Math.round(pNow)} / ${Math.round(D.pMax)}`, reason === 'overpressure') +
     L('Hold timeout', closed, D.holdTimeout, reason === 'hold timeout' ? 'tripped' : `${Math.round(closed)} / ${Math.round(D.holdTimeout)} s`, reason === 'hold timeout') +
@@ -1129,15 +1134,15 @@ function eventText(e) {
 function renderHero(st, r, res, pl) {
   const H = 420, base = 380;
   let s = '', title = 'Close-up: blood volume', note = 'waiting for the release';
-  const msg = (text) => `<text x="500" y="190" style="font: 700 17px var(--sans); fill: #6B7175" text-anchor="middle">${esc(text)}</text>`;
+  const msg = (text) => `<text x="500" y="190" style="font: 700 17px var(--sans); fill: #7C6A66" text-anchor="middle">${esc(text)}</text>`;
   const axis = (hi, lo, X) => {
-    let a = `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#D3D8D6" stroke-width="1.5"/>`;
+    let a = `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#E6CCC6" stroke-width="1.5"/>`;
     const step = 10, first = Math.floor(hi / step) * step;
     for (let p = first; p >= lo; p -= step) {
       const x = X(p); if (x < 0 || x > 1000) continue;
-      a += `<text x="${x}" y="404" style="font: 400 14px var(--sans); fill: #4D5357" text-anchor="${x < 20 ? 'start' : x > 980 ? 'end' : 'middle'}">${p}</text>`;
+      a += `<text x="${x}" y="404" style="font: 400 14px var(--sans); fill: #5B4946" text-anchor="${x < 20 ? 'start' : x > 980 ? 'end' : 'middle'}">${p}</text>`;
     }
-    return a + `<text x="1000" y="${H - 1}" style="font: 400 12px var(--sans); fill: #6B7175" text-anchor="end">mmHg</text>`;
+    return a + `<text x="1000" y="${H - 1}" style="font: 400 12px var(--sans); fill: #7C6A66" text-anchor="end">mmHg</text>`;
   };
   const tr = res && res.traces;
   const hasNum = (st === 'result' || st === 'caution') && res && fin(res.mmhg);
@@ -1163,16 +1168,16 @@ function renderHero(st, r, res, pl) {
     const pad = (vhi - vlo) * 0.12;
     const Y = (v) => base - 20 - (v - (vlo - pad)) / ((vhi + pad) - (vlo - pad)) * (base - 70);
     const XP = (q) => X(q);   // pathOf uses q.t as x
-    if (on) s += `<rect x="0" y="0" width="${X(pOn)}" height="${base}" fill="#F7EBED"/>`;
+    if (on) s += `<rect x="0" y="0" width="${X(pOn)}" height="${base}" fill="rgba(193, 32, 59, 0.06)"/>`;
     s += axis(hi, lo, X);
-    if (base1.length) s += `<path d="${pathOf(base1, XP, Y)}" fill="none" stroke="#9BA4A1" stroke-width="3" stroke-dasharray="10 8"/>`;
+    if (base1.length) s += `<path d="${pathOf(base1, XP, Y)}" fill="none" stroke="#B9928D" stroke-width="3" stroke-dasharray="10 8"/>`;
     s += `<path d="${pathOf(pts, XP, Y)}" fill="none" stroke="#C1203B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`;
     // Everything drawn so far is an obstacle for the labels that follow.
     const obst = ptsOf(pts, X, Y).concat(ptsOf(base1, X, Y), ptsOf(hinge, X, Y));
     const trendLabel = 'sloped occlusion trend (still draining)';
     if (on) {
       const xo = X(pOn), yo = Y(vAtP(pts, pOn));
-      if (hinge.length) s += `<path d="${pathOf(hinge, XP, Y)}" fill="none" stroke="#17191C" stroke-width="3" stroke-dasharray="3 6"/>`;
+      if (hinge.length) s += `<path d="${pathOf(hinge, XP, Y)}" fill="none" stroke="#211818" stroke-width="3" stroke-dasharray="3 6"/>`;
       s += `<line x1="${xo}" y1="40" x2="${xo}" y2="${base}" stroke="#C1203B" stroke-width="3"/><circle cx="${xo}" cy="${yo}" r="11" fill="#C1203B" stroke="#fff" stroke-width="4"/>`;
       for (let y = 40; y <= base; y += 8) obst.push({ x: xo, y });
       const lx = Math.max(10, xo - 266);
@@ -1185,21 +1190,21 @@ function renderHero(st, r, res, pl) {
         blockOut(obst, { x: Math.min(x + 8, 840), y: y + 18, anchor: 'start' }, textW(label, 14, 700) + 50, 14);
         return `<line x1="${x}" y1="${y}" x2="${x}" y2="${base}" stroke="${color}" stroke-width="2" stroke-dasharray="5 5"/><text x="${Math.min(x + 8, 840)}" y="${y + 18}" style="font: 400 14px var(--sans); fill: ${color}">${label}<tspan dx="6" style="font-weight: 700">${m[1].toFixed(1)}</tspan></text>`;
       };
-      s += mk('pulse return', '#2B5FB8', 100, 'pulse return') + mk('refill onset (intersect)', '#4D5357', 140, 'intersect');
-      if (hinge.length) { s += `<text x="760" y="104" style="font: 400 14px var(--sans); fill: #17191C">dotted: hinge fit</text>`; blockOut(obst, { x: 760, y: 104, anchor: 'start' }, 120, 14); }
+      s += mk('pulse return', '#2B5FB8', 100, 'pulse return') + mk('refill onset (intersect)', '#5B4946', 140, 'intersect');
+      if (hinge.length) { s += `<text x="760" y="104" style="font: 400 14px var(--sans); fill: #211818">dotted: hinge fit</text>`; blockOut(obst, { x: 760, y: 104, anchor: 'start' }, 120, 14); }
       const badge = (x, y, n, c) => { blockOut(obst, { x, y: y + 18, anchor: 'middle' }, 36, 36); return `<circle cx="${x}" cy="${y}" r="17" fill="${c}" stroke="#fff" stroke-width="3"/><text x="${x}" y="${y + 6}" style="font: 700 14px var(--sans); fill: #fff" text-anchor="middle">${n}</text>`; };
       if (pts.length > 4) {
         const q1 = pts[Math.min(pts.length - 1, Math.floor(pts.length * 0.12))];
-        s += badge(X(q1.t), Y(q1.v) - 44, 1, '#17191C');
+        s += badge(X(q1.t), Y(q1.v) - 44, 1, '#211818');
         const q3 = pts[Math.floor(pts.length * 0.8)];
-        s += badge(X(q3.t), Y(q3.v) + 40, 3, '#17191C');
+        s += badge(X(q3.t), Y(q3.v) + 40, 3, '#211818');
       }
       s += badge(xo, Math.min(base - 20, yo + 38), 2, '#C1203B');
       title = `Close-up: blood volume, ${hi} → ${lo} mmHg`;
       note = 'windows from board events; refill shape: ' + (res.detail.hinge_power === 1 ? 'sharp corner (p = 1)' : 'soft start (p = 2)');
       if (st === 'caution') note = 'windows from board events; flagged: ' + (res.flags || []).join(', ').replace(/_/g, ' ');
     } else {
-      s += `<text x="500" y="180" style="font: 700 17px var(--sans); fill: #4D5357" text-anchor="middle">No sustained rise above the noise floor before the vent</text>`;
+      s += `<text x="500" y="180" style="font: 700 17px var(--sans); fill: #5B4946" text-anchor="middle">No sustained rise above the noise floor before the vent</text>`;
       blockOut(obst, { x: 500, y: 180, anchor: 'middle' }, 560, 19);
       title = `Blood volume through the release, ${hi} → ${lo} mmHg`;
       note = 'windows from board events, no onset';
@@ -1208,7 +1213,7 @@ function renderHero(st, r, res, pl) {
       const y0 = Y(base1[0].v), tw = textW(trendLabel, 14, 400);
       const c = placeText([{ x: 12, y: y0 - 16, anchor: 'start' }, { x: 12, y: y0 - 40, anchor: 'start' }, { x: 12, y: y0 + 34, anchor: 'start' },
         { x: 12, y: y0 + 58, anchor: 'start' }, { x: 12, y: base - 12, anchor: 'start' }], tw, 14, obst, { x0: 0, x1: 1000, y0: 30, y1: base - 2 });
-      s += `<text x="${c.x}" y="${c.y}" style="font: 400 14px var(--sans); fill: #4D5357">${trendLabel}</text>`;
+      s += `<text x="${c.x}" y="${c.y}" style="font: 400 14px var(--sans); fill: #5B4946">${trendLabel}</text>`;
     }
   } else if ((st === 'deflate' || st === 'analysing') && r && fin(r.pStart)) {
     // The corner is not known yet: show the release so far, at least 60 mmHg of it,
@@ -1222,28 +1227,29 @@ function renderHero(st, r, res, pl) {
     s += axis(hi, lo, X);
     s += `<path d="${pathOf(pts, X, Y)}" fill="none" stroke="#C1203B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`;
     if (st === 'analysing') {
-      s += `<rect x="360" y="150" width="280" height="50" rx="3" fill="#17191C"/><text x="500" y="182" style="font: 700 17px var(--sans); fill: #fff" text-anchor="middle">Fitting the hinge…</text>`;
+      s += `<rect x="360" y="150" width="280" height="50" rx="3" fill="#211818"/><text x="500" y="182" style="font: 700 17px var(--sans); fill: #fff" text-anchor="middle">Fitting the hinge…</text>`;
       title = `Close-up: blood volume, ${hi} → ${lo} mmHg`;
       note = 'whole run, fitting';
     } else if (fin(D.p)) {
       const x = Math.max(0, Math.min(1000, X(D.p)));
-      s += `<line x1="${x}" y1="30" x2="${x}" y2="${base}" stroke="#17191C" stroke-width="3"/><rect x="${Math.max(0, Math.min(850, x - 75))}" y="0" width="150" height="36" rx="3" fill="#17191C"/><text x="${Math.max(75, Math.min(925, x))}" y="24" style="font: 400 14px var(--sans); fill: #fff" text-anchor="middle">now<tspan dx="8" style="font-weight: 700">${Math.round(D.p)} mmHg</tspan></text>`;
+      s += `<line x1="${x}" y1="30" x2="${x}" y2="${base}" stroke="#211818" stroke-width="3"/><rect x="${Math.max(0, Math.min(850, x - 75))}" y="0" width="150" height="36" rx="3" fill="#211818"/><text x="${Math.max(75, Math.min(925, x))}" y="24" style="font: 400 14px var(--sans); fill: #fff" text-anchor="middle">now<tspan dx="8" style="font-weight: 700">${Math.round(D.p)} mmHg</tspan></text>`;
       // Two lines of explanation, set where the trace and the cursor leave room.
       const obst = ptsOf(pts, X, Y);
       for (let y = 30; y <= base; y += 8) obst.push({ x, y });
       const tw = textW('The corner is fitted after the vent:', 17, 700);
       const c = placeText([{ x: x + 40, y: 226, anchor: 'start' }, { x: x - 40, y: 226, anchor: 'end' }, { x: x + 40, y: base - 40, anchor: 'start' },
-        { x: x - 40, y: base - 40, anchor: 'end' }, { x: x + 40, y: 120, anchor: 'start' }, { x: x - 40, y: 120, anchor: 'end' }],
+        { x: x - 40, y: base - 40, anchor: 'end' }, { x: x + 40, y: 120, anchor: 'start' }, { x: x - 40, y: 120, anchor: 'end' },
+        { x: 40, y: 110, anchor: 'start' }, { x: 40, y: 160, anchor: 'start' }, { x: x / 2, y: 110, anchor: 'middle' }, { x: 40, y: base - 40, anchor: 'start' }],
         tw, 44, obst, { x0: 0, x1: 1000, y0: 44, y1: base - 4 });
-      s += `<text x="${c.x}" y="${c.y - 26}" style="font: 700 17px var(--sans); fill: #6B7175" text-anchor="${c.anchor}">The corner is fitted after the vent:</text><text x="${c.x}" y="${c.y}" style="font: 700 17px var(--sans); fill: #6B7175" text-anchor="${c.anchor}">the filters need the whole run.</text>`;
+      s += `<text x="${c.x}" y="${c.y - 26}" style="font: 700 17px var(--sans); fill: #7C6A66" text-anchor="${c.anchor}">The corner is fitted after the vent:</text><text x="${c.x}" y="${c.y}" style="font: 700 17px var(--sans); fill: #7C6A66" text-anchor="${c.anchor}">the filters need the whole run.</text>`;
       title = `Close-up: blood volume, ${hi} → ${lo} mmHg`;
       note = 'live, raw volume, fit pending';
     }
   } else if (st === 'analysing') {
-    s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#D3D8D6" stroke-width="1.5"/><rect x="360" y="150" width="280" height="50" rx="3" fill="#17191C"/><text x="500" y="182" style="font: 700 17px var(--sans); fill: #fff" text-anchor="middle">Fitting the hinge…</text>`;
+    s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#E6CCC6" stroke-width="1.5"/><rect x="360" y="150" width="280" height="50" rx="3" fill="#211818"/><text x="500" y="182" style="font: 700 17px var(--sans); fill: #fff" text-anchor="middle">Fitting the hinge…</text>`;
     note = 'whole run, fitting';
   } else {
-    s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#D3D8D6" stroke-width="1.5"/>`;
+    s += `<line x1="0" y1="${base}" x2="1000" y2="${base}" stroke="#E6CCC6" stroke-width="1.5"/>`;
     const why = r && r.dumpReason ? r.dumpReason : 'a safety limit';
     s += msg({ idle: 'Waiting for a visitor. This fills in as the release begins.', inflate: 'Inflating. The close-up starts when the release begins.',
       hold: `Holding at ${fin(D.p) ? Math.round(D.p) : '—'}. The last 5 s of the hold become the reference window.`,

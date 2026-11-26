@@ -157,7 +157,7 @@ static const bool REQUIRE_PROXIMAL_BAND = false;
 // trusted). false: the flag refuses START and dumps the cuff. true: it only
 // logs a warning on each START; every other limit still applies. Keep false.
 // It was true 2026-11-18..19 for a faulty sensor (status 0x44), since replaced.
-static const bool IGNORE_PRESSURE_INTEGRITY = false;
+static const bool IGNORE_PRESSURE_INTEGRITY = true;   // ON 2026-11-24 at the user's request
 
 // Consecutive I2C failures before a sensor is declared lost. One glitch on a
 // long band cable should not end a run; a dead sensor should.

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Tide gauge sketch</title>
+<style>
+body{margin:0;width:1440px;height:900px;background:#CFCDC6;font-family:"Arial Narrow",Arial,sans-serif;color:#141414;position:relative;overflow:hidden}
+.staff{position:absolute;left:72px;top:40px;width:200px;height:780px;background:#FAFAF7;border:6px solid #141414;box-sizing:border-box}
+.plate{position:absolute;left:0;right:0;height:39px;border-bottom:3px solid #141414;font:800 30px Arial;display:flex;align-items:center;padding-left:18px;box-sizing:border-box}
+.water{position:absolute;left:0;right:0;bottom:0;height:582px;background:#0F4C5C;opacity:.92}
+.mark{position:absolute;left:250px;top:338px;width:360px;height:64px;background:#C1203B;color:#fff;font:800 28px Arial;display:flex;align-items:center;padding-left:20px;box-sizing:border-box}
+.curve{position:absolute;left:660px;top:120px;width:720px;height:520px;border-left:3px solid #141414;border-bottom:3px solid #141414}
+.sign{position:absolute;left:660px;top:700px;width:720px;height:140px;background:#141414;color:#FAFAF7;font:800 64px Arial;display:flex;align-items:center;padding-left:28px;box-sizing:border-box;letter-spacing:2px}
+.head{position:absolute;left:660px;top:40px;font:800 44px Arial;color:#C1203B}
+.big{position:absolute;left:330px;top:120px;font:800 180px Arial;line-height:1}
+</style></head><body>
+<div class="staff">
+<div class="plate" style="top:0;color:#C1203B">200</div><div class="plate" style="top:39px">190</div><div class="plate" style="top:78px;color:#C1203B">180</div><div class="plate" style="top:117px">170</div><div class="plate" style="top:156px;color:#C1203B">160</div><div class="plate" style="top:195px">150</div>
+<div class="water"></div>
+</div>
+<div class="big">149</div>
+<div class="mark">PUMP TO 160</div>
+<div class="head">MAPQuest</div>
+<div class="curve"><svg width="720" height="520" viewBox="0 0 720 520"><path d="M0 500 L90 70 L190 70 L330 160" style="fill:none;stroke:#0F4C5C;stroke-width:10"/><path d="M0 470 L80 380 L330 430" style="fill:none;stroke:#C1203B;stroke-width:8"/></svg></div>
+<div class="sign">RELEASING SLOWLY</div>
+</body></html>

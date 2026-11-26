@@ -189,8 +189,8 @@ It changes nothing on the board by itself, except sending `R` once when the USB 
 - `REQUIRE_PROXIMAL_BAND` (false): the switch for when a model uses the proximal band;
 - the WROOM pin branch in `config.h`: a second board the same firmware builds for;
 - `firmware/xiao_bus_test`: the bus bring-up sketch;
-- `IGNORE_PRESSURE_INTEGRITY` (false): a bench override for a faulty MPRLS. It is compiled out, but
-  it is a switch that bypasses a safety check.
+- `IGNORE_PRESSURE_INTEGRITY` (true since 2026-11-24): a bench override for a faulty MPRLS. While on,
+  the integrity flag only warns at START instead of refusing it and dumping the cuff.
 
 **Gaps worth knowing while testing:**
 - **Pulse check skipped:** `pulse_present` is skipped when there is less than 4 s of uncuffed

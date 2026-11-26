@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "expo/web/dashboard.html"
+        ],
+        "createdAt": "2026-11-26T16:28:22.633Z",
+        "reason": "Claude's triage: every border-left in this file is a neutral 1px column divider between unboxed zones (radius 0), the ruled-zone layout from review finding 3 the user chose; no accent bar on a rounded box"
+      }
+    ]
+  }
+}

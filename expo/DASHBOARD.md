@@ -380,3 +380,20 @@ Wording is unchanged; these supersede §4 and §5 where they differ.
 - **Labels beside, not above:** "Now", "Watch for", "What we found" and "What it means" hang to
   the left of their text; "Return-of-flow pressure" sits beside the result number; "The whole
   run" names the time axis.
+
+## 10. UI-review fixes 7–9 (2026-11-26)
+
+Wording unchanged; restore points: tags `dashboard-review-baseline` (before any fixes) and
+`dashboard-review-fixes-1-6`.
+
+- **One type scale.** Visitor screens: 40 px (the lead caption), 24 px (secondary headlines,
+  "Watch for", time left), 17 px (body, line labels), 14 px (labels, axes). Technical: 24, 17,
+  14 and 12 px. Text uses two weights, 400 and 700; the heavy 800 is kept for the numbers (the
+  live readout, the result, the onset).
+- **"Watch for" is written on the chart,** beside the line it describes (the black line while
+  inflating, the red line from the hold on; where the black line will climb while idle), with a
+  hairline leader when it has to sit apart, never across another label. During a run the bottom
+  row is "Now" (leading) and the time left; the outcome keeps three columns sized by their text.
+- **Drawn status marks** (`icon()` in `web/dashboard.html`: tick, cross, alert, pending ring,
+  working dots, dot) replace the ✓ ● ✗ – ! … characters in the steppers, confidence checks,
+  the Live badge and the hardware panel.

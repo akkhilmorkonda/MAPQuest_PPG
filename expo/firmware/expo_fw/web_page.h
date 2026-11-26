@@ -19,18 +19,12 @@ static const char WEB_INDEX_HTML[] = R"EXPOHTML(<!doctype html>
      Designs: the "Chosen" page of the dashboard canvas (B3-Live, B3-Result, B3c-Technical). -->
 <style>
 /* Fonts ship beside the page (the booth laptop is offline). Bricolage Grotesque for all text
-   and numbers; Atkinson Hyperlegible Mono for the event log; Fredoka is the MAPQuest wordmark. */
+   and numbers, the event log included; Fredoka is the MAPQuest wordmark. */
 @font-face { font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
   src: url("fonts/bricolage-grotesque-latin.woff2") format("woff2");
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
   src: url("fonts/bricolage-grotesque-latin-ext.woff2") format("woff2");
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-@font-face { font-family: "Atkinson Hyperlegible Mono"; font-style: normal; font-weight: 200 800; font-display: swap;
-  src: url("fonts/atkinson-hyperlegible-mono-latin.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: "Atkinson Hyperlegible Mono"; font-style: normal; font-weight: 200 800; font-display: swap;
-  src: url("fonts/atkinson-hyperlegible-mono-latin-ext.woff2") format("woff2");
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "Fredoka"; font-style: normal; font-weight: 700; font-display: swap;
   src: url("fonts/fredoka-700-latin.woff2") format("woff2");
@@ -45,7 +39,6 @@ static const char WEB_INDEX_HTML[] = R"EXPOHTML(<!doctype html>
   --safety: #2F3B45; --ok: #1E6A43; --warn: #946500; --warnbg: #F4E4BC; --blue: #2B5FB8; --mute: #6B7175;
   --display: "Fredoka", "Arial Rounded MT Bold", "Segoe UI", sans-serif;
   --sans: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
-  --mono: "Atkinson Hyperlegible Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
 * { box-sizing: border-box; }
 ::selection { background: var(--crimson); color: #fff; }
@@ -121,7 +114,13 @@ svg text { font-family: var(--sans); }
 .tchip.onset { color: var(--crimson); }
 .tchip.onset.none { color: var(--mute); }
 .tchip .t { font-size: 12px; font-weight: 700; color: var(--ink2); }
-.tchip .n { color: var(--mute); font-weight: 400; margin-right: 6px; }
+.tchip .t .mk { margin-right: 5px; vertical-align: 0; }
+/* the event log: times in their own right-aligned column, text in the page's face */
+.ev { display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 10px; }
+.ev .when { text-align: right; color: var(--mute); }
+.ev .what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* idle: the invitation is the hero, not the empty cuff */
+#pub.idle #pCaption { font-size: 72px; line-height: 1; letter-spacing: -0.02em; }
 .tchip.onset .t { color: var(--crimson-dk); } .tchip.onset.none .t { color: var(--mute); }
 .tcard { background: transparent; border: 0; border-radius: 0; }
 #tGrid { gap: 0 !important; }
@@ -281,7 +280,7 @@ body.board #panel { display: grid; grid-template-columns: minmax(0, 1.1fr) minma
       <div class="tcard" style="border-radius: 6px; padding: 12px 18px; display: flex; flex-direction: column; gap: 5px; min-width: 0">
         <span style="font-size: 14px; font-weight: 700">Link and events</span>
         <div id="tLink" style="font-size: 12px; color: var(--ink2)"></div>
-        <div id="tEvents" style="font-family: var(--mono); font-size: 12px; line-height: 1.55; color: #3D4347; overflow: hidden; white-space: nowrap; text-overflow: ellipsis"></div>
+        <div id="tEvents" style="font-size: 12px; line-height: 1.55; color: #3D4347; overflow: hidden"></div>
       </div>
     </div>
   </div>
@@ -614,6 +613,7 @@ const ICON = {
   wait: (c) => `<circle cx="6" cy="6" r="3.4" fill="none" stroke="${c}" stroke-width="1.5"/>`,
   busy: (c) => `<circle cx="2.6" cy="6" r="1.1" fill="${c}"/><circle cx="6" cy="6" r="1.1" fill="${c}"/><circle cx="9.4" cy="6" r="1.1" fill="${c}"/>`,
   dot: (c) => `<circle cx="6" cy="6" r="4" fill="${c}"/>`,
+  next: (c) => `<path d="M4 2.6 L7.6 6 L4 9.4" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
 };
 const icon = (kind, color, size) =>
   `<svg class="mk" width="${size || 12}" height="${size || 12}" viewBox="0 0 12 12" aria-hidden="true">${ICON[kind](color || 'currentColor')}</svg>`;
@@ -622,7 +622,8 @@ function stepperHtml(active, safety, small) {
   return STEP_LABELS.map((label, i) => {
     const cls = i < active ? 'done' : i === active ? 'act' + (safety ? ' safety' : '') : 'todo';
     const mark = i < active ? icon('ok', 'currentColor', small ? 11 : 13) : String(i + 1);
-    if (small) return `<span class="chip ${cls}" style="padding: 5px 11px; font-size: 12px">${mark} ${label}</span>`;
+    // Technical: no step numbers there (its only numbering is the corner's 1-3).
+    if (small) return `<span class="chip ${cls}" style="padding: 5px 11px; font-size: 12px">${i < active ? mark + ' ' : ''}${label}</span>`;
     return `<span class="chip ${cls}">${mark} ${label}</span>` + (i < STEP_LABELS.length - 1 ? '<span class="joint"></span>' : '');
   }).join('');
 }
@@ -634,6 +635,7 @@ function stepIndex(ph) {
 // strips share the time axis: cuff pressure on top, with its mmHg scale; blood in the
 // forearm below, relative, with no scale (it is not a pressure).
 const PLOT_L = 44, BAND_TOP = 36;
+const SQUEEZE_MMHG = 30;             // the blood line starts once the cuff is past this
 function timelineFrame(H, T, tHold, tDefl, tNow, W) {
   W = W || 1000;
   const X = (t) => PLOT_L + Math.max(0, Math.min(1, t / T)) * (W - PLOT_L);
@@ -709,13 +711,17 @@ function timelineSvg(H, showCursor, W) {
   let s = f.s, obst = [], YB = null;
   if (r) {
     s += `<path d="${pathOf(r.pts, X, Y, 'p')}" fill="none" stroke="#17191C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
-    const [lo, hi] = range(r.bv.map((q) => q.v), 4);
+    // Blood in the forearm is drawn from the moment the cuff is really squeezing: the first
+    // second or so of pumping jolts the sensor and would set the strip's scale.
+    const sq = r.pts.find((q) => fin(q.p) && q.p >= SQUEEZE_MMHG);
+    const bv = sq ? r.bv.filter((q) => q.t >= sq.t) : [];
+    const [lo, hi] = range(bv.map((q) => q.v), 4);
     YB = (v) => bBase - (v - lo) / (hi - lo) * (bBase - bTop);
-    s += `<path d="${pathOf(r.bv, X, YB)}" fill="none" stroke="#C1203B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
-    r._X = X; r._Y = Y; r._YB = YB;
-    const pPts = ptsOf(r.pts, X, Y, 'p'), bPts = ptsOf(r.bv, X, YB);
+    s += `<path d="${pathOf(bv, X, YB)}" fill="none" stroke="#C1203B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
+    r._X = X; r._Y = Y; r._YB = YB; r._bv = bv;
+    const pPts = ptsOf(r.pts, X, Y, 'p'), bPts = ptsOf(bv, X, YB);
     obst = pPts.concat(bPts);
-    const lastB = r.bv.length ? r.bv[r.bv.length - 1] : null;
+    const lastB = bv.length ? bv[bv.length - 1] : null;
     const bw = textW('Blood in the forearm', 17, 700), cw = textW('Cuff pressure', 17, 700);
     const strip = { x0: PLOT_L, x1: f.W, y0: bTop - 12, y1: base - 2 };
     if (live) {
@@ -752,8 +758,9 @@ function timelineSvg(H, showCursor, W) {
 }
 
 // The live cuff pressure, set beside the head of its line like an instrument readout.
-function readoutSvg(f, obst, x, y, value, staleText) {
-  const big = 116, w = textW(value, big, 800) + 116, h = 128;
+function readoutSvg(f, obst, x, y, value, staleText, big) {
+  big = big || 116;
+  const w = textW(value, big, 800) + 116, h = big + 12;
   const by = (yy) => Math.max(BAND_TOP + h, Math.min(f.pBase - 8, yy));
   const c = placeText([{ x: x + 30, y: by(y + 40), anchor: 'start' }, { x: x - 30, y: by(y + 40), anchor: 'end' },
     { x: x + 30, y: by(BAND_TOP + h + 4), anchor: 'start' }, { x: x - 30, y: by(BAND_TOP + h + 4), anchor: 'end' },
@@ -841,6 +848,7 @@ function renderPublic(ph) {
   $('pRun').textContent = runLabel();
   const live = ph !== 'outcome';
   $('pub').classList.toggle('outcome', !live);
+  $('pub').classList.toggle('idle', ph === 'idle');
   $('pLiveBody').style.display = live ? 'grid' : 'none';
   $('pResultBody').style.display = live ? 'none' : 'grid';
   if (live) renderPublicLive(ph); else renderPublicOutcome();
@@ -857,7 +865,7 @@ function renderPublicLive(ph) {
     const f = timelineFrame(H, 80, 10, 20, null, W), obst = [];
     let s = timelineIdle(f, H);
     blockOut(obst, { x: (PLOT_L + W) / 2, y: (BAND_TOP + f.pBase) / 2, anchor: 'middle' }, textW('The next run draws here as it happens', 24, 400), 24);
-    s += readoutSvg(f, obst, f.X(0), f.pBase, value, '');
+    s += readoutSvg(f, obst, f.X(0), f.pBase, value, '', 56);       // idle: small; "Next up: you" leads
     s += watchSvg(f, obst, { x: f.X(6), y: f.Y(90) }, watch, watchSub, false);   // where the black line will climb
     $('pTimeline').innerHTML = s;
   } else {
@@ -865,7 +873,8 @@ function renderPublicLive(ph) {
     const head = fin(D.p) ? tl.Y(D.p) : tl.f.pBase;
     let s = tl.svg + readoutSvg(tl.f, tl.obst, tl.X(pl.now), head, value, D.staleText);
     // the black line for inflation, the red line from the hold on
-    const lastB = r && r.bv.length ? r.bv[r.bv.length - 1] : null;
+    const drawn = r && r._bv ? r._bv : [];
+    const lastB = drawn.length ? drawn[drawn.length - 1] : null;
     const onRed = ph !== 'inflate' && lastB && tl.YB;
     const target = onRed ? { x: tl.X(pl.now), y: tl.YB(lastB.v) } : { x: tl.X(pl.now), y: head };
     s += watchSvg(tl.f, tl.obst, target, watch, watchSub, true);
@@ -995,16 +1004,16 @@ function renderTech(ph) {
   defs.forEach(([title, data, live, color, thr], i) => {
     const drawn = data && data[0].length > 1 && (live || tr);
     if (!drawn) {
-      chips += `<div class="tchip ${live ? '' : 'wait'}"><div class="t"><span class="n">${i + 1}</span>${title}</div><div style="height: 36px; display: flex; align-items: center; font-size: 12px; color: var(--mute)">${live ? 'with the run' : 'after the vent'}</div></div>`;
+      chips += `<div class="tchip ${live ? '' : 'wait'}"><div class="t">${i ? icon('next', '#9BA4A1', 11) : ''}${title}</div><div style="height: 36px; display: flex; align-items: center; font-size: 12px; color: var(--mute)">${live ? 'with the run' : 'after the vent'}</div></div>`;
       return;
     }
     const xs = data[0], tt = tr ? Math.max(...xs.filter(fin)) : T;
     const t0 = tr ? Math.min(...xs.filter(fin)) : 0;
-    chips += `<div class="tchip"><div class="t"><span class="n">${i + 1}</span>${title}</div><svg viewBox="0 0 200 36" preserveAspectRatio="none" style="width: 100%; height: 36px" aria-hidden="true">${spark(xs, data[1], { T: tt, t0, color, thr })}</svg></div>`;
+    chips += `<div class="tchip"><div class="t">${i ? icon('next', '#9BA4A1', 11) : ''}${title}</div><svg viewBox="0 0 200 36" preserveAspectRatio="none" style="width: 100%; height: 36px" aria-hidden="true">${spark(xs, data[1], { T: tt, t0, color, thr })}</svg></div>`;
   });
   const hasNum = (st === 'result' || st === 'caution') && res && fin(res.mmhg);
   const onsetText = hasNum ? Math.round(res.mmhg) + ' mmHg' : { 'no-reading': 'none found', analysing: 'fitting…', 'safety-stop': '—', stopped: '—' }[st] || '—';
-  chips += `<div class="tchip onset ${hasNum ? '' : 'none'}"><div class="t"><span class="n">6</span>Hinge onset</div><div style="font-size: 24px; font-weight: 800; line-height: 36px">${onsetText}</div></div>`;
+  chips += `<div class="tchip onset ${hasNum ? '' : 'none'}"><div class="t">${icon('next', hasNum ? '#C1203B' : '#9BA4A1', 11)}Hinge onset</div><div style="font-size: 24px; font-weight: 800; line-height: 36px">${onsetText}</div></div>`;
   $('tChips').innerHTML = chips;
 
   // -- hero: the close-up --
@@ -1098,7 +1107,7 @@ function renderTech(ph) {
   const ev = D.events.filter((e) => !quiet.has(e.name)).slice(-3).reverse().map((e) => {
     let when = '';
     if (t0 !== null) { const d = e.t - t0, s = Math.abs(Math.round(d)); when = (d < 0 ? '−' : '') + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
-    return `<div>${esc(when)} ${esc(eventText(e))}</div>`;
+    return `<div class="ev"><span class="when">${esc(when)}</span><span class="what">${esc(eventText(e))}</span></div>`;
   });
   $('tEvents').innerHTML = ev.join('');
 }

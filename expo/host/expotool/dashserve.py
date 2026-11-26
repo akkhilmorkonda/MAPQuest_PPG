@@ -38,7 +38,6 @@ ALLOWED = ("VIEW PUBLIC", "VIEW TECHNICAL")
 ASSETS = {"/logo.webp": "image/webp"} | {
     f"/fonts/{name}.woff2": "font/woff2" for name in (
         "bricolage-grotesque-latin", "bricolage-grotesque-latin-ext",
-        "atkinson-hyperlegible-mono-latin", "atkinson-hyperlegible-mono-latin-ext",
         "fredoka-700-latin", "fredoka-700-latin-ext")}
 
 

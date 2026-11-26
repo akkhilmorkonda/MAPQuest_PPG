@@ -79,12 +79,13 @@ read "1Ø6") carries all text and numbers; its zero is plain.
 |---|---|---|
 | Wordmark "MAPQuest" | Fredoka | 700 · 42 px public, 32 px technical, crimson |
 | Logo (`web/logo.webp`) | image | left of the wordmark: 64 px tall public, 42 px technical; also the tab icon |
-| Big numbers (pressure, result) | Bricolage Grotesque | 800 · 176 px live, 200 px result, tabular figures |
-| Public captions | Bricolage Grotesque | 800 · 46 px "Now" (36 px for the longer outcome lines), 30 px the other two |
-| Values | Bricolage Grotesque | 800 · 26–30 px (time in cuff, release speed, run number) |
-| Labels | Bricolage Grotesque | 400 · 15 px secondary colour; 700 for "Now", "Watch for", "What it means" |
-| Body | Bricolage Grotesque | 400 · 19 px public; 12–17 px technical |
-| Event log | Atkinson Hyperlegible Mono | 11.5 px |
+| Big numbers | Bricolage Grotesque | 800 · 116 px live readout (56 px while idle), 168 px result, 24 px technical onset; tabular figures |
+| Idle invitation | Bricolage Grotesque | 700 · 72 px "Next up: you" |
+| Public captions | Bricolage Grotesque | 700 · 40 px the lead ("Now", "What we found"); 24 px the secondary headlines and "Watch for" |
+| Values | Bricolage Grotesque | 700 · 24 px (time in cuff, release speed, run number, time left) |
+| Labels | Bricolage Grotesque | 14 px public (700 for "Now", "Watch for", "What it means"); 12 px technical |
+| Body | Bricolage Grotesque | 400 · 17 px public; 14 px technical |
+| Event log | Bricolage Grotesque | 400 · 12 px, times right-aligned in their own column |
 
 Public type scale: 15 / 19 / 30 / 46 / 176 px.
 
@@ -397,3 +398,18 @@ Wording unchanged; restore points: tags `dashboard-review-baseline` (before any 
 - **Drawn status marks** (`icon()` in `web/dashboard.html`: tick, cross, alert, pending ring,
   working dots, dot) replace the ✓ ● ✗ – ! … characters in the steppers, confidence checks,
   the Live badge and the hardware panel.
+
+## 11. UI-review fixes 10–13 (2026-11-26)
+
+Wording unchanged; restore points: tags `dashboard-review-baseline`, `dashboard-review-fixes-1-6`
+and `dashboard-review-fixes-7-9`.
+
+- **One numbering system on the technical screen:** the corner's 1–3 (steps and chart badges).
+  The technical stepper lost its numbers (done states keep the tick); the pipeline's 1–6 became
+  quiet drawn chevrons, crimson into the hinge onset once it is found.
+- **Idle leads with the invitation:** "Next up: you" is 72 px; the cuff reading shrinks to
+  56 px while nobody is in the cuff.
+- **The blood line starts once the cuff is squeezing** (`SQUEEZE_MMHG` = 30 mmHg). The first
+  second of pumping jolts the sensor; it no longer draws a spike or sets the strip's scale.
+- **The event log is set in the page's face,** with its times right-aligned in a column of their
+  own. Atkinson Hyperlegible Mono is gone from the page, `dashserve.py` and the board's flash.

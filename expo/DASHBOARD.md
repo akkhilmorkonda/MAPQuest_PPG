@@ -360,3 +360,23 @@ simulation) for a judges' Q&A slide, and T5's fail-safe cards for the IRB safety
   the event log shows the run's events (device connect/disconnect churn is left out).
 - **Safety-stop text** follows the dump reason with DESIGN §8.2's public lines, instead of
   the mockup's single hold-timeout sentence.
+
+## 9. UI-review fixes (2026-11-26)
+
+From the `ui-review` of 2026-11-26 (findings 1–6; restore point: tag `dashboard-review-baseline`).
+Wording is unchanged; these supersede §4 and §5 where they differ.
+
+- **Two strips on the public chart.** Cuff pressure on top with its mmHg scale; blood in the
+  forearm below, relative, with no scale, since it is not a pressure. On a result, "Blood is
+  back" marks the pressure line at the onset, where the reading actually is.
+- **Labels never sit on a line.** Line labels, the result tag, the technical "corner is fitted
+  after the vent" note and the "sloped occlusion trend" label are placed in the first clear spot
+  from a short list of candidates (`placeText` in `web/dashboard.html`).
+- **Live cuff pressure rides on the chart,** beside the head of its line like an instrument
+  readout; the left number column is gone and time in cuff and release speed sit under the chart.
+- **Technical view in three ruled zones** (pipeline row, close-up with its notes, the machine
+  row), divided by rules instead of 13 outlined boxes. A tripped safety limit tints its zone.
+- **No middle-dot strings:** values sit beside their labels, or follow a comma or colon.
+- **Labels beside, not above:** "Now", "Watch for", "What we found" and "What it means" hang to
+  the left of their text; "Return-of-flow pressure" sits beside the result number; "The whole
+  run" names the time axis.

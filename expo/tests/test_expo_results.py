@@ -501,7 +501,7 @@ def test_dashboard_catch_up_is_in_order_and_only_view_goes_back():
         import urllib.request
         logo = urllib.request.urlopen(f"http://127.0.0.1:{port}/logo.webp", timeout=5)
         assert logo.headers["Content-Type"] == "image/webp" and logo.read(4) == b"RIFF"
-        font = urllib.request.urlopen(f"http://127.0.0.1:{port}/fonts/bricolage-grotesque-latin.woff2", timeout=5)
+        font = urllib.request.urlopen(f"http://127.0.0.1:{port}/fonts/libre-franklin-latin.woff2", timeout=5)
         assert font.headers["Content-Type"] == "font/woff2" and font.read(4) == b"wOF2"
         for other in ("/index.html.bak", "/../host/expo_results.py", "/secrets.h", "/fonts/other.woff2"):
             try:

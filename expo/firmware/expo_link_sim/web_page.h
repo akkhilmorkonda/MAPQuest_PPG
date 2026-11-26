@@ -18,13 +18,14 @@ static const char WEB_INDEX_HTML[] = R"EXPOHTML(<!doctype html>
      No external resources: everything is on the board's network, offline.
      Designs: the "Chosen" page of the dashboard canvas (B3-Live, B3-Result, B3c-Technical). -->
 <style>
-/* Fonts ship beside the page (the booth laptop is offline). Bricolage Grotesque for all text
-   and numbers, the event log included; Fredoka is the MAPQuest wordmark. */
-@font-face { font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
-  src: url("fonts/bricolage-grotesque-latin.woff2") format("woff2");
+/* Fonts ship beside the page (the booth laptop is offline). Libre Franklin, a revival of
+   Franklin Gothic (the American newspaper and printed-form face), for all text and numbers;
+   Fredoka is the MAPQuest wordmark. */
+@font-face { font-family: "Libre Franklin"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("fonts/libre-franklin-latin.woff2") format("woff2");
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
-  src: url("fonts/bricolage-grotesque-latin-ext.woff2") format("woff2");
+@font-face { font-family: "Libre Franklin"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("fonts/libre-franklin-latin-ext.woff2") format("woff2");
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "Fredoka"; font-style: normal; font-weight: 700; font-display: swap;
   src: url("fonts/fredoka-700-latin.woff2") format("woff2");
@@ -38,7 +39,7 @@ static const char WEB_INDEX_HTML[] = R"EXPOHTML(<!doctype html>
   --crimson: #C1203B; --crimson-dk: #9A1530; --pink: #FBD9DF; --rose: rgba(193, 32, 59, 0.06); --band2: rgba(91, 73, 70, 0.07);
   --safety: #2F3B45; --ok: #1E6A43; --warn: #946500; --warnbg: #F4E4BC; --blue: #2B5FB8; --mute: #7C6A66;
   --display: "Fredoka", "Arial Rounded MT Bold", "Segoe UI", sans-serif;
-  --sans: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --sans: "Libre Franklin", "Franklin Gothic Medium", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
 ::selection { background: var(--crimson); color: #fff; }
@@ -188,7 +189,7 @@ body.board #panel { display: grid; grid-template-columns: minmax(0, 1.1fr) minma
       <img class="logo" src="logo.webp" alt="" style="height: 64px">
       <div style="display: flex; flex-direction: column; gap: 2px">
         <div class="wordmark" style="font-size: 42px">MAPQuest</div>
-        <div style="font-size: 14px; color: var(--ink2)">Blood pressure without a pulse</div>
+        <div style="font-size: 14px; color: var(--ink2)">No Pulse, No Problem.</div>
       </div>
     </div>
     <div class="steps" id="pSteps"></div>

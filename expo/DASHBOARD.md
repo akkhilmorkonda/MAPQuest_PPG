@@ -76,20 +76,26 @@ lavender and navy, then graphite on cool grey) are in git history.
 ### 2.2 Type
 
 All fonts ship in `web/fonts/` (WOFF2, served by `dashserve.py`), because the booth laptop is
-offline. Bricolage Grotesque (chosen 2026-11-23 over Atkinson Hyperlegible, whose slashed zero
-read "1Ø6") carries all text and numbers; its zero is plain.
+offline. Libre Franklin, a revival of Franklin Gothic (the American newspaper and printed-form
+face, at home on chart paper), carries all text and numbers. It was chosen 2026-11-26 from four
+faces tried on the live dashboard (Overpass, Libre Franklin, Barlow Semi Condensed, Schibsted
+Grotesk), replacing Bricolage Grotesque. Its digits are not all the same width (no tabular
+figures in this build), so a changing number such as the live readout or the countdown shifts
+by a few pixels as it counts; the numbers are anchored so nothing jumps around the screen.
+
+The slogan under the wordmark reads "No Pulse, No Problem." (since 2026-11-26).
 
 | Role | Face | Weight · size |
 |---|---|---|
 | Wordmark "MAPQuest" | Fredoka | 700 · 42 px public, 32 px technical, crimson |
 | Logo (`web/logo.webp`) | image | left of the wordmark: 64 px tall public, 42 px technical; also the tab icon |
-| Big numbers | Bricolage Grotesque | 800 · 116 px live readout (56 px while idle), 168 px result, 24 px technical onset; tabular figures |
-| Idle invitation | Bricolage Grotesque | 700 · 72 px "Next up: you" |
-| Public captions | Bricolage Grotesque | 700 · 40 px the lead ("Now", "What we found"); 24 px the secondary headlines and "Watch for" |
-| Values | Bricolage Grotesque | 700 · 24 px (time in cuff, release speed, run number, time left) |
-| Labels | Bricolage Grotesque | 14 px public (700 for "Now", "Watch for", "What it means"); 12 px technical |
-| Body | Bricolage Grotesque | 400 · 17 px public; 14 px technical |
-| Event log | Bricolage Grotesque | 400 · 12 px, times right-aligned in their own column |
+| Big numbers | Libre Franklin | 800 · 116 px live readout (56 px while idle), 168 px result, 24 px technical onset |
+| Idle invitation | Libre Franklin | 700 · 72 px "Next up: you" |
+| Public captions | Libre Franklin | 700 · 40 px the lead ("Now", "What we found"); 24 px the secondary headlines and "Watch for" |
+| Values | Libre Franklin | 700 · 24 px (time in cuff, release speed, run number, time left) |
+| Labels | Libre Franklin | 14 px public (700 for "Now", "Watch for", "What it means"); 12 px technical |
+| Body | Libre Franklin | 400 · 17 px public; 14 px technical |
+| Event log | Libre Franklin | 400 · 12 px, times right-aligned in their own column |
 
 Public type scale: 15 / 19 / 30 / 46 / 176 px.
 

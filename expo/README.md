@@ -333,7 +333,7 @@ with the analysis traces. It draws the chosen designs from the dashboard canvas 
   Windows asks once whether Python may accept connections: allow it, including on **Public**
   networks (the board's network shows up as Public), or the iPad can't reach it.
 - **Offline:** no web fonts or CDN (the laptop is on the board's network). Its fonts
-  (Bricolage Grotesque, Fredoka for the wordmark) ship in `web/fonts/` and
+  (Libre Franklin, Fredoka for the wordmark) ship in `web/fonts/` and
   are served by the results process.
 - `--dash-port 0` turns it off.
 
